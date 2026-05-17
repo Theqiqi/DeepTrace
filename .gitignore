@@ -1,0 +1,8 @@
+cmake-build-*/
+.idea/
+*.o
+*.log
+out
+vcpkg_installed
+.vs/
+
