@@ -28,11 +28,7 @@ Result memory_read(uintptr_t addr, void* buf, size_t size, size_t* out_read);
 | `Result::NotAttached` | 未附加会话 |
 | `Result::ReadFault` | 目标内存不可读 |
 
-### 说明
-
-从目标进程 `addr` 处读取最多 `size` 字节到本地 `buf`。与 `memory_dump` 不同,该函数
-允许部分读取:跨越无效页时只返回可读部分,实际长度写入 `out_read`。适合读取已知大小
-的结构体、变量或不确定可读性的区域。地址越界或页不可读时返回 `ReadFault` 而非崩溃。
+### 说明从目标进程 `addr` 处读取最多 `size` 字节到本地 `buf`。与 `memory_dump` 不同,该函数不强制读满:实际读取长度写入 `out_read`(底层 `ReadProcessMemory` 对不可读页通常整体失败,仅在跨页边界等场景可能出现部分读取)。适合读取已知大小的结构体、变量或不确定可读性的区域。地址越界或页不可读时返回 `ReadFault` 而非崩溃。
 
 前置条件:已 `attach(pid)`。后置条件:无。
 
