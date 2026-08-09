@@ -22,8 +22,8 @@ add_library(pmem STATIC
     infrastructure/inject/inject.cpp
     infrastructure/disassembly/disasm.h
     infrastructure/disassembly/disasm.cpp
-    infrastructure/disassembly/asmenc.h
-    infrastructure/disassembly/asmenc.cpp
+    infrastructure/assembly/asmenc.h
+    infrastructure/assembly/asmenc.cpp
 
     service/session.h
     service/session.cpp
@@ -58,8 +58,9 @@ target_include_directories(pmem PUBLIC
 target_include_directories(pmem PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/keystone/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/capstone/include
 )
 
-target_link_libraries(pmem PRIVATE keystone)
+target_link_libraries(pmem PRIVATE keystone capstone_static)
 
 target_compile_options(pmem PRIVATE /W4)

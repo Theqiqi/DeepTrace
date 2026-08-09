@@ -1,5 +1,5 @@
 #include "service/asm.h"
-#include "infrastructure/disassembly/asmenc.h"
+#include "infrastructure/assembly/asmenc.h"
 #include "algorithm/hex.h"
 
 #include <sstream>
