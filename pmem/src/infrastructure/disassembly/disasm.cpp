@@ -11,6 +11,12 @@ namespace pmem::internal {
 // interface is unchanged so callers (service/disasm.cpp) stay intact.
 // Returns false if the bytes are invalid or too short to form a complete
 // instruction (matches the previous "stream too short" contract).
+//
+// Note: use cs_disasm(count=1), NOT cs_disasm_iter + a stack cs_insn.  In the
+// MSVC debug build, cs_disasm_iter with a caller-provided (uninitialized)
+// cs_insn crashes with 0xc0000005 on every decode (verified v1.2); cs_disasm
+// allocates its own insn array internally and is stable.  Do not "simplify"
+// this back to cs_disasm_iter without retesting.
 bool disasm_one(const uint8_t* bytes, size_t max_len, uint64_t address,
                 DecodedInsn& out) {
     csh handle = 0;
