@@ -2,24 +2,24 @@
 
 #include "printing/printer.h"
 
-#include "pmem.h"
+#include "deeptrace.h"
 
 #include <cstring>
 #include <string>
 #include <vector>
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 
 namespace {
 
-pmem::ValueType to_value_type(const std::string& s) {
-    return static_cast<pmem::ValueType>(internal::value_type_id(s));
+deeptrace::ValueType to_value_type(const std::string& s) {
+    return static_cast<deeptrace::ValueType>(internal::value_type_id(s));
 }
 
 }  // namespace
 
 int cmd_mem(const CommandRequest& req) {
-    using pmem::Result;
+    using deeptrace::Result;
     if (req.action == "read") {
         uintptr_t addr = internal::to_addr(req.args[0]);
         size_t size = static_cast<size_t>(internal::to_u64(req.args[1]));
@@ -27,7 +27,7 @@ int cmd_mem(const CommandRequest& req) {
         if (size == 0) return internal::report_error(Result::InvalidArg, req.args[1]);
         std::vector<uint8_t> buf(size);
         size_t n = 0;
-        Result r = pmem::memory_read(addr, buf.data(), size, &n);
+        Result r = deeptrace::memory_read(addr, buf.data(), size, &n);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         buf.resize(n);
         printer::print_bytes_formatted(buf, format);
@@ -45,7 +45,7 @@ int cmd_mem(const CommandRequest& req) {
         }
         if (data.empty()) return internal::report_error(Result::InvalidArg, req.args[1]);
         size_t n = 0;
-        Result r = pmem::memory_write(addr, data.data(), data.size(), &n);
+        Result r = deeptrace::memory_write(addr, data.data(), data.size(), &n);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_message("OK");
         return 0;
@@ -54,14 +54,14 @@ int cmd_mem(const CommandRequest& req) {
         uintptr_t addr = internal::to_addr(req.args[0]);
         size_t size = static_cast<size_t>(internal::to_u64(req.args[1]));
         std::vector<uint8_t> out;
-        Result r = pmem::memory_dump(addr, size, out);
+        Result r = deeptrace::memory_dump(addr, size, out);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_hex_dump(addr, out);
         return 0;
     }
     if (req.action == "regions") {
-        std::vector<pmem::MemoryRegion> regions;
-        Result r = pmem::memory_regions(regions);
+        std::vector<deeptrace::MemoryRegion> regions;
+        Result r = deeptrace::memory_regions(regions);
         if (r != Result::Ok) return internal::report_error(r, "");
         printer::print_regions(regions);
         return 0;
@@ -69,7 +69,7 @@ int cmd_mem(const CommandRequest& req) {
     if (req.action == "readval") {
         uintptr_t addr = internal::to_addr(req.args[0]);
         std::string text;
-        Result r = pmem::memory_readval(addr, to_value_type(req.args[1]), text);
+        Result r = deeptrace::memory_readval(addr, to_value_type(req.args[1]), text);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_message(text);
         return 0;
@@ -77,4 +77,4 @@ int cmd_mem(const CommandRequest& req) {
     return internal::report_error(Result::InvalidArg, req.action);
 }
 
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli

@@ -1,4 +1,4 @@
-// pmem_target.exe - test target program for CLI tests.
+// deeptrace_target.exe - test target program for CLI tests.
 // Provides known values at known addresses (ASLR disabled) and prints:
 //   a banner with symbol/address/value table,
 //   a fixed PID line: "PID: <number>",
@@ -39,7 +39,7 @@ DWORD WINAPI WorkerProc(LPVOID) {
 
 void PrintBanner() {
     printf("=============================================\n");
-    printf(" pmem_target v1.0 - test target\n");
+    printf(" deeptrace_target v1.0 - test target\n");
     printf(" ASLR disabled, fixed image base\n");
     printf("---------------------------------------------\n");
     printf(" PID: %lu\n", GetCurrentProcessId());
@@ -81,6 +81,6 @@ int main() {
         WaitForSingleObject(hThread, 2000);
         CloseHandle(hThread);
     }
-    printf("pmem_target exiting (g_flag set)\n");
+    printf("deeptrace_target exiting (g_flag set)\n");
     return 0;
 }

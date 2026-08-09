@@ -1,12 +1,12 @@
 // CLI integration tests: walk the full three-layer chain
-// parse -> execute -> pmem public API against a real pmem_target.exe process.
-// The target prints known addresses; we assert pmem state changes and exit codes.
+// parse -> execute -> deeptrace public API against a real deeptrace_target.exe process.
+// The target prints known addresses; we assert deeptrace state changes and exit codes.
 
 #include "command/parser.h"
 #include "interface/executor.h"
 #include "printing/printer.h"
 
-#include "pmem.h"
+#include "deeptrace.h"
 
 #include <gtest/gtest.h>
 
@@ -36,7 +36,7 @@ bool spawn_target(TargetInfo& out) {
     std::string exe(buf);
     size_t slash = exe.find_last_of("/\\");
     if (slash != std::string::npos) exe = exe.substr(0, slash);
-    std::string target = exe + "\\pmem_target.exe";
+    std::string target = exe + "\\deeptrace_target.exe";
 
     SECURITY_ATTRIBUTES sa = {0};
     sa.nLength = sizeof(sa);
@@ -109,7 +109,7 @@ class TargetEnvironment : public ::testing::Environment {
 public:
     void SetUp() override {
         if (!spawn_target(g_target)) {
-            std::fprintf(stderr, "FATAL: could not spawn pmem_target.exe\n");
+            std::fprintf(stderr, "FATAL: could not spawn deeptrace_target.exe\n");
             _exit(2);
         }
     }
@@ -130,10 +130,10 @@ int run_cli(const std::vector<std::string>& argv) {
     std::vector<std::string> copy = argv;
     std::vector<char*> args;
     for (auto& a : copy) args.push_back(a.data());
-    pmem_cli::ParseResult pr =
-        pmem_cli::parse_args(static_cast<int>(args.size()), args.data());
+    deeptrace_cli::ParseResult pr =
+        deeptrace_cli::parse_args(static_cast<int>(args.size()), args.data());
     if (!pr.ok) return pr.exit_code;
-    return pmem_cli::execute(pr.req);
+    return deeptrace_cli::execute(pr.req);
 }
 
 std::string hex(uintptr_t v) {
@@ -144,81 +144,81 @@ std::string hex(uintptr_t v) {
 
 }  // namespace
 
-// ------- full chain: parse -> execute -> pmem API -------
+// ------- full chain: parse -> execute -> deeptrace API -------
 
 TEST(CliChain, PsList) {
-    EXPECT_EQ(run_cli({"pmem_cli", "ps", "list"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "list"}), 0);
 }
 
 TEST(CliChain, AttachAndReadKnownInt) {
     // -p attaches in the executor; then mem read hits the real value.
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "ps", "info"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "ps", "info"}), 0);
 
     // full chain read: address from target banner
     std::vector<uint8_t> buf(4);
     size_t n = 0;
-    // execute mem read then verify via pmem API that the bytes are correct
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "mem", "read",
+    // execute mem read then verify via deeptrace API that the bytes are correct
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "mem", "read",
                        hex(g_target.g_int), "4", "hex"}),
               0);
-    ASSERT_EQ(pmem::attach(g_target.pid), pmem::Result::Ok);
-    EXPECT_EQ(pmem::memory_read(g_target.g_int, buf.data(), 4, &n), pmem::Result::Ok);
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(g_target.g_int, buf.data(), 4, &n), deeptrace::Result::Ok);
     EXPECT_EQ(n, 4u);
     EXPECT_EQ(buf[0], 0x44);
     EXPECT_EQ(buf[1], 0x33);
     EXPECT_EQ(buf[2], 0x22);
     EXPECT_EQ(buf[3], 0x11);
-    pmem::detach();
+    deeptrace::detach();
 }
 
 TEST(CliChain, MemWriteChangesTarget) {
     // hex-bytes semantics: BEBAFECA (little-endian) -> dword 0xCAFEBABE
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "mem", "write",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "mem", "write",
                        hex(g_target.g_int), "BEBAFECA", "hex"}),
               0);
     uint32_t v = 0;
     size_t n = 0;
-    ASSERT_EQ(pmem::attach(g_target.pid), pmem::Result::Ok);
-    EXPECT_EQ(pmem::memory_read(g_target.g_int, &v, 4, &n), pmem::Result::Ok);
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(g_target.g_int, &v, 4, &n), deeptrace::Result::Ok);
     EXPECT_EQ(v, 0xCAFEBABEu);
     // restore
     v = 0x11223344;
-    pmem::memory_write(g_target.g_int, &v, 4, &n);
-    pmem::detach();
+    deeptrace::memory_write(g_target.g_int, &v, 4, &n);
+    deeptrace::detach();
 }
 
 TEST(CliChain, MemReadval) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "mem", "readval",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "mem", "readval",
                        hex(g_target.g_int), "dword"}),
               0);
 }
 
 TEST(CliChain, MemRegions) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "mem", "regions"}),
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "mem", "regions"}),
               0);
 }
 
 TEST(CliChain, ModuleListAndBase) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "module", "list"}),
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "module", "list"}),
               0);
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "module", "base",
-                       "pmem_target.exe"}),
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "module", "base",
+                       "deeptrace_target.exe"}),
               0);
 }
 
 TEST(CliChain, ThreadList) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "thread", "list"}),
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "thread", "list"}),
               0);
 }
 
 TEST(CliChain, Registers) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "debug",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug",
                        "registers"}),
               0);
 }
 
 TEST(CliChain, DebugStatus) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "debug", "status"}),
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "status"}),
               0);
 }
 
@@ -226,7 +226,7 @@ TEST(CliChain, DebugStatus) {
 // auto-detached without DebugActiveProcessStop (debugger exit terminates the
 // debuggee on Windows). The target must still be running afterwards.
 TEST(CliChain, DebugAttachTargetSurvives) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "debug",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug",
                        "attach"}),
               0);
     HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
@@ -240,20 +240,20 @@ TEST(CliChain, DebugAttachTargetSurvives) {
 
 // The CLI `watch list` must display live values (list reads target memory).
 TEST(CliChain, WatchListShowsValue) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "watch",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "watch",
                        "clear"}),
               0);
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "watch", "add",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "watch", "add",
                        "live_int", hex(g_target.g_int), "dword"}),
               0);
-    std::vector<pmem::WatchEntry> entries;
-    ASSERT_EQ(pmem::attach(g_target.pid), pmem::Result::Ok);
-    EXPECT_EQ(pmem::watch_list(entries), pmem::Result::Ok);
-    pmem::detach();
+    std::vector<deeptrace::WatchEntry> entries;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::watch_list(entries), deeptrace::Result::Ok);
+    deeptrace::detach();
     ASSERT_EQ(entries.size(), 1u);
     EXPECT_TRUE(entries[0].valid);
     EXPECT_EQ(entries[0].value, "0x11223344");
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "watch",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "watch",
                        "remove", "0"}),
               0);
 }
@@ -270,89 +270,89 @@ TEST(CliChain, DllInjectRoundTrip) {
     // missing file is a deployment failure, not a reason to skip.
     std::ifstream f(dll);
     ASSERT_TRUE(f.good()) << "testdll.dll not deployed next to the test exe";
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "dll",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "dll",
                        "inject", dll}),
               0);
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "dll",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "dll",
                        "list"}),
               0);
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "dll",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "dll",
                        "eject", dll}),
               0);
 }
 
 TEST(CliChain, ResolveScanFindsKnownPattern) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "resolve", "scan",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "resolve", "scan",
                        "DE AD BE EF"}),
               0);
 }
 
 TEST(CliChain, DisasmAt) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "disasm", "at",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "disasm", "at",
                        hex(g_target.g_bytes), "4"}),
               0);
 }
 
 TEST(CliChain, AsmAssemble) {
-    EXPECT_EQ(run_cli({"pmem_cli", "asm", "assemble", "nop; ret"}), 0);
-    EXPECT_EQ(run_cli({"pmem_cli", "asm", "assemble", "mov rax, 1", "--hex"}), 0);
-    EXPECT_EQ(run_cli({"pmem_cli", "asm", "assemble", "nop", "--c-array"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "asm", "assemble", "nop; ret"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "asm", "assemble", "mov rax, 1", "--hex"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "asm", "assemble", "nop", "--c-array"}), 0);
 }
 
 TEST(CliChain, WatchRoundTrip) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "watch", "clear"}),
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "watch", "clear"}),
               0);
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "watch", "add",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "watch", "add",
                        "test_int", hex(g_target.g_int), "dword"}),
               0);
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "watch",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "watch",
                        "refresh"}),
               0);
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "watch", "remove",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "watch", "remove",
                        "0"}),
               0);
 }
 
 TEST(CliChain, DebugBreakRoundTrip) {
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "debug", "break",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "break",
                        hex(g_target.g_int)}),
               0);
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "debug", "clear",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "clear",
                        hex(g_target.g_int)}),
               0);
 }
 
-TEST(CliChain, BreakpointAffectsPmemState) {
-    // break through CLI, then verify the byte is 0xCC via pmem directly
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "debug", "break",
+TEST(CliChain, BreakpointAffectsDeeptraceState) {
+    // break through CLI, then verify the byte is 0xCC via deeptrace directly
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "break",
                        hex(g_target.g_int)}),
               0);
     uint8_t b = 0;
     size_t n = 0;
-    ASSERT_EQ(pmem::attach(g_target.pid), pmem::Result::Ok);
-    EXPECT_EQ(pmem::memory_read(g_target.g_int, &b, 1, &n), pmem::Result::Ok);
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(g_target.g_int, &b, 1, &n), deeptrace::Result::Ok);
     EXPECT_EQ(b, 0xCC);
-    pmem::detach();
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "debug", "clear",
+    deeptrace::detach();
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "clear",
                        hex(g_target.g_int)}),
               0);
 }
 
 TEST(CliChain, NoSuchProcessAttach) {
-    EXPECT_EQ(run_cli({"pmem_cli", "ps", "attach", "99999999"}), 1);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "attach", "99999999"}), 1);
 }
 
 TEST(CliChain, MissingCommand) {
-    EXPECT_EQ(run_cli({"pmem_cli"}), 1);
+    EXPECT_EQ(run_cli({"deeptrace_cli"}), 1);
 }
 
 TEST(CliChain, UnknownCommand) {
-    EXPECT_EQ(run_cli({"pmem_cli", "bogus", "cmd"}), 2);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "bogus", "cmd"}), 2);
 }
 
 TEST(CliChain, ReadFaultExit) {
     // address 1 is not readable -> ReadFault -> exit 1
-    EXPECT_EQ(run_cli({"pmem_cli", "-p", std::to_string(g_target.pid), "mem", "read",
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "mem", "read",
                        "0x1", "4"}),
               1);
 }

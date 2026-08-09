@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-using namespace pmem_cli;
+using namespace deeptrace_cli;
 
 namespace {
 
@@ -61,39 +61,39 @@ TEST(Internal, ValueTypeId) {
 // ---- no-process error paths (execute without -p / without session) ----
 
 TEST(Executor, MemReadWithoutSession) {
-    auto pr = parse({"pmem_cli", "mem", "read", "0x1000", "4"});
+    auto pr = parse({"deeptrace_cli", "mem", "read", "0x1000", "4"});
     ASSERT_TRUE(pr.ok);
-    // no -p given: no session -> pmem returns NotAttached -> exit 1
+    // no -p given: no session -> deeptrace returns NotAttached -> exit 1
     EXPECT_EQ(execute(pr.req), 1);
 }
 
 TEST(Executor, ThreadListWithoutSession) {
-    auto pr = parse({"pmem_cli", "thread", "list"});
+    auto pr = parse({"deeptrace_cli", "thread", "list"});
     ASSERT_TRUE(pr.ok);
     EXPECT_EQ(execute(pr.req), 1);
 }
 
 TEST(Executor, ModuleBaseWithoutSession) {
-    auto pr = parse({"pmem_cli", "module", "base", "kernel32.dll"});
+    auto pr = parse({"deeptrace_cli", "module", "base", "kernel32.dll"});
     ASSERT_TRUE(pr.ok);
     EXPECT_EQ(execute(pr.req), 1);
 }
 
 TEST(Executor, PsAttachBadPid) {
     // pid 99999999 likely does not exist -> non-zero exit
-    auto pr = parse({"pmem_cli", "ps", "attach", "99999999"});
+    auto pr = parse({"deeptrace_cli", "ps", "attach", "99999999"});
     ASSERT_TRUE(pr.ok);
     EXPECT_EQ(execute(pr.req), 1);
 }
 
 TEST(Executor, PsListWithoutPid) {
-    auto pr = parse({"pmem_cli", "ps", "list"});
+    auto pr = parse({"deeptrace_cli", "ps", "list"});
     ASSERT_TRUE(pr.ok);
     EXPECT_EQ(execute(pr.req), 0);
 }
 
 TEST(Executor, AsmAssemble) {
-    auto pr = parse({"pmem_cli", "asm", "assemble", "nop; nop; ret"});
+    auto pr = parse({"deeptrace_cli", "asm", "assemble", "nop; nop; ret"});
     ASSERT_TRUE(pr.ok);
     EXPECT_EQ(execute(pr.req), 0);
 }

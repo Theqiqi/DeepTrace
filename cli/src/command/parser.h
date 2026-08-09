@@ -6,7 +6,7 @@
 
 #include <string>
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 
 struct ParseResult {
     CommandRequest req;
@@ -18,4 +18,4 @@ struct ParseResult {
 // Parse command line. On help/version the request flags are set (ok=true).
 ParseResult parse_args(int argc, char* argv[]);
 
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli

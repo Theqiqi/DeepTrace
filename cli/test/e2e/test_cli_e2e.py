@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""pmem_cli e2e tests - independent Python system (not part of CMake).
+"""deeptrace_cli e2e tests - independent Python system (not part of CMake).
 
-Starts pmem_target.exe, then drives the real pmem_cli.exe binary via
+Starts deeptrace_target.exe, then drives the real deeptrace_cli.exe binary via
 cmd.exe /c and asserts on stdout/exit codes.
 
 Run from the project root:
@@ -20,8 +20,8 @@ PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 CLI_DIR = os.path.join(PROJECT_ROOT, "cli")
 BIN_DIR = os.path.join(CLI_DIR, "out", "bin", "Debug")
-CLI_EXE = os.path.join(BIN_DIR, "pmem_cli.exe")
-TARGET_EXE = os.path.join(BIN_DIR, "pmem_target.exe")
+CLI_EXE = os.path.join(BIN_DIR, "deeptrace_cli.exe")
+TARGET_EXE = os.path.join(BIN_DIR, "deeptrace_target.exe")
 
 
 def win_path(p):
@@ -52,7 +52,7 @@ def check(name, cond, detail=""):
 
 
 def run_cli(args):
-    """Run pmem_cli.exe directly and return (exit_code, stdout, stderr).
+    """Run deeptrace_cli.exe directly and return (exit_code, stdout, stderr).
 
     The exe is a Windows binary executed from WSL; the WSL interop layer
     builds the Windows command line with proper quoting, so args containing
@@ -102,10 +102,10 @@ def parse_addr(lines, key):
 def main():
     global passed, failed
     if not os.path.isfile(CLI_EXE):
-        print(f"FATAL: pmem_cli.exe not found at {CLI_EXE}")
+        print(f"FATAL: deeptrace_cli.exe not found at {CLI_EXE}")
         return 1
     if not os.path.isfile(TARGET_EXE):
-        print(f"FATAL: pmem_target.exe not found at {TARGET_EXE}")
+        print(f"FATAL: deeptrace_target.exe not found at {TARGET_EXE}")
         return 1
 
     # ---- no args ----
@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "pmem_cli v1.0.0" in out, repr(out))
+    check("version string", "deeptrace_cli v1.0.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -182,7 +182,7 @@ def main():
         run_cli(["-p", str(pid), "mem", "write", g_int, "44332211", "hex"])
 
         # ---- module / resolve ----
-        code, out, _ = run_cli(["-p", str(pid), "module", "base", "pmem_target.exe"])
+        code, out, _ = run_cli(["-p", str(pid), "module", "base", "deeptrace_target.exe"])
         check("module base exit 0", code == 0)
         code, out, _ = run_cli(["-p", str(pid), "resolve", "scan", "DE AD BE EF"])
         check("resolve scan exit 0", code == 0)
@@ -264,7 +264,7 @@ def main():
 
     finally:
         # cleanup: terminate target
-        subprocess.run(["taskkill.exe", "/f", "/im", "pmem_target.exe"],
+        subprocess.run(["taskkill.exe", "/f", "/im", "deeptrace_target.exe"],
                        capture_output=True)
         try:
             proc.kill()

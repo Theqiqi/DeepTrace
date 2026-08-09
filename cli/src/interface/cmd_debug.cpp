@@ -2,12 +2,12 @@
 
 #include "printing/printer.h"
 
-#include "pmem.h"
+#include "deeptrace.h"
 
 #include <string>
 #include <vector>
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 
 namespace {
 
@@ -18,27 +18,27 @@ uint32_t tid_arg(const CommandRequest& req) {
 }  // namespace
 
 int cmd_debug(const CommandRequest& req) {
-    using pmem::Result;
+    using deeptrace::Result;
     if (req.action == "attach") {
-        Result r = pmem::debug_attach();
+        Result r = deeptrace::debug_attach();
         if (r != Result::Ok) return internal::report_error(r, "");
         printer::print_message("OK");
         return 0;
     }
     if (req.action == "detach") {
-        Result r = pmem::debug_detach();
+        Result r = deeptrace::debug_detach();
         if (r != Result::Ok) return internal::report_error(r, "");
         printer::print_message("OK");
         return 0;
     }
     if (req.action == "pause") {
-        Result r = pmem::debug_pause();
+        Result r = deeptrace::debug_pause();
         if (r != Result::Ok) return internal::report_error(r, "");
         printer::print_message("OK");
         return 0;
     }
     if (req.action == "resume") {
-        Result r = pmem::debug_resume();
+        Result r = deeptrace::debug_resume();
         if (r != Result::Ok) return internal::report_error(r, "");
         printer::print_message("OK");
         return 0;
@@ -46,23 +46,23 @@ int cmd_debug(const CommandRequest& req) {
     if (req.action == "step" || req.action == "next") {
         uint32_t tid = tid_arg(req);
         uintptr_t rip = 0;
-        Result r = (req.action == "step") ? pmem::debug_step(tid, &rip)
-                                          : pmem::debug_step_over(tid, &rip);
+        Result r = (req.action == "step") ? deeptrace::debug_step(tid, &rip)
+                                          : deeptrace::debug_step_over(tid, &rip);
         if (r != Result::Ok) return internal::report_error(r, "");
         printer::print_message("rip = " + printer::format_address(rip));
         return 0;
     }
     if (req.action == "break") {
         uintptr_t addr = internal::to_addr(req.args[0]);
-        pmem::BreakpointInfo bp;
-        Result r = pmem::breakpoint_set(addr, bp);
+        deeptrace::BreakpointInfo bp;
+        Result r = deeptrace::breakpoint_set(addr, bp);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_breakpoint(bp);
         return 0;
     }
     if (req.action == "clear") {
         uintptr_t addr = internal::to_addr(req.args[0]);
-        Result r = pmem::breakpoint_clear(addr);
+        Result r = deeptrace::breakpoint_clear(addr);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_message("OK");
         return 0;
@@ -71,14 +71,14 @@ int cmd_debug(const CommandRequest& req) {
         uintptr_t addr = internal::to_addr(req.args[0]);
         uint32_t type = internal::to_u32(req.args[1]);
         uint32_t len = internal::to_u32(req.args[2]);
-        Result r = pmem::hw_breakpoint_set(addr, type, len);
+        Result r = deeptrace::hw_breakpoint_set(addr, type, len);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_message("OK");
         return 0;
     }
     if (req.action == "hclear") {
         uintptr_t addr = internal::to_addr(req.args[0]);
-        Result r = pmem::hw_breakpoint_clear(addr);
+        Result r = deeptrace::hw_breakpoint_clear(addr);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_message("OK");
         return 0;
@@ -86,23 +86,23 @@ int cmd_debug(const CommandRequest& req) {
     if (req.action == "guard" || req.action == "unguard") {
         uintptr_t addr = internal::to_addr(req.args[0]);
         size_t size = static_cast<size_t>(internal::to_u64(req.args[1]));
-        Result r = (req.action == "guard") ? pmem::guard_set(addr, size)
-                                           : pmem::guard_clear(addr, size);
+        Result r = (req.action == "guard") ? deeptrace::guard_set(addr, size)
+                                           : deeptrace::guard_clear(addr, size);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_message("OK");
         return 0;
     }
     if (req.action == "status") {
-        pmem::DebugStatus st;
-        Result r = pmem::debug_status(st);
+        deeptrace::DebugStatus st;
+        Result r = deeptrace::debug_status(st);
         if (r != Result::Ok) return internal::report_error(r, "");
         printer::print_status(st);
         return 0;
     }
     if (req.action == "registers") {
         uint32_t tid = tid_arg(req);
-        std::vector<pmem::RegisterInfo> regs;
-        Result r = pmem::registers_get(regs, tid);
+        std::vector<deeptrace::RegisterInfo> regs;
+        Result r = deeptrace::registers_get(regs, tid);
         if (r != Result::Ok) return internal::report_error(r, "");
         printer::print_registers(regs);
         return 0;
@@ -111,7 +111,7 @@ int cmd_debug(const CommandRequest& req) {
         std::string name = req.args[0];
         uint32_t tid = req.args.size() > 1 ? internal::to_u32(req.args[1]) : 0;
         uint64_t value = 0;
-        Result r = pmem::register_get(name, &value, tid);
+        Result r = deeptrace::register_get(name, &value, tid);
         if (r != Result::Ok) return internal::report_error(r, name);
         printer::print_message(name + " = " + printer::format_address(value));
         return 0;
@@ -119,4 +119,4 @@ int cmd_debug(const CommandRequest& req) {
     return internal::report_error(Result::InvalidArg, req.action);
 }
 
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli

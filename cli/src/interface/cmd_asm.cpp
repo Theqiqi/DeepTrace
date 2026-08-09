@@ -2,14 +2,14 @@
 
 #include "printing/printer.h"
 
-#include "pmem.h"
+#include "deeptrace.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 
 namespace {
 
@@ -21,12 +21,12 @@ bool has_flag(const CommandRequest& req, const char* name) {
 }  // namespace
 
 int cmd_asm(const CommandRequest& req) {
-    using pmem::Result;
+    using deeptrace::Result;
     if (req.action == "assemble") {
         std::string code = req.args[0];
         std::vector<uint8_t> bytes;
         std::string text;
-        Result r = pmem::asm_assemble(code, bytes, &text);
+        Result r = deeptrace::asm_assemble(code, bytes, &text);
         if (r != Result::Ok) return internal::report_error(r, code);
 
         bool c_array = has_flag(req, "--c-array");
@@ -52,4 +52,4 @@ int cmd_asm(const CommandRequest& req) {
     return internal::report_error(Result::InvalidArg, req.action);
 }
 
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli

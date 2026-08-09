@@ -4,18 +4,18 @@
 
 #include "printing/printer.h"
 
-#include "pmem.h"
+#include "deeptrace.h"
 
 #include <cstdlib>
 #include <string>
 #include <vector>
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 
 namespace internal {
 
-int report_error(pmem::Result r, const std::string& ctx) {
-    std::string msg = pmem::result_message(r);
+int report_error(deeptrace::Result r, const std::string& ctx) {
+    std::string msg = deeptrace::result_message(r);
     if (!ctx.empty()) msg += "(" + ctx + ")";
     printer::print_error(msg);
     return 1;
@@ -81,8 +81,8 @@ bool needs_session_attach(const CommandRequest& req) {
 int execute(const CommandRequest& req) {
     bool attached = false;
     if (needs_session_attach(req)) {
-        pmem::Result r = pmem::attach(req.pid);
-        if (r != pmem::Result::Ok) {
+        deeptrace::Result r = deeptrace::attach(req.pid);
+        if (r != deeptrace::Result::Ok) {
             internal::report_error(r, "attach " + std::to_string(req.pid));
             return 1;
         }
@@ -105,8 +105,8 @@ int execute(const CommandRequest& req) {
         printer::print_error("unknown command group: '" + req.group + "'");
     }
 
-    if (attached) pmem::detach();
+    if (attached) deeptrace::detach();
     return rc;
 }
 
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli
