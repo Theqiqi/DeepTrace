@@ -15,6 +15,19 @@ set(LLVM_TARGETS_TO_BUILD X86 CACHE STRING "LLVM targets to build" FORCE)
 set(PYTHON_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/python/python.exe" CACHE FILEPATH "Python for LLVM build" FORCE)
 add_subdirectory(third_party/keystone/llvm ${CMAKE_CURRENT_BINARY_DIR}/third_party/keystone)
 
+# ---- Capstone 反汇编引擎(X86 后端,源码自建) ----
+# 本环境 vcpkg 的 capstone port 默认禁用全部架构(cs_open 返回 CS_ERR_ARCH,
+# sandbox 验证记录),故手动下载源码到 third_party/capstone 并仅启用 x86 后端
+# 以加快构建。BUILD_STATIC_RUNTIME 默认 OFF,capstone 遵循 preset 的
+# CMAKE_MSVC_RUNTIME_LIBRARY(/MDd 与 /MT),与 pmem 运行时一致。
+set(CAPSTONE_ARCHITECTURE_DEFAULT OFF CACHE BOOL "" FORCE)
+set(CAPSTONE_X86_SUPPORT ON CACHE BOOL "" FORCE)
+set(CAPSTONE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CAPSTONE_BUILD_CSTOOL OFF CACHE BOOL "" FORCE)
+set(CAPSTONE_BUILD_CSTEST OFF CACHE BOOL "" FORCE)
+set(CAPSTONE_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/capstone ${CMAKE_CURRENT_BINARY_DIR}/third_party/capstone EXCLUDE_FROM_ALL)
+
 add_subdirectory(src)
 add_subdirectory(test/target)
 add_subdirectory(test/dll)

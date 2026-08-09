@@ -18,6 +18,21 @@
   解压到 pmem/third_party/keystone/ 并保留目录名 keystone
   ```
 
+## capstone(反汇编引擎)
+
+- **用途**:提供反汇编能力(字节 → 指令文本),基础设施层 `disassembly/disasm.cpp` 通过 Capstone API 调用(x64, Intel 语法)
+- **版本**:5.0.9
+- **来源**:https://github.com/capstone-engine/capstone/archive/refs/tags/5.0.9.zip(亦见 sandbox/third_party/capstone 同源验证)
+- **构建方式**:非 vcpkg——本环境 vcpkg 的 capstone port 默认禁用全部架构(cs_open 返回 CS_ERR_ARCH,sandbox 验证记录),故手动下载源码到 third_party/capstone 并仅启用 x86 后端;CMake 集成见 `pmem/CMakeLists.txt`(CAPSTONE_ARCHITECTURE_DEFAULT=OFF + CAPSTONE_X86_SUPPORT=ON,关闭 tests/cstool/cstest/install)
+- **关键约束**:
+  - 链接目标为 `capstone_static`(capstone 自身 OBJECT 库 `capstone` + 静态库 `capstone_static` + 共享库 `capstone_shared`)
+  - `BUILD_STATIC_RUNTIME` 保持默认 OFF,capstone 遵循 preset 的 CMAKE_MSVC_RUNTIME_LIBRARY(/MDd 与 /MT),与 pmem 运行时一致;若未来改为 ON 会强制 /MT 造成与 pmem Debug /MDd 冲突
+- **重新获取**:
+  ```
+  curl -L -o capstone-5.0.9.zip https://github.com/capstone-engine/capstone/archive/refs/tags/5.0.9.zip
+  解压到 pmem/third_party/capstone/ 并保留目录名 capstone
+  ```
+
 ## python(嵌入式解释器,仅构建期用)
 
 - **用途**:仅构建期使用——keystone 的 LLVM CMake 构建需要 python(llvm-build 脚本生成 LLVMBuild.cmake 数据);Windows 侧未安装真实 python,故用官方嵌入式发行版

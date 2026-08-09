@@ -1,4 +1,4 @@
-#include "infrastructure/disassembly/asmenc.h"
+#include "infrastructure/assembly/asmenc.h"
 
 #include <keystone/keystone.h>
 
