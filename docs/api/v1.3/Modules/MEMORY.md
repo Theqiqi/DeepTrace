@@ -272,4 +272,4 @@ if (deeptrace::memory_readval(addr, deeptrace::ValueType::Dword, text) == deeptr
 ### 参见
 
 - [deeptrace::memory_read](#deeptracememory_read)
-- [ValueType](../Types/ENUMS.md#valuetype--值类型)
+- [ValueType](../Types/ENUMS.md)

@@ -26,7 +26,11 @@ int main(int argc, char** argv) {
     // 2. choose target pid
     uint32_t pid = 0;
     if (argc > 1) pid = static_cast<uint32_t>(std::strtoul(argv[1], nullptr, 0));
-    if (pid == 0 && !procs.empty()) pid = procs[0].pid;
+    if (pid == 0) {
+        for (const auto& p : procs) {
+            if (p.pid != 0) { pid = p.pid; break; }  // skip pid 0 (System Idle)
+        }
+    }
     if (pid == 0) {
         std::fprintf(stderr, "no target pid\n");
         return 1;
