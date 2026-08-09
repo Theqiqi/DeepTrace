@@ -13,6 +13,7 @@ doc
 .out
 assets
 .*/
+.flow/
 
 # Prerequisites
 *.d
@@ -513,5 +514,3 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
-
->>>>>>> 651339495ec976dc6a5c648b29d6387503932dcc
