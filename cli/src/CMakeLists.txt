@@ -46,7 +46,16 @@ find_library(KEYSTONE_LIB
     NO_DEFAULT_PATH
     REQUIRED
 )
-target_link_libraries(pmem_cli_core PUBLIC ${PMEM_LIB} ${KEYSTONE_LIB})
+# pmem 的反汇编能力依赖 Capstone(源码自建,链接进 pmem 的最终目标)。
+# 与 keystone 同理:静态库不合并依赖,消费方需显式链接 capstone.lib。
+# capstone.lib 输出到 pmem/out/lib/<配置>(pmem 预设的归档输出目录)。
+find_library(CAPSTONE_LIB
+    NAMES capstone
+    PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../../pmem/out/lib/${CMAKE_BUILD_TYPE}
+    NO_DEFAULT_PATH
+    REQUIRED
+)
+target_link_libraries(pmem_cli_core PUBLIC ${PMEM_LIB} ${KEYSTONE_LIB} ${CAPSTONE_LIB})
 
 add_executable(pmem_cli main.cpp)
 target_link_libraries(pmem_cli PRIVATE pmem_cli_core)
