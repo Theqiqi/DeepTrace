@@ -32,6 +32,13 @@
 
 公共 API(pmem.h)与 CLI 层零改动。
 
+### 4. 实现要点与踩坑(测试驱动发现)
+
+1. **capstone 5.0.9 + MSVC 下 cs_disasm_iter 崩溃**:首版 disasm_one 用 `cs_disasm_iter` + 栈上未初始化 `cs_insn`,所有解码路径(含 nop)立即访问违例(0xc0000005);sandbox 同源独立验证程序用 `cs_disasm` 正常。改用 `cs_disasm(count=1)` 单条解码路径(内部自分配 insn 数组)后全部通过。**结论:本环境统一使用 cs_disasm 路径,不用 cs_disasm_iter + 栈结构体。**
+2. **静态库不合并三方依赖,消费方需显式链接**:pmem 是静态库,`target_link_libraries(pmem PRIVATE capstone_static)` 的依赖不会进入 CLI 的链接行——CLI 是独立 CMake 项目,经 find_library 引用 pmem.lib,链接时报 cs_disasm/cs_free 未解析。按既有 keystone 约定,在 cli/src/CMakeLists.txt 显式 find_library(capstone) 并加入链接。
+3. **capstone_static 目标名**:capstone 自身是 OBJECT 库 `capstone` + 静态库 `capstone_static` + 共享库 `capstone_shared`,pmem 链接静态目标 `capstone_static`。
+4. **运行时策略**:capstone `BUILD_STATIC_RUNTIME` 保持默认 OFF,遵循 preset 的 CMAKE_MSVC_RUNTIME_LIBRARY(/MDd Debug、/MT Release),与 pmem 及 CLI 一致,无冲突。
+
 ## v1.1.1 汇编能力替换为 Keystone(相对 v1.1)
 
 1. **自研编码器替换**:基础设施层 disassembly/asmenc 的内部实现由手写子集替换为 Keystone 0.9.2(源码自建,third_party/keystone),修复 `asm assemble "add rax,0"` 等指令报 BadFormat 的汇编失效 bug。
