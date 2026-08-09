@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 
 // One positional/optional parameter of a subcommand.
 struct ParamSpec {
@@ -38,4 +38,4 @@ std::string build_help_text();
 // Full usage line for a single command (for usage errors).
 std::string command_usage(const CommandSpec& spec);
 
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli

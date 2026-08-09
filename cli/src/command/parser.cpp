@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 
 namespace {
 
@@ -281,4 +281,4 @@ ParseResult parse_args(int argc, char* argv[]) {
     return res;
 }
 
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli
