@@ -15,7 +15,8 @@ DLL/Shellcode 注入等能力。全部能力通过**单一公共头文件**暴�
 - 平台:Windows x64(依赖 WinAPI,不支持 Linux/macOS)
 - 头文件:`#include "deeptrace.h"`(位于 `deeptrace/include/`)
 - 链接:`deeptrace/out/lib/<Debug|Release>/deeptrace.lib`(Debug=/MDd、Release=/MT 静态运行时)
-- 依赖:汇编/反汇编能力依赖 Keystone、Capstone(已静态链接进库,调用方无需额外处理);
+- 依赖:汇编/反汇编能力依赖 Keystone、Capstone,静态库**不合并依赖**,消费方需额外
+  链接 `keystone.lib` 与 `capstone.lib`(链接命令见 [GettingStarted](GettingStarted.md));
   调试/注入等能力依赖系统调试 API(需管理员权限)
 
 ## 2. API 分组总览

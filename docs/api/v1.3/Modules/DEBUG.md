@@ -434,7 +434,9 @@ Result hw_breakpoint_set(uintptr_t addr, uint32_t type, uint32_t length);
 使用 x64 调试寄存器 DR0-DR3 设置硬件断点,**不修改目标代码**(对只读/受保护代码页
 也有效,这是相对软件断点的核心优势)。type/长度按 Intel DR7 语义编码,设置应用于
 目标全部线程。最多 4 个硬件断点,无空闲槽位返回 `Error`。记录持久化到
-`breaks.dat`。清除用 `hw_breakpoint_clear`。硬件断点仅在调试会话中生效。
+`breaks.dat`。清除用 `hw_breakpoint_clear`。设置不要求先 `debug_attach`(CLI 的
+`debug hbreak` 即可用),但需要管理员权限访问目标线程上下文;DR 断点命中产生的
+异常需调试器处理,无调试会话时目标可能直接崩溃,建议配合 `debug_attach` 使用。
 
 前置条件:已 `attach(pid)` 且已 `debug_attach()`。后置条件:目标线程 DR 寄存器被修改。
 

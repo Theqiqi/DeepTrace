@@ -8,13 +8,18 @@
 - 环境:Windows x64、MSVC(Visual Studio 2022)、C++20
 - 头文件:`deeptrace/include/deeptrace.h`
 - 库文件:`deeptrace/out/lib/<Debug|Release>/deeptrace.lib`
-- 依赖:库已静态链接 Keystone/Capstone,调用方无需额外链接第三方库
+- 链接依赖:deeptrace 是静态库,汇编/反汇编依赖 Keystone/Capstone,**不合并依赖**,
+  消费方需同时显式链接:
+  - `deeptrace/out/build/<配置小写>/third_party/keystone/lib/keystone.lib`
+  - `deeptrace/out/lib/<Debug|Release>/capstone.lib`
 
 ### 编译命令(MSVC)
 
 ```bat
-cl /nologo /std:c++20 /EHsc /I deeptrace\include getting_started.cpp ^
-   deeptrace\out\lib\Debug\deeptrace.lib /link /out:getting_started.exe
+cl /nologo /std:c++20 /EHsc /MDd /I deeptrace\include getting_started.cpp ^
+   deeptrace\out\lib\Debug\deeptrace.lib ^
+   deeptrace\out\build\debug\third_party\keystone\lib\keystone.lib ^
+   deeptrace\out\lib\Debug\capstone.lib /link /out:getting_started.exe
 ```
 
 > 建议先用项目自带脚本构建库:`deeptrace\script\build_debug.bat`
