@@ -21,7 +21,7 @@ set "DTLIB=%ROOT%\deeptrace\out\lib\Debug\deeptrace.lib"
 set "KSLIB=%ROOT%\deeptrace\out\build\debug\third_party\keystone\lib\keystone.lib"
 set "CSLIB=%ROOT%\deeptrace\out\lib\Debug\capstone.lib"
 
-for %%F in (session_lifecycle.cpp read_write_memory.cpp debug_breakpoints.cpp) do (
+for %%F in (getting_started.cpp session_lifecycle.cpp read_write_memory.cpp debug_breakpoints.cpp) do (
     echo [compile] %%~nF ...
     cl /nologo /std:c++20 /EHsc /MDd /I "%INC%" "%%F" "%DTLIB%" "%KSLIB%" "%CSLIB%" ^
         /link /out:%%~nF.exe || exit /b 1
