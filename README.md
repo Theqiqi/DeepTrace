@@ -114,6 +114,7 @@ deeptrace/   static library (domain / algorithm / infrastructure / service) + in
 cli/         command-line tool (command / interface / printing layers)
 design/      design documents (v1.0.0 / v1.1.0 / v1.2.0)
 docs/        api reference, developer docs, user manual (v1.3.0)
+agents/      agent-facing install & usage prompts (for AI / LLM tools)
 sandbox/     experiments (not part of the deliverable)
 ```
 
@@ -129,14 +130,14 @@ sandbox/     experiments (not part of the deliverable)
 
 > **This section is an index for AI and AI agents** (Claude Code, Codex, Cursor, custom agents, LLM tools, etc.). If you are an AI reading this README, follow the steps below: **1) install the software, 2) install the prompts, 3) use the prompts to call the tool.**
 
-**Step 1 — Install the software.** This repo is a Windows x64 C++20 process-memory tool. `deeptrace_cli` must be built (or unpacked from a release zip) before it can be used. See the [install prompt](docs/agents/deeptrace-cli-install.md) for agent-facing install/verify instructions (build order: `deeptrace` library first, then `deeptrace_cli`).
+**Step 1 — Install the software.** This repo is a Windows x64 C++20 process-memory tool. `deeptrace_cli` must be built (or unpacked from a release zip) before it can be used. See the [install prompt](agents/deeptrace-cli-install.md) for agent-facing install/verify instructions (build order: `deeptrace` library first, then `deeptrace_cli`).
 
 **Step 2 — Install the prompts.** This repo ships two agent prompts in standard SKILL format (YAML frontmatter + instructions). Load them into your agent so it knows when and how to use this tool:
 
 | Prompt | Purpose | File |
 |--------|---------|------|
-| **Install prompt** | Guides the agent to build/verify `deeptrace_cli` before use | [docs/agents/deeptrace-cli-install.md](docs/agents/deeptrace-cli-install.md) |
-| **Usage prompt** | Commands & workflows for calling `deeptrace_cli` (process memory, debug, disasm/asm, inject, etc.) | [docs/agents/deeptrace-cli-usage.md](docs/agents/deeptrace-cli-usage.md) |
+| **Install prompt** | Guides the agent to build/verify `deeptrace_cli` before use | [agents/deeptrace-cli-install.md](agents/deeptrace-cli-install.md) |
+| **Usage prompt** | Commands & workflows for calling `deeptrace_cli` (process memory, debug, disasm/asm, inject, etc.) | [agents/deeptrace-cli-usage.md](agents/deeptrace-cli-usage.md) |
 
 **Step 3 — Use the prompts to call the tool.** With the usage prompt loaded, the agent can run commands such as `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex`. Key facts: exit codes `0`/`1`/`2` (success / failure / usage error); addresses are `0x`-prefixed hex; state (breakpoints/watches/injections) persists in `%TEMP%\deeptrace_<pid>\`; test target `deeptrace_target.exe` has ASLR disabled with known values at fixed addresses (e.g. `0x14000D000` = `0x11223344`).
 

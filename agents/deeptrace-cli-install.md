@@ -63,7 +63,7 @@ cli/script/package.bat v1.3.0             # 产物: cli/out/dist/deeptrace_cli-v
 ./cli/out/bin/Debug/deeptrace_cli.exe -h   # 应输出命令列表(11 组 53 个命令)
 ```
 
-两条输出正常即安装完成。之后调用软件使用[调用提示词](docs/agents/deeptrace-cli-usage.md)。
+两条输出正常即安装完成。之后调用软件使用[调用提示词](agents/deeptrace-cli-usage.md)。
 
 ## 4. 环境提示
 
