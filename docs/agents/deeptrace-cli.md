@@ -1,3 +1,12 @@
+# deeptrace-cli — Agent Skill 提示词(标准格式文本)
+
+> 面向 AI agent 的 deeptrace_cli 使用提示词,标准 SKILL 格式(YAML frontmatter + 指令正文)。
+> 需要时将下方完整内容(含 frontmatter)作为 skill 注入 agent,或将本文件作为参考文档。
+> 配套说明索引见仓库根目录 `README.md` 的「AI/Agent 使用说明」一节。
+
+---
+
+`````markdown
 ---
 name: deeptrace-cli
 description: >
@@ -66,7 +75,7 @@ cli/script/package.bat v1.3             # 产物: cli/out/dist/deeptrace_cli-v1.
 - 单次运行一条命令;执行目标进程操作前必须确认 pid 有效(`ps list` 可查)
 - 涉及被保护进程(反作弊/系统进程)可能 `AccessDenied`,属预期
 
-## 2. 命令使用(完整参考见 references/commands.md)
+## 2. 命令使用
 
 ### 2.1 快速示例
 
@@ -84,7 +93,7 @@ deeptrace_cli -p 1234 mem readval 0x14000D000 dword    # → 0x11223344
 deeptrace_cli -p 1234 mem write 0x14000D000 CAFEBABE hex
 deeptrace_cli -p 1234 mem read 0x14000D000 4 hex       # → CA FE BA BE
 
-# AOB 特征码扫描(? ? 通配)
+# AOB 特征码扫描(?? 通配)
 deeptrace_cli -p 1234 resolve scan "DE AD BE EF"       # → 0x000000014000D018
 
 # 汇编指令为字节
@@ -108,6 +117,8 @@ deeptrace_cli asm assemble "nop" --c-array             # → unsigned char code[
 | `asm` | assemble (--hex / --c-array) | 汇编 |
 | `shellcode` | inject / injectat / status | 壳码注入 |
 
+> 每组命令的完整语法与输出格式见本仓库 [用户手册](../users/v1.3/USER_MANUAL.md) 与 [API 参考](../api/v1.3/README.md)。
+
 ## 3. 常见错误与处理
 
 | 错误 | 含义 | 处理 |
@@ -126,9 +137,4 @@ deeptrace_cli asm assemble "nop" --c-array             # → unsigned char code[
 3. 调试场景:`debug attach` → `debug break <addr>` → `debug status` → `debug clear <addr>`
 4. 修改内存前先 `mem read` 保存原值,便于恢复
 5. 先在测试目标 `deeptrace_target.exe` 上练习,再操作真实程序
-
-## 5. 更多资料
-
-- 用户手册:`docs/users/v1.3/USER_MANUAL.md`(逐命令组)
-- API 参考:`docs/api/v1.3/README.md`(deeptrace 库 55 个公共函数)
-- 构建/扩展:`docs/developers/v1.3/README.md`
+`````
