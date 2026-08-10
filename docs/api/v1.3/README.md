@@ -20,24 +20,24 @@ deeptrace is a Windows x64 process-operation static library providing process en
 
 | Module | Doc | Functions | Count |
 |--------|-----|-----------|-------|
-| Process & session | [Modules/PROCESS.md](Modules/PROCESS.md) | `result_message`、`enumerate_processes`、`attach`、`detach`、`process_info`、`suspend_process`、`resume_process`、`terminate_process`、`session_pid` | 9 |
-| Memory | [Modules/MEMORY.md](Modules/MEMORY.md) | `memory_read`、`memory_write`、`memory_dump`、`memory_regions`、`memory_readval` | 5 |
-| Module | [Modules/MODULE.md](Modules/MODULE.md) | `module_list`、`module_find`、`module_base`、`module_exports`、`module_dump` | 5 |
-| Thread | [Modules/THREAD.md](Modules/THREAD.md) | `thread_list`、`thread_suspend`、`thread_resume`、`thread_terminate` | 4 |
-| Debug | [Modules/DEBUG.md](Modules/DEBUG.md) | `debug_attach`、`debug_detach`、`debug_pause`、`debug_resume`、`debug_step`、`debug_step_over`、`breakpoint_set`、`breakpoint_clear`、`hw_breakpoint_set`、`hw_breakpoint_clear`、`guard_set`、`guard_clear`、`debug_status`、`registers_get`、`register_get` | 15 |
-| Disassembly | [Modules/DISASM.md](Modules/DISASM.md) | `disasm_at`、`disasm_range` | 2 |
+| Process & session | [Modules/PROCESS.md](Modules/PROCESS.md) | `result_message`, `enumerate_processes`, `attach`, `detach`, `process_info`, `suspend_process`, `resume_process`, `terminate_process`, `session_pid` | 9 |
+| Memory | [Modules/MEMORY.md](Modules/MEMORY.md) | `memory_read`, `memory_write`, `memory_dump`, `memory_regions`, `memory_readval` | 5 |
+| Module | [Modules/MODULE.md](Modules/MODULE.md) | `module_list`, `module_find`, `module_base`, `module_exports`, `module_dump` | 5 |
+| Thread | [Modules/THREAD.md](Modules/THREAD.md) | `thread_list`, `thread_suspend`, `thread_resume`, `thread_terminate` | 4 |
+| Debug | [Modules/DEBUG.md](Modules/DEBUG.md) | `debug_attach`, `debug_detach`, `debug_pause`, `debug_resume`, `debug_step`, `debug_step_over`, `breakpoint_set`, `breakpoint_clear`, `hw_breakpoint_set`, `hw_breakpoint_clear`, `guard_set`, `guard_clear`, `debug_status`, `registers_get`, `register_get` | 15 |
+| Disassembly | [Modules/DISASM.md](Modules/DISASM.md) | `disasm_at`, `disasm_range` | 2 |
 | Assembly | [Modules/ASM.md](Modules/ASM.md) | `asm_assemble` | 1 |
-| Resolution | [Modules/RESOLVE.md](Modules/RESOLVE.md) | `resolve_base`、`pattern_scan` | 2 |
-| Watch | [Modules/WATCH.md](Modules/WATCH.md) | `watch_list`、`watch_add`、`watch_remove`、`watch_refresh`、`watch_clear` | 5 |
-| Injection | [Modules/INJECT.md](Modules/INJECT.md) | `dll_inject`、`dll_eject`、`dll_list`、`dll_status`、`shellcode_inject`、`shellcode_inject_at`、`shellcode_status` | 7 |
+| Resolution | [Modules/RESOLVE.md](Modules/RESOLVE.md) | `resolve_base`, `pattern_scan` | 2 |
+| Watch | [Modules/WATCH.md](Modules/WATCH.md) | `watch_list`, `watch_add`, `watch_remove`, `watch_refresh`, `watch_clear` | 5 |
+| Injection | [Modules/INJECT.md](Modules/INJECT.md) | `dll_inject`, `dll_eject`, `dll_list`, `dll_status`, `shellcode_inject`, `shellcode_inject_at`, `shellcode_status` | 7 |
 
 Data type documentation:
 
 | Type | Doc |
 |------|-----|
 | `Result` (14 error codes) | [Types/RESULT.md](Types/RESULT.md) |
-| `ValueType`、`BreakpointType` | [Types/ENUMS.md](Types/ENUMS.md) |
-| `ProcessInfo`、`MemoryRegion`、`ModuleInfo`、`ExportInfo`、`ThreadInfo`、`RegisterInfo`、`BreakpointInfo`、`WatchEntry`、`Instruction`、`DebugStatus`、`InjectInfo` | [Types/STRUCTS.md](Types/STRUCTS.md) |
+| `ValueType`, `BreakpointType` | [Types/ENUMS.md](Types/ENUMS.md) |
+| `ProcessInfo`, `MemoryRegion`, `ModuleInfo`, `ExportInfo`, `ThreadInfo`, `RegisterInfo`, `BreakpointInfo`, `WatchEntry`, `Instruction`, `DebugStatus`, `InjectInfo` | [Types/STRUCTS.md](Types/STRUCTS.md) |
 
 ## 3. Prerequisites for Calling (Dependency Analysis)
 
