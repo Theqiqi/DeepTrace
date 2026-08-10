@@ -1,0 +1,8 @@
+{
+  "name": "deeptrace-cli",
+  "version-string": "1.0.0",
+  "builtin-baseline": "a900048467b8199f82c31411e0f1597c267fdada",
+  "dependencies": [
+    "gtest"
+  ]
+}

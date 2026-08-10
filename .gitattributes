@@ -1,0 +1,4 @@
+# cmd.exe 解析 .bat 依赖 CRLF 行尾,强制规范化,防止 WSL/Linux 编辑破坏
+*.bat text eol=crlf
+# bash 脚本保持 LF
+*.sh text eol=lf
