@@ -1,34 +1,31 @@
-# deeptrace-cli — Agent Skill 提示词(标准格式文本)
+# deeptrace-cli — 调用提示词(Agent)
 
-> 面向 AI agent 的 deeptrace_cli 使用提示词,标准 SKILL 格式(YAML frontmatter + 指令正文)。
-> 需要时将下方完整内容(含 frontmatter)作为 skill 注入 agent,或将本文件作为参考文档。
-> 配套说明索引见仓库根目录 `README.md` 的「AI/Agent 使用说明」一节。
+> 给 AI / AI agent 的**调用提示词**:当你(agent)需要用 deeptrace_cli 查看/修改进程内存时,
+> 按本提示词执行命令。若工具尚未安装,先读[安装提示词](deeptrace-cli-install.md)。
+> 索引与说明见仓库根目录 `README.md` 的「AI / Agent 使用说明」节。
+> **注意**:下方围栏内的提示词文本会被复制到 agent 上下文,其中文档链接均为**仓库根相对路径**(如 `docs/users/v1.3/USER_MANUAL.md`)。
 
 ---
 
 `````markdown
 ---
-name: deeptrace-cli
+name: deeptrace-cli-usage
 description: >
-  Windows process memory tool deeptrace_cli - full usage guide. Use when the user needs to
-  inspect/modify process memory, enumerate processes, read/write memory, scan for AOB/byte
-  patterns, set breakpoints, single-step debug, disassemble/assemble, watch variables, or
-  inject DLLs/shellcode. Also covers build/install/verify steps. Windows process memory
-  工具 deeptrace_cli 完整使用指南。触发词/triggers: process memory, memory read/write,
-  AOB/pattern scan, breakpoint, single-step, disassemble, inject DLL/shellcode, 进程内存、
-  mem read/write、特征码扫描、断点、单步、反汇编、注入、deeptrace。
+  Windows process memory tool deeptrace_cli - command reference for agents. Use when the
+  user needs to inspect/modify process memory, enumerate processes, read/write memory,
+  scan for AOB/byte patterns, set breakpoints, single-step debug, disassemble/assemble,
+  watch variables, or inject DLLs/shellcode. Windows process memory 工具 deeptrace_cli
+  命令参考。触发词/triggers: process memory, memory read/write, AOB/pattern scan,
+  breakpoint, single-step, disassemble, inject DLL/shellcode, 进程内存、mem read/write、
+  特征码扫描、断点、单步、反汇编、注入、deeptrace。
 when_to_use: >
-  User asks about process memory operations (read/write/scan/watch), debugging (breakpoints/
-  registers/single-step), disassembly/assembly, injection (DLL/shellcode), or needs to build
-  and run deeptrace_cli. Target processes are Windows x64 programs. 用户请求涉及进程内存
-  操作、调试、反汇编/汇编、注入或需要构建/运行 deeptrace_cli 时。目标进程为 Windows x64。
-allowed-tools: Bash Read Grep
+  User asks about process memory  operations (read/write/scan/watch), debugging
+  (breakpoints/registers/single-step), disassembly/assembly, injection (DLL/shellcode),
+  and deeptrace_cli is installed (install prompt first if not). 用户请求涉及进程内存
+  操作、调试、反汇编/汇编、注入,且 deeptrace_cli 已安装时。
 ---
 
-# deeptrace_cli 使用指南
-
-> Windows 进程内存工具。静态库 `deeptrace` + 命令行前端 `deeptrace_cli`(单文件可执行,纯 ASCII 输出)。
-> 平台:Windows 10/11 x64。C++20。当前版本 `deeptrace_cli v1.0.0`。
+# deeptrace_cli 调用提示词
 
 ## 0. 关键事实(先读)
 
@@ -40,44 +37,7 @@ allowed-tools: Bash Read Grep
 - 命令组:`ps` `mem` `module` `thread` `debug` `disasm` `resolve` `watch` `dll` `asm` `shellcode`(共 53 个动作)
 - 测试目标:`deeptrace_target.exe`(关闭 ASLR,固定地址 `0x14000D000` 存 `0x11223344`)——练习用
 
-## 1. 安装与验证
-
-### 1.1 检查是否已安装
-
-```bash
-# 二进制位置(构建产物)
-cli/out/bin/Debug/deeptrace_cli.exe     # Debug 版
-cli/out/bin/Release/deeptrace_cli.exe   # Release 版(静态运行时,可分发)
-
-# 验证可用
-./cli/out/bin/Debug/deeptrace_cli.exe -v   # 应输出 deeptrace_cli v1.0.0
-./cli/out/bin/Debug/deeptrace_cli.exe -h   # 应输出命令列表
-```
-
-### 1.2 从源码构建
-
-```bash
-# 顺序固定:先 deeptrace 库,后 cli(CLI 经 find_library 引用库产物)
-deeptrace/script/build_debug.bat        # Windows
-cli/script/build_debug.bat
-# WSL 环境用 *_wsl.sh 同名脚本(自动桥接 cmd.exe)
-
-# Release(/MT 静态运行时)与打包
-deeptrace/script/build_release.bat
-cli/script/build_release.bat
-cli/script/package.bat v1.3             # 产物: cli/out/dist/deeptrace_cli-v1.3-win64.zip
-```
-
-构建要求:Windows x64 + VS2022(MSVC)+ CMake≥3.24 + Ninja + vcpkg。三方引擎(keystone/capstone)已内置 `deeptrace/third_party/`,无需联网。
-
-### 1.3 环境提示
-
-- 单次运行一条命令;执行目标进程操作前必须确认 pid 有效(`ps list` 可查)
-- 涉及被保护进程(反作弊/系统进程)可能 `AccessDenied`,属预期
-
-## 2. 命令使用
-
-### 2.1 快速示例
+## 1. 快速示例
 
 ```bash
 # 查看进程
@@ -101,7 +61,7 @@ deeptrace_cli asm assemble "nop; ret"                  # → 90C3
 deeptrace_cli asm assemble "nop" --c-array             # → unsigned char code[] = { 0x90 };
 ```
 
-### 2.2 命令组速查
+## 2. 命令组速查
 
 | 组 | 典型动作 | 用途 |
 |----|---------|------|
@@ -117,7 +77,7 @@ deeptrace_cli asm assemble "nop" --c-array             # → unsigned char code[
 | `asm` | assemble (--hex / --c-array) | 汇编 |
 | `shellcode` | inject / injectat / status | 壳码注入 |
 
-> 每组命令的完整语法与输出格式见本仓库 [用户手册](../users/v1.3/USER_MANUAL.md) 与 [API 参考](../api/v1.3/README.md)。
+> 每组命令的完整语法与输出格式见本仓库 [用户手册](docs/users/v1.3/USER_MANUAL.md) 与 [API 参考](docs/api/v1.3/README.md)。
 
 ## 3. 常见错误与处理
 
@@ -129,6 +89,7 @@ deeptrace_cli asm assemble "nop" --c-array             # → unsigned char code[
 | `ReadFault` / `WriteFault` | 地址不可读/写 | `mem regions` 找可读区域 |
 | `BadFormat` | 汇编/特征码格式错 | 指令加引号;字节间空格 |
 | `invalid address` | 地址格式错(退出码 2) | 用 `0x` 前缀十六进制 |
+| 命令不存在 | 命令组/动作拼写错 | 先 `deeptrace_cli -h` 查命令列表 |
 
 ## 4. 工作流建议
 
