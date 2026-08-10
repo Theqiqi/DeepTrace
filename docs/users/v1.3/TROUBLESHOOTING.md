@@ -16,6 +16,7 @@
 | `Error: ReadFault` | 地址不可读 | 先用 `mem regions` 找可读区域;检查地址 |
 | `Error: WriteFault` | 地址不可写 | 该内存区域只读;找可写区域(protection 允许写) |
 | `Error: NotFound` | 找不到指定内容(模块/导出等) | 检查名称拼写;`module list` 确认已加载 |
+| `Error: Error(<值>)` | 操作执行失败,未细分具体原因(如对不存在的线程号执行 `thread suspend`) | 检查参数(线程号/地址)是否正确,重试 |
 | `Error: Timeout` | 操作超时(如 DLL 注入等待) | 重试;确认目标进程未挂起/未崩溃 |
 | `Error: BadFormat` | 格式错误(汇编指令/特征码等) | 检查指令语法;特征码字节间加空格 |
 | `Error: InvalidArg` | 参数值不合法 | 检查参数类型与范围(如类型必须 byte/word/dword/qword/float/double) |
