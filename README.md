@@ -125,6 +125,16 @@ sandbox/     experiments (not part of the deliverable)
 | [Developer Docs](docs/developers/v1.3/README.md) | Contributors / maintainers | Architecture, building, testing, extending, ADRs |
 | [User Manual](docs/users/v1.3/README.md) | End users | Getting started, command reference, FAQ, troubleshooting |
 
+## AI / Agent Usage Guide
+
+This section is for AI agents (Claude Code, Codex, Cursor, custom agents, etc.).
+
+**Quick orientation for agents:** this repo is a Windows x64 C++20 process-memory tool. To inspect or modify a running process, build `deeptrace` first, then `deeptrace_cli`, and run it as `deeptrace_cli -p <pid> <command>`. Key facts: exit codes `0`/`1`/`2` (success / failure / usage error); addresses are `0x`-prefixed hex; state (breakpoints/watches/injections) persists in `%TEMP%\deeptrace_<pid>\`; test target `deeptrace_target.exe` has ASLR disabled with known values at fixed addresses (e.g. `0x14000D000` = `0x11223344`).
+
+- **Skill prompt (standard SKILL format, frontmatter + instructions):** [docs/agents/deeptrace-cli.md](docs/agents/deeptrace-cli.md) — copy this text into your agent as a skill/prompt when the user asks about process memory operations.
+- **Full command reference:** [User Manual](docs/users/v1.3/USER_MANUAL.md) and `deeptrace_cli -h`
+- **Library API for code integration:** [API Reference](docs/api/v1.3/README.md)
+
 ## License
 
 Not yet specified. See [issue tracker](https://github.com/Theqiqi/DeepTrace/issues) if you have licensing questions.
