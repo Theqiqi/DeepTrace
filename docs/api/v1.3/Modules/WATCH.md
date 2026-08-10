@@ -1,41 +1,37 @@
-# 模块:监视(Watch)
+# Module: Watch
 
-对目标地址的「监视项」管理:记录地址/类型/描述,可随时刷新读取当前值。
-监视项持久化到 `%TEMP%/deeptrace_<pid>/watch.dat`,目标进程重开后仍可列出。
+Manages "watch entries" for target addresses: records address/type/description and can refresh the current value at any time. Watch entries are persisted to `%TEMP%/deeptrace_<pid>/watch.dat` and remain listable after the target process is reopened.
 
-`watch_list` 与 `watch_remove`、`watch_clear` 只需会话 pid(未附加句柄也能操作,
-此时值显示为 `??`);`watch_add` 与 `watch_refresh` 需要已附加的进程句柄。
+`watch_list`, `watch_remove`, and `watch_clear` only need the session pid (they work without an attached handle; values then show as `??`); `watch_add` and `watch_refresh` need the attached process handle.
 
 ## deeptrace::watch_list
 
-### 语法
+### Syntax
 
 ```cpp
 Result watch_list(std::vector<WatchEntry>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `out` | `std::vector<WatchEntry>&` | 输出参数,监视项列表 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `out` | `std::vector<WatchEntry>&` | output parameter, watch entry list |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 列表已生成(可能为空) |
-| `Result::NotAttached` | 无会话(未设置 pid) |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | list generated (may be empty) |
+| `Result::NotAttached` | no session (no pid set) |
 
-### 说明
+### Description
 
-列出会话目标进程的全部监视项,并按地址实时读取当前值:已附加时读取真实内存值,
-未附加时值标记为 `"??"` 且 `valid=false`(不会静默给出过期数据)。`index` 字段为
-持久化顺序索引,供 `watch_remove` 使用。
+Lists all watch entries of the session target process, reading current values live by address: with an attached handle it reads the real memory value; without one, the value is marked `"??"` with `valid=false` (no silently stale data). The `index` field is the persisted order index, used by `watch_remove`.
 
-前置条件:已 `attach(pid)`(无句柄也可,值无效)。后置条件:无。
+Prerequisites: `attach(pid)` done (handle optional; values invalid without it). Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<deeptrace::WatchEntry> ws;
@@ -45,13 +41,13 @@ for (const auto& w : ws) {
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::watch_add](#deeptracewatch_add)
 - [deeptrace::watch_refresh](#deeptracewatch_refresh)
@@ -60,49 +56,47 @@ for (const auto& w : ws) {
 
 ## deeptrace::watch_add
 
-### 语法
+### Syntax
 
 ```cpp
 Result watch_add(const std::string& desc, uintptr_t addr, ValueType type);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `desc` | `const std::string&` | 描述文本(写入文件时 `|` 会被替换为空格) |
-| `addr` | `uintptr_t` | 监视地址 |
-| `type` | `ValueType` | 值类型 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `desc` | `const std::string&` | description text (`|` is replaced with a space when written to the file) |
+| `addr` | `uintptr_t` | watched address |
+| `type` | `ValueType` | value type |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 监视项已添加并持久化 |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::ReadFault` | 目标地址当前不可读(拒绝添加) |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | watch entry added and persisted |
+| `Result::NotAttached` | no attached session |
+| `Result::ReadFault` | target address currently unreadable (addition refused) |
 
-### 说明
+### Description
 
-新增一个监视项并写入 `watch.dat`。添加前会读 1 字节验证地址可读,不可读返回
-`ReadFault` 且不添加,避免记录永久无效的地址。重复地址允许(每条独立)。刷新值用
-`watch_refresh`,删除用 `watch_remove`,清空用 `watch_clear`。
+Adds a watch entry and writes it to `watch.dat`. Before adding, it reads 1 byte to verify the address is readable; an unreadable address returns `ReadFault` without adding, avoiding permanently invalid records. Duplicate addresses are allowed (each entry is independent). Refresh values with `watch_refresh`, remove with `watch_remove`, clear all with `watch_clear`.
 
-前置条件:已 `attach(pid)`。后置条件:监视项持久化。
+Prerequisites: `attach(pid)` done. Postconditions: watch entry persisted.
 
-### 示例
+### Example
 
 ```cpp
 deeptrace::watch_add("hp", 0x140001000, deeptrace::ValueType::Dword);
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::watch_remove](#deeptracewatch_remove)
 
@@ -110,46 +104,45 @@ deeptrace::watch_add("hp", 0x140001000, deeptrace::ValueType::Dword);
 
 ## deeptrace::watch_remove
 
-### 语法
+### Syntax
 
 ```cpp
 Result watch_remove(uint32_t index);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `index` | `uint32_t` | 监视项索引(来自 `watch_list` 的 `index` 字段) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `index` | `uint32_t` | watch entry index (from the `index` field of `watch_list`) |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 监视项已删除 |
-| `Result::NotAttached` | 无会话 |
-| `Result::NotFound` | 索引越界 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | watch entry deleted |
+| `Result::NotAttached` | no session |
+| `Result::NotFound` | index out of range |
 
-### 说明
+### Description
 
-按索引删除监视项并写回 `watch.dat`。删除后其余项的索引会前移,需以最新
-`watch_list` 结果为准。
+Deletes a watch entry by index and writes back to `watch.dat`. After deletion, the remaining entries' indices shift forward; always use the latest `watch_list` result.
 
-前置条件:已 `attach(pid)`。后置条件:监视项持久化更新。
+Prerequisites: `attach(pid)` done. Postconditions: watch persistence updated.
 
-### 示例
+### Example
 
 ```cpp
-deeptrace::watch_remove(0);  // 删除第一个监视项
+deeptrace::watch_remove(0);  // remove the first watch entry
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::watch_list](#deeptracewatch_list)
 
@@ -157,47 +150,45 @@ deeptrace::watch_remove(0);  // 删除第一个监视项
 
 ## deeptrace::watch_refresh
 
-### 语法
+### Syntax
 
 ```cpp
 Result watch_refresh(std::vector<WatchEntry>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `out` | `std::vector<WatchEntry>&` | 输出参数,含最新值的监视项列表 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `out` | `std::vector<WatchEntry>&` | output parameter, watch entry list with fresh values |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 刷新完成 |
-| `Result::NotAttached` | 未附加会话 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | refresh completed |
+| `Result::NotAttached` | no attached session |
 
-### 说明
+### Description
 
-强制重新读取全部监视项的当前值并返回列表(行为同 `watch_list`,但要求已附加句柄)。
-用于定时轮询目标变量变化(如游戏血量、金币)。单个项读取失败时该项 `valid=false`、
-值为 `"??"`,不影响其余项。
+Forcibly re-reads the current value of every watch entry and returns the list (behaves like `watch_list` but requires an attached handle). Used for polling target variable changes periodically (e.g. game HP, coins). When a single entry fails to read, that entry has `valid=false` and value `"??"`, without affecting the others.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<deeptrace::WatchEntry> ws;
 deeptrace::watch_refresh(ws);
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::watch_list](#deeptracewatch_list)
 
@@ -205,41 +196,41 @@ deeptrace::watch_refresh(ws);
 
 ## deeptrace::watch_clear
 
-### 语法
+### Syntax
 
 ```cpp
 Result watch_clear();
 ```
 
-### 参数
+### Parameters
 
-无。
+None.
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 已清空全部监视项 |
-| `Result::NotAttached` | 无会话 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | all watch entries cleared |
+| `Result::NotAttached` | no session |
 
-### 说明
+### Description
 
-删除会话目标进程的全部监视项(清空 `watch.dat`)。
+Deletes all watch entries of the session target process (clears `watch.dat`).
 
-前置条件:已 `attach(pid)`。后置条件:监视项清空。
+Prerequisites: `attach(pid)` done. Postconditions: watch entries cleared.
 
-### 示例
+### Example
 
 ```cpp
 deeptrace::watch_clear();
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::watch_remove](#deeptracewatch_remove)

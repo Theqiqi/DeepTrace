@@ -1,38 +1,35 @@
-# 模块:模块查询
+# Module: Module Queries
 
-查询目标进程加载的模块(EXE/DLL)信息。全部函数要求已 `attach` 目标进程。
-模块名匹配规则:对模块名、完整路径(均忽略大小写)精确匹配,也允许省略扩展名
-(如 `kernel32` 可匹配 `kernel32.dll`)。
+Queries information about the modules (EXE/DLL) loaded by the target process. All functions require an `attach` to the target process. Module name matching rules: exact match on module name or full path (case-insensitive); the extension may be omitted (e.g. `kernel32` matches `kernel32.dll`).
 
 ## deeptrace::module_list
 
-### 语法
+### Syntax
 
 ```cpp
 Result module_list(std::vector<ModuleInfo>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `out` | `std::vector<ModuleInfo>&` | 输出参数,模块列表(基址/大小/名称/路径) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `out` | `std::vector<ModuleInfo>&` | output parameter, module list (base/size/name/path) |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 枚举成功 |
-| `Result::NotAttached` | 未附加会话 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | enumeration succeeded |
+| `Result::NotAttached` | no attached session |
 
-### 说明
+### Description
 
-枚举目标进程全部已加载模块。模块信息常用于定位游戏/应用基址、校验注入是否成功
-(`dll_list` 也基于模块枚举判断 DLL 是否仍加载)、解析依赖。
+Enumerates all modules loaded by the target process. Module info is commonly used to locate a game/app base address, verify whether injection succeeded (`dll_list` also uses module enumeration to decide whether a DLL is still loaded), and resolve dependencies.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<deeptrace::ModuleInfo> mods;
@@ -42,13 +39,13 @@ for (const auto& m : mods) {
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::module_base](#deeptracemodule_base)
 - [deeptrace::module_exports](#deeptracemodule_exports)
@@ -57,51 +54,50 @@ for (const auto& m : mods) {
 
 ## deeptrace::module_find
 
-### 语法
+### Syntax
 
 ```cpp
 Result module_find(const std::string& name, ModuleInfo& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `name` | `const std::string&` | 模块名或完整路径(ASCII,忽略大小写,可省略扩展名) |
-| `out` | `ModuleInfo&` | 输出参数,匹配的模块信息 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `const std::string&` | module name or full path (ASCII, case-insensitive, extension optional) |
+| `out` | `ModuleInfo&` | output parameter, matching module information |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 找到模块 |
-| `Result::InvalidArg` | `name` 为空 |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::NotFound` | 目标进程未加载该模块 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | module found |
+| `Result::InvalidArg` | `name` is empty |
+| `Result::NotAttached` | no attached session |
+| `Result::NotFound` | the target process has not loaded this module |
 
-### 说明
+### Description
 
-按名称查找模块并返回完整信息(基址/大小/名称/路径)。匹配规则见模块页首说明。典型用途:
-获取游戏主模块信息、确认某 DLL 是否被加载(注意与注入记录无关,只查真实加载状态)。
+Finds a module by name and returns its full information (base/size/name/path). Matching rules are described at the top of this module page. Typical use: get the main module info of a game, or confirm whether a DLL is loaded (unrelated to injection records — this only checks real load state).
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 deeptrace::ModuleInfo m;
 if (deeptrace::module_find("kernel32.dll", m) == deeptrace::Result::Ok) {
-    // m.base 为 kernel32 基址
+    // m.base is the kernel32 base address
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::module_list](#deeptracemodule_list)
 
@@ -109,36 +105,35 @@ if (deeptrace::module_find("kernel32.dll", m) == deeptrace::Result::Ok) {
 
 ## deeptrace::module_base
 
-### 语法
+### Syntax
 
 ```cpp
 Result module_base(const std::string& name, uintptr_t* out_base);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `name` | `const std::string&` | 模块名或完整路径(ASCII) |
-| `out_base` | `uintptr_t*` | 输出参数,模块基址 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `const std::string&` | module name or full path (ASCII) |
+| `out_base` | `uintptr_t*` | output parameter, module base address |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 成功,`*out_base` 为基址 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | succeeded; `*out_base` is the base address |
 | `Result::InvalidArg` | `out_base == nullptr` |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::NotFound` | 模块未加载 |
+| `Result::NotAttached` | no attached session |
+| `Result::NotFound` | module not loaded |
 
-### 说明
+### Description
 
-`module_find` 的便捷封装,只返回基址。基址 + 偏移是计算目标地址(全局变量、函数地址)的
-常用手段;结合 `disasm_at`、`pattern_scan` 可完成特征定位。
+A convenience wrapper over `module_find` returning only the base address. Base + offset is the common way to compute target addresses (global variables, function addresses); combined with `disasm_at` and `pattern_scan`, signature-based location can be completed.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 uintptr_t base = 0;
@@ -146,13 +141,13 @@ deeptrace::module_base("game.exe", &base);
 uintptr_t g_health = base + 0x123456;
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::resolve_base](RESOLVE.md#deeptraceresolve_base)
 
@@ -160,36 +155,34 @@ uintptr_t g_health = base + 0x123456;
 
 ## deeptrace::module_exports
 
-### 语法
+### Syntax
 
 ```cpp
 Result module_exports(const std::string& name, std::vector<ExportInfo>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `name` | `const std::string&` | 模块名或完整路径(ASCII) |
-| `out` | `std::vector<ExportInfo>&` | 输出参数,导出符号列表(名称/地址) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `const std::string&` | module name or full path (ASCII) |
+| `out` | `std::vector<ExportInfo>&` | output parameter, export symbol list (name/address) |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 解析成功 |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::NotFound` | 模块未加载或非 PE 模块 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | parsing succeeded |
+| `Result::NotAttached` | no attached session |
+| `Result::NotFound` | module not loaded or not a PE module |
 
-### 说明
+### Description
 
-解析目标进程中模块的 PE 导出表,返回导出函数名与绝对地址。用于定位 API 真实地址
-(绕过 IAT 或直接在目标内调用)、HOOK 目标计算等。仅对导出型模块(DLL、部分 EXE)有效,
-无导出表的模块返回空列表但结果为 `Ok`。
+Parses the PE export table of a module in the target process and returns exported function names with their absolute addresses. Used to locate the real address of an API (bypassing the IAT or calling it directly in the target), compute HOOK targets, etc. Only works for export-bearing modules (DLLs, some EXEs); modules without an export table return an empty list with a result of `Ok`.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<deeptrace::ExportInfo> exps;
@@ -200,7 +193,7 @@ if (deeptrace::module_exports("ntdll.dll", exps) == deeptrace::Result::Ok) {
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
@@ -210,55 +203,52 @@ if (deeptrace::module_exports("ntdll.dll", exps) == deeptrace::Result::Ok) {
 
 ## deeptrace::module_dump
 
-### 语法
+### Syntax
 
 ```cpp
 Result module_dump(const std::string& name, const std::string& output_file,
                    std::string* out_hex);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `name` | `const std::string&` | 模块名或完整路径(ASCII) |
-| `output_file` | `const std::string&` | 输出文件路径(写二进制);为空字符串则输出 hex 文本 |
-| `out_hex` | `std::string*` | 可选,模块内容的十六进制文本;传 `nullptr` 忽略 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `const std::string&` | module name or full path (ASCII) |
+| `output_file` | `const std::string&` | output file path (writes binary); empty string outputs hex text instead |
+| `out_hex` | `std::string*` | optional, hex text of the module contents; pass `nullptr` to ignore |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 转储成功(写入文件或 `*out_hex`) |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::NotFound` | 模块未加载 |
-| `Result::Error` | 输出文件无法打开 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | dump succeeded (written to file or `*out_hex`) |
+| `Result::NotAttached` | no attached session |
+| `Result::NotFound` | module not loaded |
+| `Result::Error` | output file could not be opened |
 
-### 说明
+### Description
 
-将模块映像内容读出:指定 `output_file` 时按二进制写入磁盘(可保存被修改的模块做离线
-分析);否则将内容以十六进制文本写入 `out_hex`。读取按 1 MiB 分块进行,遇到不可读页
-提前停止(此时仍返回 `Ok`,以实际读到内容为准)。模块体积可达数十 MiB,转储大模块
-时注意内存占用。
+Reads out the module image contents: when `output_file` is specified, writes it to disk as binary (handy for saving a modified module for offline analysis); otherwise writes the contents as hex text into `out_hex`. Reads are chunked by 1 MiB; it stops early on unreadable pages (still returning `Ok`, based on what was actually read). Modules can reach tens of MiB; watch memory usage when dumping large modules.
 
-前置条件:已 `attach(pid)`。后置条件:`output_file` 被创建或覆盖。
+Prerequisites: `attach(pid)` done. Postconditions: `output_file` created or overwritten.
 
-### 示例
+### Example
 
 ```cpp
-// 保存到文件
+// save to a file
 deeptrace::module_dump("game.exe", "C:\\temp\\game.bin", nullptr);
-// 或取 hex 文本
+// or get hex text
 std::string hex;
 deeptrace::module_dump("game.exe", "", &hex);
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::memory_dump](MEMORY.md#deeptracememory_dump)

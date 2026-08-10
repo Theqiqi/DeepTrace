@@ -1,8 +1,8 @@
-# Result 枚举
+# Result Enum
 
-所有 deeptrace API 的返回值类型。定义于 `deeptrace.h`(经 `domain/types.h`)。
+The return type of every deeptrace API. Defined in `deeptrace.h` (via `domain/types.h`).
 
-## 语法
+## Syntax
 
 ```cpp
 enum class Result {
@@ -12,28 +12,28 @@ enum class Result {
 };
 ```
 
-用 `deeptrace::result_message(r)` 获取可读描述字符串。
+Use `deeptrace::result_message(r)` to get a human-readable description string.
 
-## 枚举值说明
+## Enum Value Descriptions
 
-| 枚举值 | 触发条件 |
-|--------|----------|
-| `Ok` | 操作成功。 |
-| `Error` | 一般性失败:系统调用返回失败(`TerminateThread` 失败、`FreeLibrary` 前置地址缺失、`LoadLibraryA` 地址缺失、注入后返回基址为 0)、输出文件无法打开、值格式化失败等。 |
-| `InvalidArg` | 参数非法:`pid==0`、`buf==nullptr`、`size==0`、`name` 为空、`out`/`out_pid`/`out_base` 等指针为 `nullptr`、`count==0` 或 `>10000`、`addr==0`、硬件断点 `type>2` 或 `length∉{1,2,4,8}`、`end<start`、范围/大小超过上限、特征码为空。 |
-| `NotAttached` | 调用了需要会话(目标进程)的 API,但尚未 `attach()`。 |
-| `NoSuchProcess` | 指定 pid 的进程不存在(`OpenProcess` 返回 NULL)。 |
-| `AccessDenied` | 权限不足:附加目标进程、挂起/恢复/终止进程或线程、调试附加、注入时被系统拒绝。 |
-| `ReadFault` | 远程读取失败或读取字节数不完整(`memory_dump`/`memory_readval` 要求一次读满,`disasm` 首块读取失败)。 |
-| `WriteFault` | 远程写入失败或写入字节数不完整(注入路径/载荷写入、`memory_write` 底层失败)。 |
-| `NotFound` | 找不到目标:模块名未匹配、断点/硬件断点不存在、监视索引越界、注入记录未找到、`module_dump` 目标模块不存在。 |
-| `Timeout` | 等待超时:`dll_inject` 等待目标线程加载 DLL 超过 15 秒。 |
-| `NotSupported` | 预留,当前实现不使用。 |
-| `AlreadyExists` | 重复操作:已处于调试会话时再次 `debug_attach`、对同一地址重复设置断点/硬件断点。 |
-| `NotExecutable` | 预留,当前实现不使用。 |
-| `BadFormat` | 输入格式错误:`asm_assemble` 指令无法汇编、`pattern_scan` 特征码格式非法(非十六进制/非法通配符)。 |
+| Enum value | Trigger conditions |
+|------------|--------------------|
+| `Ok` | Operation succeeded. |
+| `Error` | Generic failure: a system call returned failure (`TerminateThread` failed, `FreeLibrary` missing prerequisite address, `LoadLibraryA` address missing, injection returned base address 0), output file could not be opened, value formatting failed, etc. |
+| `InvalidArg` | Invalid argument: `pid==0`, `buf==nullptr`, `size==0`, empty `name`, `out`/`out_pid`/`out_base` pointers are `nullptr`, `count==0` or `>10000`, `addr==0`, hardware breakpoint `type>2` or `length∉{1,2,4,8}`, `end<start`, range/size over the limit, empty pattern. |
+| `NotAttached` | An API requiring a session (target process) was called without a prior `attach()`. |
+| `NoSuchProcess` | The process for the given pid does not exist (`OpenProcess` returned NULL). |
+| `AccessDenied` | Insufficient privileges: attaching to the target process, suspending/resuming/terminating processes or threads, debug attach, or injection was refused by the system. |
+| `ReadFault` | Remote read failed or read byte count was incomplete (`memory_dump`/`memory_readval` require a full read, `disasm` failed to read the first block). |
+| `WriteFault` | Remote write failed or written byte count was incomplete (inject path/payload writes, underlying `memory_write` failure). |
+| `NotFound` | Target not found: module name did not match, breakpoint/hardware breakpoint does not exist, watch index out of range, inject record not found, `module_dump` target module does not exist. |
+| `Timeout` | Wait timed out: `dll_inject` waited more than 15 seconds for the target thread to load the DLL. |
+| `NotSupported` | Reserved; not used by the current implementation. |
+| `AlreadyExists` | Duplicate operation: `debug_attach` while already in a debug session, or setting a breakpoint/hardware breakpoint at the same address again. |
+| `NotExecutable` | Reserved; not used by the current implementation. |
+| `BadFormat` | Input format error: `asm_assemble` instruction could not be assembled, `pattern_scan` pattern is malformed (non-hex/invalid wildcard). |
 
-## 使用示例
+## Usage Example
 
 ```cpp
 #include "deeptrace.h"
@@ -51,7 +51,7 @@ int main() {
 }
 ```
 
-## 参见
+## See Also
 
 - [deeptrace::result_message](../Modules/PROCESS.md#deeptraceresult_message)
 - [GettingStarted](../GettingStarted.md)

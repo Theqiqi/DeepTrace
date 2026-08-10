@@ -1,52 +1,48 @@
-# 模块:进程与会话
+# Module: Process & Session
 
-会话管理是全部目标进程操作的入口。`attach` 建立会话,`detach` 关闭会话;
-按 pid 操作的查询/控制函数(`process_info`、`suspend_process`、`resume_process`、
-`terminate_process`)不要求会话。`result_message` 为通用错误码描述工具。
+Session management is the entry point for all target-process operations. `attach` establishes a session, `detach` closes it; query/control functions that operate by pid (`process_info`, `suspend_process`, `resume_process`, `terminate_process`) do not require a session. `result_message` is a general-purpose error-code description utility.
 
 ## deeptrace::result_message
 
-### 语法
+### Syntax
 
 ```cpp
 const char* result_message(Result r);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `r` | `Result` | 任意错误码枚举值 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `r` | `Result` | any error-code enum value |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `const char*` | 错误码的可读英文描述字符串;未知值返回 `"Unknown"` |
+| Return value | Meaning |
+|--------------|---------|
+| `const char*` | human-readable English description of the error code; unknown values return `"Unknown"` |
 
-### 说明
+### Description
 
-将 `Result` 枚举值转换为人类可读的静态字符串,用于日志与错误提示。该函数永不失败、
-不分配内存、不要求会话。CLI 的错误输出即基于此函数。典型用途:捕获任意 API 返回的
-非 `Ok` 值并打印原因,配合 `Result` 判定流程分支。
+Converts a `Result` enum value into a human-readable static string, used for logs and error messages. This function never fails, allocates no memory, and requires no session. The CLI's error output is based on this function. Typical use: capture any non-`Ok` value returned by an API and print the reason, combined with `Result` checks to drive flow branches.
 
-前置条件:无。后置条件:无。
+Prerequisites: none. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 if (deeptrace::attach(pid) != deeptrace::Result::Ok) {
-    // 由上层自行决定打印什么;也可以直接打印描述文本
+    // the caller decides what to print; the description text can be printed directly
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [Types/RESULT.md](../Types/RESULT.md)
 
@@ -54,34 +50,32 @@ if (deeptrace::attach(pid) != deeptrace::Result::Ok) {
 
 ## deeptrace::enumerate_processes
 
-### 语法
+### Syntax
 
 ```cpp
 Result enumerate_processes(std::vector<ProcessInfo>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `out` | `std::vector<ProcessInfo>&` | 输出参数,填充系统当前全部进程列表 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `out` | `std::vector<ProcessInfo>&` | output parameter, filled with the current list of all system processes |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 枚举成功,`out` 已填充 |
-| `Result::Error` | 系统快照创建失败 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | enumeration succeeded; `out` is filled |
+| `Result::Error` | system snapshot creation failed |
 
-### 说明
+### Description
 
-枚举系统中所有进程并写入 `out`,每条含 pid、映像名、父 pid、线程数。调用前无需
-`attach`,也无需管理员权限。典型场景:列出进程供用户选择目标,随后对其 `attach`。
-该调用只做一次系统快照,快照后新起的进程不会出现在列表中。
+Enumerates all processes on the system and writes them to `out`; each entry contains pid, image name, parent pid, and thread count. No `attach` or administrator privileges required. Typical scenario: list processes so the user can pick a target, then `attach` to it. This call takes a single system snapshot; processes started after the snapshot will not appear in the list.
 
-前置条件:无。后置条件:无。
+Prerequisites: none. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<deeptrace::ProcessInfo> procs;
@@ -92,13 +86,13 @@ if (deeptrace::enumerate_processes(procs) == deeptrace::Result::Ok) {
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::attach](#deeptraceattach)
 
@@ -106,54 +100,50 @@ if (deeptrace::enumerate_processes(procs) == deeptrace::Result::Ok) {
 
 ## deeptrace::attach
 
-### 语法
+### Syntax
 
 ```cpp
 Result attach(uint32_t pid);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `pid` | `uint32_t` | 目标进程 ID,不允许为 0 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pid` | `uint32_t` | target process ID; must not be 0 |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 会话建立成功,后续目标进程操作可用 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | session established; target-process operations are now available |
 | `Result::InvalidArg` | `pid == 0` |
-| `Result::NoSuchProcess` | 目标进程不存在 |
-| `Result::AccessDenied` | 权限不足,无法打开目标进程句柄 |
+| `Result::NoSuchProcess` | the target process does not exist |
+| `Result::AccessDenied` | insufficient privileges to open a handle to the target process |
 
-### 说明
+### Description
 
-打开目标进程句柄并建立全局会话(同时记录 pid 与句柄)。库先尝试以
-`PROCESS_ALL_ACCESS` 打开,失败时降级为查询/读写/创建线程/挂起恢复的组合权限,
-以支持只读场景。会话建立后,内存、模块、线程、调试、解析、监视、注入等 API 方可调用;
-否则这些 API 返回 `NotAttached`。同一进程内同时只存在一个会话,重复 `attach` 会
-替换旧会话。进程 0 是系统空闲进程,永远无法附加,因此被显式拒绝。
+Opens a handle to the target process and establishes the global session (recording both pid and handle). The library first tries `PROCESS_ALL_ACCESS`; on failure it falls back to a combination of query/read-write/create-thread/suspend-resume rights to support read-only scenarios. After the session is established, the memory, module, thread, debug, resolve, watch, and inject APIs become callable; otherwise these APIs return `NotAttached`. Only one session exists per process at a time; a repeated `attach` replaces the old session. Process 0 is the system idle process and can never be attached, so it is explicitly rejected.
 
-前置条件:无。后置条件:会话激活;应通过 `detach` 关闭。
+Prerequisites: none. Postconditions: session active; should be closed via `detach`.
 
-### 示例
+### Example
 
 ```cpp
 deeptrace::Result r = deeptrace::attach(1234);
 if (r == deeptrace::Result::Ok) {
-    // ... 执行内存/调试操作 ...
+    // ... memory/debug operations ...
     deeptrace::detach();
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::detach](#deeptracedetach)
 - [deeptrace::session_pid](#deeptracesession_pid)
@@ -163,47 +153,43 @@ if (r == deeptrace::Result::Ok) {
 
 ## deeptrace::detach
 
-### 语法
+### Syntax
 
 ```cpp
 Result detach();
 ```
 
-### 参数
+### Parameters
 
-无。
+None.
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 会话已关闭(无论之前是否处于调试模式) |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | session closed (whether or not previously in debug mode) |
 
-### 说明
+### Description
 
-关闭当前会话:若处于调试模式,先调用 `DebugActiveProcessStop` 结束调试会话
-(Windows 规定:调试器未调用该函数直接退出会连带终止被调试进程,故必须先分离),
-再关闭进程句柄并清空 pid。该函数总是成功。CLI 每次命令结束后自动调用,保证目标
-进程不被意外终止。
+Closes the current session: if in debug mode, first calls `DebugActiveProcessStop` to end the debug session (Windows requires this — a debugger that exits without calling it causes the debuggee process to be terminated along with it, so detaching first is mandatory), then closes the process handle and clears the pid. This function always succeeds. The CLI calls it automatically after every command to guarantee the target process is not terminated unexpectedly.
 
-前置条件:无(即使未附加也安全)。后置条件:会话关闭;所有依赖会话的 API 返回
-`NotAttached`。
+Prerequisites: none (safe even when not attached). Postconditions: session closed; all session-dependent APIs return `NotAttached`.
 
-### 示例
+### Example
 
 ```cpp
 deeptrace::attach(pid);
-// ... 操作 ...
+// ... operations ...
 deeptrace::detach();
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::attach](#deeptraceattach)
 - [deeptrace::debug_detach](DEBUG.md#deeptracedebug_detach)
@@ -212,36 +198,34 @@ deeptrace::detach();
 
 ## deeptrace::process_info
 
-### 语法
+### Syntax
 
 ```cpp
 Result process_info(uint32_t pid, ProcessInfo& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `pid` | `uint32_t` | 目标进程 ID(可为 0,返回系统进程) |
-| `out` | `ProcessInfo&` | 输出参数,进程信息 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pid` | `uint32_t` | target process ID (may be 0, returns the system process) |
+| `out` | `ProcessInfo&` | output parameter, process information |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 查询成功 |
-| `Result::NoSuchProcess` | 进程不存在 |
-| `Result::AccessDenied` | 无查询权限 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | query succeeded |
+| `Result::NoSuchProcess` | the process does not exist |
+| `Result::AccessDenied` | no query permission |
 
-### 说明
+### Description
 
-按 pid 查询单个进程的映像名、父进程、线程数,写入 `out`。**不要求会话**,适合在
-`attach` 之前确认目标信息。与 `enumerate_processes` 不同,该函数实时打开目标进程
-查询,结果不受快照时机影响。
+Queries a single process's image name, parent, and thread count by pid, writing to `out`. **Does not require a session**, suitable for confirming target info before `attach`. Unlike `enumerate_processes`, this function opens and queries the target process live, so results are not affected by snapshot timing.
 
-前置条件:无。后置条件:无。
+Prerequisites: none. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 deeptrace::ProcessInfo info;
@@ -250,13 +234,13 @@ if (deeptrace::process_info(pid, info) == deeptrace::Result::Ok) {
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::enumerate_processes](#deeptraceenumerate_processes)
 
@@ -264,50 +248,48 @@ if (deeptrace::process_info(pid, info) == deeptrace::Result::Ok) {
 
 ## deeptrace::suspend_process
 
-### 语法
+### Syntax
 
 ```cpp
 Result suspend_process(uint32_t pid);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `pid` | `uint32_t` | 目标进程 ID |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pid` | `uint32_t` | target process ID |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 全部线程已挂起 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | all threads suspended |
 | `Result::InvalidArg` | `pid == 0` |
-| `Result::NoSuchProcess` | 进程不存在 |
-| `Result::AccessDenied` | 无 `PROCESS_SUSPEND_RESUME` 权限 |
+| `Result::NoSuchProcess` | the process does not exist |
+| `Result::AccessDenied` | no `PROCESS_SUSPEND_RESUME` right |
 
-### 说明
+### Description
 
-挂起目标进程的所有线程,使目标暂停执行。**不要求会话**。调试器场景下常用于配合
-内存修改或断点设置。恢复请调用 `resume_process`。注意:挂起后目标进程停止响应,
-若调用方自身是目标进程会死锁。
+Suspends all threads of the target process, pausing its execution. **Does not require a session**. In debugger scenarios it is commonly used together with memory modification or breakpoint setup. Resume with `resume_process`. Note: the target stops responding while suspended; if the caller is itself the target process, this deadlocks.
 
-前置条件:无。后置条件:目标进程暂停;需 `resume_process` 恢复。
+Prerequisites: none. Postconditions: target process paused; must be resumed with `resume_process`.
 
-### 示例
+### Example
 
 ```cpp
 deeptrace::suspend_process(pid);
-// ... 修改内存 ...
+// ... modify memory ...
 deeptrace::resume_process(pid);
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::resume_process](#deeptraceresume_process)
 
@@ -315,47 +297,46 @@ deeptrace::resume_process(pid);
 
 ## deeptrace::resume_process
 
-### 语法
+### Syntax
 
 ```cpp
 Result resume_process(uint32_t pid);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `pid` | `uint32_t` | 目标进程 ID |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pid` | `uint32_t` | target process ID |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 全部线程已恢复 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | all threads resumed |
 | `Result::InvalidArg` | `pid == 0` |
-| `Result::NoSuchProcess` | 进程不存在 |
-| `Result::AccessDenied` | 无挂起/恢复权限 |
+| `Result::NoSuchProcess` | the process does not exist |
+| `Result::AccessDenied` | no suspend/resume right |
 
-### 说明
+### Description
 
-恢复 `suspend_process` 挂起的进程线程。**不要求会话**。每个线程的挂起计数被减一,
-只有挂起计数归零后线程才真正恢复执行,因此必须与挂起调用一一配对。
+Resumes threads suspended by `suspend_process`. **Does not require a session**. Each thread's suspend count is decremented by one; threads only truly resume when the count reaches zero, so resume calls must pair one-to-one with suspend calls.
 
-前置条件:目标进程曾被挂起。后置条件:目标进程恢复执行。
+Prerequisites: the target process was suspended. Postconditions: the target process resumes execution.
 
-### 示例
+### Example
 
 ```cpp
 deeptrace::resume_process(pid);
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::suspend_process](#deeptracesuspend_process)
 
@@ -363,43 +344,41 @@ deeptrace::resume_process(pid);
 
 ## deeptrace::terminate_process
 
-### 语法
+### Syntax
 
 ```cpp
 Result terminate_process(uint32_t pid, uint32_t exit_code);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `pid` | `uint32_t` | 目标进程 ID |
-| `exit_code` | `uint32_t` | 进程退出码(如 0 表示正常) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pid` | `uint32_t` | target process ID |
+| `exit_code` | `uint32_t` | process exit code (e.g. 0 for normal) |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 已发出终止请求 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | termination requested |
 | `Result::InvalidArg` | `pid == 0` |
-| `Result::NoSuchProcess` | 进程不存在 |
-| `Result::AccessDenied` | 无 `PROCESS_TERMINATE` 权限 |
+| `Result::NoSuchProcess` | the process does not exist |
+| `Result::AccessDenied` | no `PROCESS_TERMINATE` right |
 
-### 说明
+### Description
 
-强制终止目标进程,退出码为 `exit_code`。**不要求会话**。该操作**不可逆**且不进行
-优雅清理(不会触发 DLL 卸载等),调用前务必确认目标。系统关键进程可能返回
-`AccessDenied`。
+Forcibly terminates the target process with exit code `exit_code`. **Does not require a session**. This operation is **irreversible** and performs no graceful cleanup (no DLL unload hooks etc.); confirm the target before calling. Critical system processes may return `AccessDenied`.
 
-前置条件:无。后置条件:目标进程终止。
+Prerequisites: none. Postconditions: target process terminated.
 
-### 示例
+### Example
 
 ```cpp
 deeptrace::terminate_process(pid, 0);
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
@@ -409,46 +388,45 @@ deeptrace::terminate_process(pid, 0);
 
 ## deeptrace::session_pid
 
-### 语法
+### Syntax
 
 ```cpp
 Result session_pid(uint32_t* out_pid);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `out_pid` | `uint32_t*` | 输出参数,当前会话目标 pid(未附加时为 0) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `out_pid` | `uint32_t*` | output parameter, current session target pid (0 when not attached) |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 查询成功 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | query succeeded |
 | `Result::InvalidArg` | `out_pid == nullptr` |
 
-### 说明
+### Description
 
-返回当前全局会话的目标 pid,未附加时写入 0。用于在复杂流程中确认当前操作目标,
-或判断会话是否存在。
+Returns the current global session's target pid, writing 0 when not attached. Used to confirm the current operation target in complex flows, or to check whether a session exists.
 
-前置条件:无。后置条件:无。
+Prerequisites: none. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 uint32_t cur = 0;
 deeptrace::session_pid(&cur);
-if (cur != 0) { /* 已有会话 */ }
+if (cur != 0) { /* a session exists */ }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::attach](#deeptraceattach)

@@ -1,54 +1,51 @@
-# 模块:解析
+# Module: Resolution
 
-地址解析与特征码扫描。`pattern_scan` 要求已 `attach` 目标进程。
+Address resolution and pattern scanning. `pattern_scan` requires an `attach` to the target process.
 
 ## deeptrace::resolve_base
 
-### 语法
+### Syntax
 
 ```cpp
 Result resolve_base(const std::string& name, uintptr_t* out_base);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `name` | `const std::string&` | 模块名或完整路径(ASCII) |
-| `out_base` | `uintptr_t*` | 输出参数,模块基址 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `const std::string&` | module name or full path (ASCII) |
+| `out_base` | `uintptr_t*` | output parameter, module base address |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 成功 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | succeeded |
 | `Result::InvalidArg` | `out_base == nullptr` |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::NotFound` | 模块未加载 |
+| `Result::NotAttached` | no attached session |
+| `Result::NotFound` | module not loaded |
 
-### 说明
+### Description
 
-`module_base` 的别名,语义与返回值完全一致(见
-[deeptrace::module_base](MODULE.md#deeptracemodule_base))。保留此接口用于语义区分
-「解析模块基址」与「模块管理」。基于基址+偏移或配合 `pattern_scan` 可精确定位目标
-符号地址。
+An alias of `module_base` with identical semantics and return values (see [deeptrace::module_base](MODULE.md#deeptracemodule_base)). This interface is kept to semantically distinguish "resolving a module base" from "module management". Combined with base+offset or with `pattern_scan`, target symbol addresses can be precisely located.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 uintptr_t base = 0;
 deeptrace::resolve_base("game.exe", &base);
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::module_base](MODULE.md#deeptracemodule_base)
 - [deeptrace::pattern_scan](#deeptracepattern_scan)
@@ -57,51 +54,48 @@ deeptrace::resolve_base("game.exe", &base);
 
 ## deeptrace::pattern_scan
 
-### 语法
+### Syntax
 
 ```cpp
 Result pattern_scan(const std::string& pattern, std::vector<uintptr_t>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `pattern` | `const std::string&` | 特征码,空格分隔的十六进制字节,`??` 表示任意字节 |
-| `out` | `std::vector<uintptr_t>&` | 输出参数,全部命中地址(可为空) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pattern` | `const std::string&` | pattern: space-separated hex bytes; `??` means any byte |
+| `out` | `std::vector<uintptr_t>&` | output parameter, all hit addresses (may be empty) |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 扫描完成(命中列表写入 `out`,可能为空) |
-| `Result::InvalidArg` | `pattern` 为空 |
-| `Result::BadFormat` | 特征码含非法字符(非十六进制、通配符不完整等) |
-| `Result::NotAttached` | 未附加会话 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | scan completed (hit list written to `out`, possibly empty) |
+| `Result::InvalidArg` | `pattern` is empty |
+| `Result::BadFormat` | pattern contains invalid characters (non-hex, incomplete wildcard, etc.) |
+| `Result::NotAttached` | no attached session |
 
-### 说明
+### Description
 
-在目标进程全部已提交、可读且无 `PAGE_GUARD` 的内存区域中扫描特征码,返回所有命中
-地址。特征码格式示例:`"48 8B ?? ?? 00"`(`??` 匹配任意单字节)。扫描按 1 MiB 分块
-进行并处理跨块命中,大进程可能耗时数秒至数十秒。典型用途:定位函数地址(跨版本
-更新不变的特征)、找全局数据。
+Scans all committed, readable, non-`PAGE_GUARD` memory regions of the target process for the pattern and returns every hit address. Pattern format example: `"48 8B ?? ?? 00"` (`??` matches any single byte). The scan proceeds in 1 MiB chunks and handles cross-chunk hits; large processes may take seconds to tens of seconds. Typical uses: locating function addresses (signatures stable across version updates), finding global data.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<uintptr_t> hits;
 deeptrace::pattern_scan("48 8B 05 ?? ?? ?? ??", hits);
-for (auto h : hits) { /* h 为命中地址 */ }
+for (auto h : hits) { /* h is a hit address */ }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::memory_regions](MEMORY.md#deeptracememory_regions)

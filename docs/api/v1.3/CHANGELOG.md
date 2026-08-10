@@ -1,20 +1,19 @@
-# API 文档变更记录
+# API Documentation Change Log
 
-## v1.3(2026-08-09)
+## v1.3 (2026-08-09)
 
-首版 API 参考文档,对应代码 tag `v1.3`(项目更名 DeepTrace 后首次发布)。
+First version of the API reference, matching code tag `v1.3` (first release after the project was renamed DeepTrace).
 
-**新增**
-- 完整 API 清单:**55 个公共函数**、**3 个枚举**(`Result`/`ValueType`/`BreakpointType`)、**11 个结构体**,零遗漏。
-- 文档结构:
-  - `README.md` — API 概述、分组总览、调用前置条件(会话生命周期/权限/持久化/线程安全)
-  - `GettingStarted.md` — 从零到一的完整示例(可直接编译运行)
-  - `Modules/` — 10 个模块文档(进程与会话/内存/模块/线程/调试/反汇编/汇编/解析/监视/注入)
-  - `Types/` — `RESULT.md`(14 个错误码触发条件)、`ENUMS.md`、`STRUCTS.md`
-  - `Examples/` — 3 个完整示例 + 可编译源码 + `build_examples.bat`
-- 示例验证:3 个示例基于 MSVC C++20 链接 `deeptrace.lib` 全部编译通过。
+**Added**
+- Complete API inventory: **55 public functions**, **3 enums** (`Result`/`ValueType`/`BreakpointType`), **11 structs**, zero omissions.
+- Documentation structure:
+  - `README.md` — API overview, group overview, calling prerequisites (session lifecycle/privileges/persistence/thread safety)
+  - `GettingStarted.md` — a complete from-zero example (compilable and runnable directly)
+  - `Modules/` — 10 module docs (process & session/memory/module/thread/debug/disassembly/assembly/resolution/watch/injection)
+  - `Types/` — `RESULT.md` (14 error-code trigger conditions), `ENUMS.md`, `STRUCTS.md`
+  - `Examples/` — 3 complete examples + compilable source + `build_examples.bat`
+- Example verification: all 3 examples compile with MSVC C++20 linking `deeptrace.lib`.
 
-**约定**
-- 每个函数文档包含:语法(与 `deeptrace.h` 完全一致)、参数表、返回值表、
-  行为说明、前置/后置条件、示例、头文件、参见。
-- 文档随代码版本归档于 `docs/api/v<版本>/`,后续版本在对应目录增量更新。
+**Conventions**
+- Each function doc contains: syntax (exactly matching `deeptrace.h`), parameter table, return-value table, behavior description, prerequisites/postconditions, example, header, see also.
+- Docs are archived per code version under `docs/api/v<version>/`; later versions update the corresponding directory incrementally.
