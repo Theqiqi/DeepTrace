@@ -239,9 +239,10 @@ deeptrace_cli [选项] <命令组> <动作> [参数...]
 
 ### 5.2 暂停 / 恢复 — `debug pause` / `debug resume`
 
-- **什么时候用**:让调试中的进程停住(方便改内存/看状态)或继续运行。
+- **什么时候用**:让进程停住(方便改内存/看状态)或继续运行。
 - **操作**:`deeptrace_cli -p 1234 debug pause` → 进程暂停;`debug resume` → 继续。
 - **预期输出**:`OK`。
+- **注意**:`debug pause`/`debug resume` 直接用 `-p` 指定进程即可,不要求先 `debug attach`(会自动处理暂停)。
 
 ### 5.3 单步 — `debug step [线程号]` / `debug next [线程号]`
 
