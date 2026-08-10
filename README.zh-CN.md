@@ -114,6 +114,7 @@ deeptrace/   静态库(domain / algorithm / infrastructure / service)+ include/d
 cli/         命令行工具(command / interface / printing 三层)
 design/      设计文档(v1.0.0 / v1.1.0 / v1.2.0)
 docs/        API 参考、开发者文档、用户手册(v1.3.0)
+agents/      面向 AI / LLM 工具的安装与调用提示词
 sandbox/     实验验证项目(不参与交付)
 ```
 
@@ -129,14 +130,14 @@ sandbox/     实验验证项目(不参与交付)
 
 > **本节是给 AI 与 AI agent 看的索引**(Claude Code、Codex、Cursor、自定义 agent、LLM 工具等)。如果你是一个正在阅读本 README 的 AI,请按以下步骤执行:**① 安装软件 → ② 安装提示词 → ③ 用提示词调用软件**。
 
-**第 ① 步 — 安装软件。** 本仓库是 Windows x64 C++20 进程内存工具。`deeptrace_cli` 必须先构建(或从发行 zip 解压)才能使用。安装/验证的 agent 版说明见[安装提示词](docs/agents/deeptrace-cli-install.md)(构建顺序:先 `deeptrace` 库,后 `deeptrace_cli`)。
+**第 ① 步 — 安装软件。** 本仓库是 Windows x64 C++20 进程内存工具。`deeptrace_cli` 必须先构建(或从发行 zip 解压)才能使用。安装/验证的 agent 版说明见[安装提示词](agents/deeptrace-cli-install.md)(构建顺序:先 `deeptrace` 库,后 `deeptrace_cli`)。
 
 **第 ② 步 — 安装提示词。** 本仓库提供两个标准 SKILL 格式(YAML frontmatter + 指令)的 agent 提示词,请加载到你的 agent 中,使其知道何时以及如何使用本工具:
 
 | 提示词 | 用途 | 文件 |
 |--------|------|------|
-| **安装提示词** | 引导 agent 在使用前构建/验证 `deeptrace_cli` | [docs/agents/deeptrace-cli-install.md](docs/agents/deeptrace-cli-install.md) |
-| **调用提示词** | 调用 `deeptrace_cli` 的命令与工作流(进程内存/调试/反汇编/注入等) | [docs/agents/deeptrace-cli-usage.md](docs/agents/deeptrace-cli-usage.md) |
+| **安装提示词** | 引导 agent 在使用前构建/验证 `deeptrace_cli` | [agents/deeptrace-cli-install.md](agents/deeptrace-cli-install.md) |
+| **调用提示词** | 调用 `deeptrace_cli` 的命令与工作流(进程内存/调试/反汇编/注入等) | [agents/deeptrace-cli-usage.md](agents/deeptrace-cli-usage.md) |
 
 **第 ③ 步 — 用提示词调用软件。** 加载调用提示词后,agent 即可执行如 `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex` 的命令。关键事实:退出码 `0`/`1`/`2`(成功/执行失败/用法错误);地址为 `0x` 前缀十六进制;断点/watch/注入状态存于 `%TEMP%\deeptrace_<pid>\`;测试目标 `deeptrace_target.exe` 关闭 ASLR,固定地址存已知值(如 `0x14000D000` = `0x11223344`)。
 

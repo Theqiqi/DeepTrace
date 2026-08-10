@@ -18,6 +18,7 @@ cli/         command-line program (three src layers: command/interface/printing 
 design/      design documents (v1.0.0 / v1.1.0 / v1.2.0)
 docs/api/    public API reference documentation
 docs/developers/  developer documentation (this doc set)
+agents/      agent-facing install & usage prompts (for AI / LLM tools)
 sandbox/     experimental verification project (not part of the deliverable)
 ```
 
