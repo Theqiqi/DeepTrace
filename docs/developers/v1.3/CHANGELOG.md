@@ -1,5 +1,13 @@
 # deeptrace 开发者文档 - 版本变更记录
 
+## v1.3.0(发布,2026-08-10)
+
+首个开发者文档版本,与代码 tag `v1.3`、API 文档 `docs/api/v1.3/` 对齐。
+
+- **发布内容**:README/BUILDING/ARCHITECTURE/TESTING/EXTENDING/DESIGN_DECISIONS/ANALYSIS/DESIGN/CHANGELOG 全套落盘
+- **验证**:链接检查无死链;EXTENDING 新增命令示例(ps list2)实编译+实运行通过;README 47 行(≤50);代码注释同步(deeptrace.h 增加 API 文档指引)
+- **审查**:完整性/准确性/结构审查 + 审查代理复核,修正 3 处(CHANGELOG 清单补 ANALYSIS/DESIGN、ADR-02 措辞、EXTENDING service 头约定)
+
 ## v1.3(初始版本)
 
 首个开发者文档版本,与代码 tag `v1.3`、API 文档 `docs/api/v1.3/` 对齐。
