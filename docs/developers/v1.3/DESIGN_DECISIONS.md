@@ -17,7 +17,7 @@
 - **方案对比**:
   - 两层(接口 + 实现):WinAPI 与算法内联 → 算法不可单测、引擎不可替换(v1.0 自研解码器无法替换为 Capstone 就是教训)。
   - 四层:算法纯计算无 I/O(可独立单测);infrastructure 只做「一次系统调用」封装;service 组装 + 持久化。
-- **选择**:四层。约束:算法层禁止 WinAPI/I/O;service 禁止直接 WinAPI;依赖单向向下。引擎替换(ADR-04)零上层改动正是此分层的收益。
+- **选择**:四层。约束:算法层禁止 WinAPI/I/O;service 禁止直接 WinAPI;依赖单向向下。分层之后,v1.2 自研解码器→Capstone、自研编码器→Keystone 的引擎替换实现了 service/公共 API/CLI 零改动——这正是四层分层的收益(引擎适配仅限 infrastructure 内部)。
 
 ## ADR-03 为什么 cli 用三层(command/interface/printing)
 

@@ -77,8 +77,20 @@ Result foo_bar(uint32_t param, std::vector<uint32_t>& out);
 
 ### 3.2 service 实现(deeptrace/src/service/foo.cpp,新文件)
 
+遵循既有约定:每个 service 有自己的头文件(如 `service/process.h`),公共 API 由 `include/deeptrace.h` 暴露。先建 `service/foo.h` 声明内部签名,再实现:
+
 ```cpp
-#include "deeptrace.h"          // 或 service/foo.h 声明
+// service/foo.h(仅库内使用,不进公共头)
+#pragma once
+#include "domain/types.h"
+namespace deeptrace {
+Result foo_bar(uint32_t param, std::vector<uint32_t>& out);
+}  // namespace deeptrace
+```
+
+```cpp
+// service/foo.cpp
+#include "service/foo.h"
 #include "domain/types.h"
 
 namespace deeptrace {
