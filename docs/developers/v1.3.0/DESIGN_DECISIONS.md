@@ -1,7 +1,7 @@
 # Technical Decision Records (DESIGN_DECISIONS)
 
 > Audience: maintainers. Each decision records "background → option comparison → final choice → rationale", not just the conclusion.
-> Basis: tech choices and implementation pitfalls from design/v1.0~v1.2 (design/v1.2/deeptrace/00_CHANGELOG.md).
+> Basis: tech choices and implementation pitfalls from design/v1.0.0~v1.2.0 (design/v1.2.0/deeptrace/00_CHANGELOG.md).
 
 ## ADR-01 Why a "static library + separate CLI" two-project setup
 
@@ -15,9 +15,9 @@
 
 - **Background**: process memory operations involve two essentially different kinds of logic — pure computation (hex/AOB/decoding) and system calls (WinAPI) — which are hard to test and replace when mixed together.
 - **Option comparison**:
-  - Two layers (interface + implementation): WinAPI and algorithms inlined → algorithms not unit-testable, engines not replaceable (the v1.0 hand-written decoder that couldn't be replaced with Capstone was the lesson).
+  - Two layers (interface + implementation): WinAPI and algorithms inlined → algorithms not unit-testable, engines not replaceable (the v1.0.0 hand-written decoder that couldn't be replaced with Capstone was the lesson).
   - Four layers: the algorithm layer is pure computation with no I/O (independently unit-testable); infrastructure only wraps "one system call" per file; service composes and persists.
-- **Choice**: four layers. Constraints: the algorithm layer forbids WinAPI/I/O; service forbids direct WinAPI; dependencies point one-way downward. After layering, the v1.2 engine replacements (hand-written decoder → Capstone, hand-written encoder → Keystone) were achieved with zero changes to service/public APIs/CLI — this is the payoff of four-layer layering (engine adaptation is confined to infrastructure internals).
+- **Choice**: four layers. Constraints: the algorithm layer forbids WinAPI/I/O; service forbids direct WinAPI; dependencies point one-way downward. After layering, the v1.2.0 engine replacements (hand-written decoder → Capstone, hand-written encoder → Keystone) were achieved with zero changes to service/public APIs/CLI — this is the payoff of four-layer layering (engine adaptation is confined to infrastructure internals).
 
 ## ADR-03 Why cli uses three layers (command/interface/printing)
 
@@ -43,7 +43,7 @@
 
 - **Background**: under Capstone 5.0.9 + MSVC, `cs_disasm_iter` + an uninitialized `cs_insn` on the stack immediately faults (0xc0000005) on all decode paths; the sandbox independent verification program with the same source works fine with `cs_disasm`.
 - **Option comparison**: `cs_disasm_iter` (caller supplies the cs_insn buffer; crashes in this environment) vs `cs_disasm(count=1)` (internally allocates the insn array; stable).
-- **Choice**: uniformly use the `cs_disasm` path, not `cs_disasm_iter` + stack structs (recorded in design/v1.2 CHANGELOG; a regression-guard comment is in the disasm source).
+- **Choice**: uniformly use the `cs_disasm` path, not `cs_disasm_iter` + stack structs (recorded in design/v1.2.0 CHANGELOG; a regression-guard comment is in the disasm source).
 
 ## ADR-06 Why Debug=/MDd, Release=/MT
 

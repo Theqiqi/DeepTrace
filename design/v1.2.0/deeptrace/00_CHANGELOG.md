@@ -1,10 +1,10 @@
 # deeptrace 静态库 - 版本变更记录
 
-## v1.2 职责修正 + 反汇编引擎替换(相对 v1.1.1)
+## v1.2.0 职责修正 + 反汇编引擎替换(相对 v1.1.1)
 
 ### 1. 职责修正:汇编能力独立为 infrastructure/assembly/
 
-- **问题**:v1.1 架构调整时,keystone 汇编实现(asmenc)被放进 `infrastructure/disassembly/` 目录,与反汇编(disasm)混在一起——汇编与反汇编是**两类不同的基础能力**,职责未分清。
+- **问题**:v1.1.0 架构调整时,keystone 汇编实现(asmenc)被放进 `infrastructure/disassembly/` 目录,与反汇编(disasm)混在一起——汇编与反汇编是**两类不同的基础能力**,职责未分清。
 - **修正**:新建 `src/infrastructure/assembly/`(asmenc.h/cpp,基于 keystone 的 x64 编码器),从 `disassembly/` 迁出;`src/infrastructure/disassembly/` 只保留反汇编(disasm)。与流程文件约定一致:Infrastructure 按能力类型分子目录(process/ memory/ thread/ debug/ inject/ **assembly/** **disassembly/** ...)。
 
 ### 2. 反汇编引擎替换:自研子集解码器 → Capstone 5.0.9
@@ -39,7 +39,7 @@
 3. **capstone_static 目标名**:capstone 自身是 OBJECT 库 `capstone` + 静态库 `capstone_static` + 共享库 `capstone_shared`,deeptrace 链接静态目标 `capstone_static`。
 4. **运行时策略**:capstone `BUILD_STATIC_RUNTIME` 保持默认 OFF,遵循 preset 的 CMAKE_MSVC_RUNTIME_LIBRARY(/MDd Debug、/MT Release),与 deeptrace 及 CLI 一致,无冲突。
 
-## v1.1.1 汇编能力替换为 Keystone(相对 v1.1)
+## v1.1.1 汇编能力替换为 Keystone(相对 v1.1.0)
 
 1. **自研编码器替换**:基础设施层 disassembly/asmenc 的内部实现由手写子集替换为 Keystone 0.9.2(源码自建,third_party/keystone),修复 `asm assemble "add rax,0"` 等指令报 BadFormat 的汇编失效 bug。
 2. **接入方式**:按包管理选型原则(小型库 vcpkg 优先、中大型库手动下载优先),keystone 属中大型库——vcpkg 官方虽有 keystone port(0.9.2),但默认全架构构建需数十分钟,故手动下载源码到 third_party/keystone 并裁剪 X86 后端(LLVM_TARGETS_TO_BUILD=X86);绕开 keystone 根 CMakeLists(避免 kstool/fuzz 等无关目标),直接 add_subdirectory 其 llvm 子目录;Windows 侧无 python,用 third_party/python 嵌入式 python 供 llvm-build 使用;keystone 目标强制 C++14 兼容老 LLVM 代码。

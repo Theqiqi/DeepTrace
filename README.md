@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20x64-blue" alt="Platform: Windows x64"/>
   <img src="https://img.shields.io/badge/language-C%2B%2B20-yellowgreen" alt="C++20"/>
   <img src="https://img.shields.io/badge/build-CMake%20%2B%20Ninja%20%2B%20MSVC-informational" alt="CMake + Ninja + MSVC"/>
-  <img src="https://img.shields.io/badge/version-v1.3-blueviolet" alt="v1.3"/>
+  <img src="https://img.shields.io/badge/version-v1.3.0-blueviolet" alt="v1.3.0"/>
   <img src="https://img.shields.io/badge/API-55%20functions-green" alt="55 API functions"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License"/>
 </p>
@@ -92,7 +92,7 @@ deeptrace\script\build_release.bat
 cli\script\build_release.bat
 
 :: package a zip into cli\out\dist\
-cli\script\package.bat v1.3
+cli\script\package.bat v1.3.0
 ```
 
 On WSL use the matching `*_wsl.sh` scripts (they bridge to `cmd.exe`).
@@ -112,8 +112,8 @@ python3 cli/test/e2e/test_cli_e2e.py                     :: 47 end-to-end checks
 ```
 deeptrace/   static library (domain / algorithm / infrastructure / service) + include/deeptrace.h
 cli/         command-line tool (command / interface / printing layers)
-design/      design documents (v1.0 / v1.1 / v1.2)
-docs/        api reference, developer docs, user manual (v1.3)
+design/      design documents (v1.0.0 / v1.1.0 / v1.2.0)
+docs/        api reference, developer docs, user manual (v1.3.0)
 sandbox/     experiments (not part of the deliverable)
 ```
 
@@ -121,9 +121,9 @@ sandbox/     experiments (not part of the deliverable)
 
 | Doc | Audience | Content |
 |-----|----------|---------|
-| [API Reference](docs/api/v1.3/README.md) | Developers integrating the library | All 55 functions, types, error codes |
-| [Developer Docs](docs/developers/v1.3/README.md) | Contributors / maintainers | Architecture, building, testing, extending, ADRs |
-| [User Manual](docs/users/v1.3/README.md) | End users | Getting started, command reference, FAQ, troubleshooting |
+| [API Reference](docs/api/v1.3.0/README.md) | Developers integrating the library | All 55 functions, types, error codes |
+| [Developer Docs](docs/developers/v1.3.0/README.md) | Contributors / maintainers | Architecture, building, testing, extending, ADRs |
+| [User Manual](docs/users/v1.3.0/README.md) | End users | Getting started, command reference, FAQ, troubleshooting |
 
 ## AI / Agent Usage Guide
 
@@ -140,7 +140,7 @@ sandbox/     experiments (not part of the deliverable)
 
 **Step 3 — Use the prompts to call the tool.** With the usage prompt loaded, the agent can run commands such as `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex`. Key facts: exit codes `0`/`1`/`2` (success / failure / usage error); addresses are `0x`-prefixed hex; state (breakpoints/watches/injections) persists in `%TEMP%\deeptrace_<pid>\`; test target `deeptrace_target.exe` has ASLR disabled with known values at fixed addresses (e.g. `0x14000D000` = `0x11223344`).
 
-Additional references: [User Manual](docs/users/v1.3/USER_MANUAL.md) (full command reference), [API Reference](docs/api/v1.3/README.md) (library API for code integration).
+Additional references: [User Manual](docs/users/v1.3.0/USER_MANUAL.md) (full command reference), [API Reference](docs/api/v1.3.0/README.md) (library API for code integration).
 
 ## License
 

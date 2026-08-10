@@ -3,7 +3,7 @@
 > 给 AI / AI agent 的**安装提示词**:当你(agent)收到任务需要用到 deeptrace_cli 时,先按本提示词完成安装与验证。
 > 安装完成后,调用软件请使用配套的[调用提示词](deeptrace-cli-usage.md)。
 > 索引与说明见仓库根目录 `README.md` 的「AI / Agent 使用说明」节。
-> **注意**:下方围栏内的提示词文本会被复制到 agent 上下文,其中文档链接均为**仓库根相对路径**(如 `docs/users/v1.3/USER_MANUAL.md`)。
+> **注意**:下方围栏内的提示词文本会被复制到 agent 上下文,其中文档链接均为**仓库根相对路径**(如 `docs/users/v1.3.0/USER_MANUAL.md`)。
 
 ---
 
@@ -47,7 +47,7 @@ cli/script/build_debug.bat
 # Release(/MT 静态运行时)与打包
 deeptrace/script/build_release.bat
 cli/script/build_release.bat
-cli/script/package.bat v1.3             # 产物: cli/out/dist/deeptrace_cli-v1.3-win64.zip
+cli/script/package.bat v1.3.0             # 产物: cli/out/dist/deeptrace_cli-v1.3.0-win64.zip
 ```
 
 构建要求:Windows x64 + VS2022(MSVC)+ CMake≥3.24 + Ninja + vcpkg。
@@ -68,5 +68,5 @@ cli/script/package.bat v1.3             # 产物: cli/out/dist/deeptrace_cli-v1.
 ## 4. 环境提示
 
 - 本工具是命令行程序,单次运行一条命令;目标进程为 Windows x64 程序。
-- 构建失败排查见[开发者文档](docs/developers/v1.3/BUILDING.md)「常见编译问题」。
+- 构建失败排查见[开发者文档](docs/developers/v1.3.0/BUILDING.md)「常见编译问题」。
 `````

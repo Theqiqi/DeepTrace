@@ -1,7 +1,7 @@
 # Extension Guide (EXTENDING)
 
 > Audience: contributors. Explains the extension points and provides complete examples (code + expected output).
-> For function-level API details see the [API Documentation](../../api/v1.3/README.md); architecture conventions in [ARCHITECTURE.md](ARCHITECTURE.md); testing requirements in [TESTING.md](TESTING.md).
+> For function-level API details see the [API Documentation](../../api/v1.3.0/README.md); architecture conventions in [ARCHITECTURE.md](ARCHITECTURE.md); testing requirements in [TESTING.md](TESTING.md).
 
 ## 1. Extension Point Overview
 
@@ -12,7 +12,7 @@
 | New algorithm | `deeptrace/src/algorithm/` | pure-computation module + unit tests |
 | Engine replacement (assembly/disassembly) | `deeptrace/src/infrastructure/assembly|disassembly/` | infrastructure internal only, zero changes above |
 
-All extensions must ship with tests (see [TESTING.md](TESTING.md)) and update the API documentation (`docs/api/v1.3/`) in sync.
+All extensions must ship with tests (see [TESTING.md](TESTING.md)) and update the API documentation (`docs/api/v1.3.0/`) in sync.
 
 ---
 
@@ -114,7 +114,7 @@ Append `service/foo.h` + `service/foo.cpp` to the `add_library(deeptrace STATIC 
 
 - If new enums/structs are involved: append to `src/domain/types.h` **and sync** `include/domain/types.h` (the two files must be identical).
 - Integration tests: add cases in `deeptrace/test/integration/` (real target).
-- API docs: update `docs/api/v1.3/` (function signature/parameters/return values/behavior) and record in the CHANGELOG.
+- API docs: update `docs/api/v1.3.0/` (function signature/parameters/return values/behavior) and record in the CHANGELOG.
 - CLI (optional): wrap it as a command per section 2.
 
 ---
@@ -159,7 +159,7 @@ Add to the `add_executable(deeptrace_unit_test ...)` list in `deeptrace/test/uni
 
 ## 5. Engine Replacement (Assembly/Disassembly)
 
-Precedent: `design/v1.2/deeptrace/00_CHANGELOG.md` (hand-written decoder → Capstone, hand-written encoder → Keystone).
+Precedent: `design/v1.2.0/deeptrace/00_CHANGELOG.md` (hand-written decoder → Capstone, hand-written encoder → Keystone).
 
 Principles:
 - Engine adapter files (`infrastructure/disassembly/disasm.{h,cpp}`, `infrastructure/assembly/asmenc.{h,cpp}`) expose only pure-function interfaces;

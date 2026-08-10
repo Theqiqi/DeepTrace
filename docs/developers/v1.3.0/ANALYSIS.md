@@ -1,4 +1,4 @@
-# Developer Documentation — Analysis Phase (v1.3)
+# Developer Documentation — Analysis Phase (v1.3.0)
 
 > This file is the output of stage 1 of `.flow/developer_docs_development_process.md`:
 > 1.1 Code analysis (code structure analysis + architecture highlights)
@@ -156,4 +156,4 @@ The audience is **developers**, not end users. End-user documentation (if any) i
 | DESIGN_DECISIONS.md | maintainers | technical decision records (layering, engine selection, runtime, state persistence, etc.) |
 | CHANGELOG.md | maintainers | documentation version change history |
 
-All function-level explanations **link to the API documentation** (`docs/api/v1.3/`) instead of being duplicated here.
+All function-level explanations **link to the API documentation** (`docs/api/v1.3.0/`) instead of being duplicated here.

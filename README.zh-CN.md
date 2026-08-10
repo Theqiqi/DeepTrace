@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20x64-blue" alt="平台:Windows x64"/>
   <img src="https://img.shields.io/badge/language-C%2B%2B20-yellowgreen" alt="C++20"/>
   <img src="https://img.shields.io/badge/build-CMake%20%2B%20Ninja%20%2B%20MSVC-informational" alt="CMake + Ninja + MSVC"/>
-  <img src="https://img.shields.io/badge/version-v1.3-blueviolet" alt="v1.3"/>
+  <img src="https://img.shields.io/badge/version-v1.3.0-blueviolet" alt="v1.3.0"/>
   <img src="https://img.shields.io/badge/API-55%20functions-green" alt="55 个公共 API"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="许可证"/>
 </p>
@@ -92,7 +92,7 @@ deeptrace\script\build_release.bat
 cli\script\build_release.bat
 
 :: 打包 zip 到 cli\out\dist\
-cli\script\package.bat v1.3
+cli\script\package.bat v1.3.0
 ```
 
 WSL 环境使用对应的 `*_wsl.sh` 脚本(自动桥接 cmd.exe)。
@@ -112,8 +112,8 @@ python3 cli/test/e2e/test_cli_e2e.py                     :: 47 项端到端检�
 ```
 deeptrace/   静态库(domain / algorithm / infrastructure / service)+ include/deeptrace.h
 cli/         命令行工具(command / interface / printing 三层)
-design/      设计文档(v1.0 / v1.1 / v1.2)
-docs/        API 参考、开发者文档、用户手册(v1.3)
+design/      设计文档(v1.0.0 / v1.1.0 / v1.2.0)
+docs/        API 参考、开发者文档、用户手册(v1.3.0)
 sandbox/     实验验证项目(不参与交付)
 ```
 
@@ -121,9 +121,9 @@ sandbox/     实验验证项目(不参与交付)
 
 | 文档 | 读者 | 内容 |
 |------|------|------|
-| [API 参考](docs/api/v1.3/README.md) | 集成库的开发者 | 全部 55 个函数、类型、错误码 |
-| [开发者文档](docs/developers/v1.3/README.md) | 贡献者 / 维护者 | 架构、构建、测试、扩展、ADR |
-| [用户手册](docs/users/v1.3/README.md) | 终端用户 | 快速开始、命令参考、FAQ、故障排除 |
+| [API 参考](docs/api/v1.3.0/README.md) | 集成库的开发者 | 全部 55 个函数、类型、错误码 |
+| [开发者文档](docs/developers/v1.3.0/README.md) | 贡献者 / 维护者 | 架构、构建、测试、扩展、ADR |
+| [用户手册](docs/users/v1.3.0/README.md) | 终端用户 | 快速开始、命令参考、FAQ、故障排除 |
 
 ## AI / Agent 使用说明
 
@@ -140,7 +140,7 @@ sandbox/     实验验证项目(不参与交付)
 
 **第 ③ 步 — 用提示词调用软件。** 加载调用提示词后,agent 即可执行如 `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex` 的命令。关键事实:退出码 `0`/`1`/`2`(成功/执行失败/用法错误);地址为 `0x` 前缀十六进制;断点/watch/注入状态存于 `%TEMP%\deeptrace_<pid>\`;测试目标 `deeptrace_target.exe` 关闭 ASLR,固定地址存已知值(如 `0x14000D000` = `0x11223344`)。
 
-其他参考:[用户手册](docs/users/v1.3/USER_MANUAL.md)(完整命令参考)、[API 参考](docs/api/v1.3/README.md)(库 API,用于代码集成)。
+其他参考:[用户手册](docs/users/v1.3.0/USER_MANUAL.md)(完整命令参考)、[API 参考](docs/api/v1.3.0/README.md)(库 API,用于代码集成)。
 
 ## 许可证
 

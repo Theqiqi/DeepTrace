@@ -1,4 +1,4 @@
-# User Documentation — Design Phase (v1.3)
+# User Documentation — Design Phase (v1.3.0)
 
 > This file is the output of stage 2 of `.flow/user_docs_development_process.md`:
 > 2.1 Information architecture design
@@ -22,7 +22,7 @@
 ## 2.2 Documentation Structure Design
 
 ```
-docs/users/v1.3/
+docs/users/v1.3.0/
 ├── README.md             # product intro (one line) + quick links
 ├── GETTING_STARTED.md    # quick start
 │   ├── what you need (Windows x64, deeptrace_cli.exe)

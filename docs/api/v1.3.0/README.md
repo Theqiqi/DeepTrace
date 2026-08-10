@@ -1,8 +1,8 @@
-# deeptrace Static Library API Reference (v1.3)
+# deeptrace Static Library API Reference (v1.3.0)
 
 > This document is the API reference for the **deeptrace static library** (process memory operations / debugging utility library), written for its callers.
 > Callers include: the CLI (deeptrace_cli), other developers, AI tools and integrators.
-> Corresponding code version: **v1.3** (git tag); public header: `deeptrace/include/deeptrace.h`.
+> Corresponding code version: **v1.3.0** (git tag); public header: `deeptrace/include/deeptrace.h`.
 
 ## 1. Overview
 
