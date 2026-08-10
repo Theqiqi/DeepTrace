@@ -39,7 +39,7 @@ int main() {
     uint32_t pid = 0;
     for (const auto& p : procs) {
         std::wcout << p.pid << L"  " << p.name << L"\n";
-        if (pid == 0) pid = p.pid;  // demo: pick the first process
+        if (pid == 0 && p.pid != 0) pid = p.pid;  // demo: pick the first non-zero pid
     }
     if (pid == 0) return 1;
 
