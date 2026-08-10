@@ -1,5 +1,14 @@
 # deeptrace_cli 用户文档 - 版本变更记录
 
+## v1.3.0(发布,2026-08-10)
+
+首个用户文档版本,与代码 tag `v1.3`、API 文档 `docs/api/v1.3/`、开发者文档 `docs/developers/v1.3/` 对齐。
+
+- **发布内容**:README/GETTING_STARTED/USER_MANUAL/FAQ/TROUBLESHOOTING/ANALYSIS/DESIGN/CHANGELOG 全套落盘
+- **输出样本**:全部命令输出来自真实运行 deeptrace_cli.exe(Debug 构建)+ deeptrace_target.exe,非虚构
+- **审查**:可用性/完整性/一致性审查 + 审查代理复核;修正 5 处(debug detach 单独运行报 NotAttached、FAQ/TROUBLESHOOTING 锚点、Error: Error(...) 格式说明、入门示例输出软化、debug pause 无需先 attach 说明)
+- **验证**:README 8 行(≤10);链接/锚点检查通过;输出样本与真实捕获逐条核对一致
+
 ## v1.3(初始版本)
 
 首个用户文档版本,与代码 tag `v1.3`、API 文档 `docs/api/v1.3/`、开发者文档 `docs/developers/v1.3/` 对齐。
