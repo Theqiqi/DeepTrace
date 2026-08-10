@@ -50,7 +50,7 @@ Verify the build:
 
 ```bat
 cli\out\bin\Debug\deeptrace_cli.exe -v
-:: deeptrace_cli v1.0.0
+:: deeptrace_cli v1.3.0
 ```
 
 ## 3. Release Build

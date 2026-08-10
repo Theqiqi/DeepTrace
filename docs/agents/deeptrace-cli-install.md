@@ -59,7 +59,7 @@ cli/script/package.bat v1.3.0             # 产物: cli/out/dist/deeptrace_cli-v
 ## 3. 验证安装
 
 ```bash
-./cli/out/bin/Debug/deeptrace_cli.exe -v   # 应输出 deeptrace_cli v1.0.0
+./cli/out/bin/Debug/deeptrace_cli.exe -v   # 应输出 deeptrace_cli v1.3.0
 ./cli/out/bin/Debug/deeptrace_cli.exe -h   # 应输出命令列表(11 组 53 个命令)
 ```
 

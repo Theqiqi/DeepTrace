@@ -22,4 +22,4 @@ First user documentation version, aligned with code tag `v1.3.0`, the API docs `
   - `TROUBLESHOOTING.md` — troubleshooting (error reference table)
   - `CHANGELOG.md` — this file
 - **Output samples**: all command outputs from real runs of `deeptrace_cli.exe` (Debug build), captured against the `deeptrace_target.exe` test target
-- **Corresponding code version**: deeptrace_cli v1.0.0 (see `deeptrace_cli -h` for the command list)
+- **Corresponding code version**: deeptrace_cli v1.3.0 (see `deeptrace_cli -h` for the command list)

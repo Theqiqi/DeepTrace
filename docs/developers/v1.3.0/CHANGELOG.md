@@ -22,4 +22,4 @@ First developer documentation version, aligned with code tag `v1.3.0` and the AP
   - `DESIGN_DECISIONS.md` — technical decision records (ADR)
   - `ANALYSIS.md` / `DESIGN.md` — analysis/design phase output (code analysis, reader profiles, doc requirements, structure design)
   - `CHANGELOG.md` — this file
-- **Corresponding code versions**: deeptrace library v1.0.0, deeptrace_cli v1.0.0 (55 public APIs, see `docs/api/v1.3.0/`)
+- **Corresponding code versions**: deeptrace library v1.3.0, deeptrace_cli v1.3.0 (55 public APIs, see `docs/api/v1.3.0/`)
