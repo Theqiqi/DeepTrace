@@ -1,4 +1,4 @@
-# User Documentation — Analysis Phase (v1.3)
+# User Documentation — Analysis Phase (v1.3.0)
 
 > This file is the output of stage 1 of `.flow/user_docs_development_process.md`:
 > 1.1 User profiles

@@ -1,7 +1,7 @@
 @echo off
 setlocal
 rem ============================================================
-rem  Compile all examples under docs/api/v1.3/Examples (link Debug deeptrace.lib)
+rem  Compile all examples under docs/api/v1.3.0/Examples (link Debug deeptrace.lib)
 rem  Usage: build_examples.bat
 rem  Prerequisite: deeptrace library built (deeptrace\script\build_debug.bat)
 rem ============================================================

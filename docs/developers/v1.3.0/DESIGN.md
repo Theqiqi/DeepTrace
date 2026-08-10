@@ -1,4 +1,4 @@
-# Developer Documentation — Design Phase (v1.3)
+# Developer Documentation — Design Phase (v1.3.0)
 
 > This file is the output of stage 2 of `.flow/developer_docs_development_process.md`:
 > 2.1 Documentation structure design
@@ -12,7 +12,7 @@
 ### 2.1.1 Directory Structure
 
 ```
-docs/developers/v1.3/
+docs/developers/v1.3.0/
 ├── README.md               # project intro + quick start (main entry, ≤50 lines)
 ├── BUILDING.md             # build guide
 ├── ARCHITECTURE.md         # architecture overview
@@ -79,7 +79,7 @@ docs/developers/v1.3/
 
 - README → all documents (main entry)
 - BUILDING/ARCHITECTURE/TESTING/EXTENDING/DESIGN_DECISIONS ↔ cross-link related sections
-- Function-level explanations → link `docs/api/v1.3/` (Modules/*.md), not duplicated here
+- Function-level explanations → link `docs/api/v1.3.0/` (Modules/*.md), not duplicated here
 - Each document states its target audience at the top
 
 ---
@@ -92,7 +92,7 @@ docs/developers/v1.3/
 | Adding the `ps list2` command | EXTENDING | code snippet + expected output | compared against existing cmd_process.cpp, logically equivalent |
 | Adding a new public API | EXTENDING | layer-by-layer change checklist | compared against existing APIs |
 | Adding a new algorithm | EXTENDING | code skeleton | follows algorithm/scan.h style |
-| A complete program calling the library | linked to API docs | existing compilable examples | docs/api/v1.3/Examples/src/ (already compiled and verified) |
+| A complete program calling the library | linked to API docs | existing compilable examples | docs/api/v1.3.0/Examples/src/ (already compiled and verified) |
 
 Constraint: build-style examples must be real compilable code, not pseudocode; every embedded command has a verification record.
 

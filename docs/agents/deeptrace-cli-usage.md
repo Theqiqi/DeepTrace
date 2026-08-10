@@ -3,7 +3,7 @@
 > 给 AI / AI agent 的**调用提示词**:当你(agent)需要用 deeptrace_cli 查看/修改进程内存时,
 > 按本提示词执行命令。若工具尚未安装,先读[安装提示词](deeptrace-cli-install.md)。
 > 索引与说明见仓库根目录 `README.md` 的「AI / Agent 使用说明」节。
-> **注意**:下方围栏内的提示词文本会被复制到 agent 上下文,其中文档链接均为**仓库根相对路径**(如 `docs/users/v1.3/USER_MANUAL.md`)。
+> **注意**:下方围栏内的提示词文本会被复制到 agent 上下文,其中文档链接均为**仓库根相对路径**(如 `docs/users/v1.3.0/USER_MANUAL.md`)。
 
 ---
 
@@ -77,7 +77,7 @@ deeptrace_cli asm assemble "nop" --c-array             # → unsigned char code[
 | `asm` | assemble (--hex / --c-array) | 汇编 |
 | `shellcode` | inject / injectat / status | 壳码注入 |
 
-> 每组命令的完整语法与输出格式见本仓库 [用户手册](docs/users/v1.3/USER_MANUAL.md) 与 [API 参考](docs/api/v1.3/README.md)。
+> 每组命令的完整语法与输出格式见本仓库 [用户手册](docs/users/v1.3.0/USER_MANUAL.md) 与 [API 参考](docs/api/v1.3.0/README.md)。
 
 ## 3. 常见错误与处理
 

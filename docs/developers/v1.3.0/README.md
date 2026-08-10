@@ -1,7 +1,7 @@
 # DeepTrace Developer Documentation
 
 > Audience: every developer who joins the project (newcomers / contributors / maintainers).
-> For function-level API details see the [API Documentation](../../api/v1.3/README.md); not repeated here.
+> For function-level API details see the [API Documentation](../../api/v1.3.0/README.md); not repeated here.
 
 ## Project Overview
 
@@ -15,7 +15,7 @@ This repository contains two independent Windows x64 C++20 projects:
 ```
 deeptrace/   static library (four src layers: domain/algorithm/infrastructure/service + include/deeptrace.h)
 cli/         command-line program (three src layers: command/interface/printing + main.cpp)
-design/      design documents (v1.0 / v1.1 / v1.2)
+design/      design documents (v1.0.0 / v1.1.0 / v1.2.0)
 docs/api/    public API reference documentation
 docs/developers/  developer documentation (this doc set)
 sandbox/     experimental verification project (not part of the deliverable)

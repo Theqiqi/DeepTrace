@@ -1,8 +1,8 @@
 # API Documentation Change Log
 
-## v1.3 (2026-08-09)
+## v1.3.0 (2026-08-09)
 
-First version of the API reference, matching code tag `v1.3` (first release after the project was renamed DeepTrace).
+First version of the API reference, matching code tag `v1.3.0` (first release after the project was renamed DeepTrace).
 
 **Added**
 - Complete API inventory: **55 public functions**, **3 enums** (`Result`/`ValueType`/`BreakpointType`), **11 structs**, zero omissions.

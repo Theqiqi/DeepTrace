@@ -1,8 +1,8 @@
 # Architecture Overview (ARCHITECTURE)
 
 > Audience: developers new to the project, maintainers.
-> Design basis: design/v1.0, v1.1, v1.2 (the code is the source of truth).
-> For function-level API details see the [API Documentation](../../api/v1.3/README.md).
+> Design basis: design/v1.0.0, v1.1.0, v1.2.0 (the code is the source of truth).
+> For function-level API details see the [API Documentation](../../api/v1.3.0/README.md).
 
 ## 1. Overview
 
