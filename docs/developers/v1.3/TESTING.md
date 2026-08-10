@@ -1,52 +1,52 @@
-# 测试指南(TESTING)
+# Testing Guide (TESTING)
 
-> 目标读者:贡献者。说明如何运行与编写测试。
-> 测试框架:GoogleTest(gtest,经 vcpkg manifest 引入,仅测试依赖)。
+> Audience: contributors. Explains how to run and write tests.
+> Test framework: GoogleTest (gtest, pulled in via vcpkg manifest, test-only dependency).
 
-## 1. 测试体系总览
+## 1. Test System Overview
 
-| 项目 | 层级 | 产物 | 内容 |
-|------|------|------|------|
-| deeptrace | unit | `deeptrace_unit_test.exe` | 算法层:hex / scan(AOB)/ disasm / asm / format |
-| deeptrace | integration | `deeptrace_integration_test.exe` | 真实 target 进程,串联多个公共 API |
-| deeptrace | target | `deeptrace_target.exe` | 测试目标程序(关闭 ASLR,已知地址放已知值) |
-| deeptrace | dll | `testdll.dll` | 注入测试的伴生 DLL |
-| cli | unit | `deeptrace_cli_unit_test.exe` | 三层:parser / printer / executor |
-| cli | integration | `deeptrace_cli_integration_test.exe` | parse → execute → deeptrace API 全链路 |
-| cli | e2e | `test_cli_e2e.py` | 启动真实 exe 断言命令行行为(独立于 CMake) |
+| Project | Level | Artifact | Content |
+|---------|-------|----------|---------|
+| deeptrace | unit | `deeptrace_unit_test.exe` | algorithm layer: hex / scan (AOB) / disasm / asm / format |
+| deeptrace | integration | `deeptrace_integration_test.exe` | real target process, chains multiple public APIs |
+| deeptrace | target | `deeptrace_target.exe` | test target program (ASLR disabled, known values at known addresses) |
+| deeptrace | dll | `testdll.dll` | companion DLL for inject tests |
+| cli | unit | `deeptrace_cli_unit_test.exe` | three layers: parser / printer / executor |
+| cli | integration | `deeptrace_cli_integration_test.exe` | full chain: parse → execute → deeptrace API |
+| cli | e2e | `test_cli_e2e.py` | launches real exes and asserts command-line behavior (independent of CMake) |
 
-## 2. 运行测试
+## 2. Running Tests
 
-所有测试产物在 Debug 构建后生成。`out/bin/Debug/` 下的测试 exe 直接运行即可(内部自动启动/清理 target)。
+All test artifacts are produced after a Debug build. Test exes under `out/bin/Debug/` can be run directly (they auto-launch/clean up the target internally).
 
-### 2.1 单元测试
+### 2.1 Unit Tests
 
 ```bat
 deeptrace\out\bin\Debug\deeptrace_unit_test.exe
 cli\out\bin\Debug\deeptrace_cli_unit_test.exe
 ```
 
-### 2.2 集成测试
+### 2.2 Integration Tests
 
 ```bat
 deeptrace\out\bin\Debug\deeptrace_integration_test.exe
 cli\out\bin\Debug\deeptrace_cli_integration_test.exe
 ```
 
-> 集成测试会启动 `deeptrace_target.exe`(真实子进程)并执行进程/内存/模块/线程/调试/注入操作,结束后自动清理。请勿手动运行 target 后重复占用。
+> Integration tests launch `deeptrace_target.exe` (a real child process) and perform process/memory/module/thread/debug/inject operations, then clean up automatically. Do not manually run the target and leave it occupying resources.
 
-### 2.3 e2e 测试
+### 2.3 e2e Tests
 
 ```bash
 python3 cli/test/e2e/test_cli_e2e.py
 ```
 
-- 需要 Debug 构建产物:`deeptrace_cli.exe` + `deeptrace_target.exe` + `testdll.dll`
-  (testdll.dll 由 cli 集成测试的 POST_BUILD 步骤自动复制到 `cli/out/bin/Debug/`)。
-- 驱动真实二进制,断言 stdout/退出码(47 项检查);全部通过退出码 0,任一失败退出码 1。
-- WSL 下同样直接运行(脚本内部经 cmd.exe 调 exe,路径自动转换)。
+- Requires Debug build artifacts: `deeptrace_cli.exe` + `deeptrace_target.exe` + `testdll.dll`
+  (testdll.dll is copied to `cli/out/bin/Debug/` automatically by the cli integration test's POST_BUILD step).
+- Drives the real binaries and asserts stdout/exit codes (47 checks); exit code 0 if all pass, 1 if any fails.
+- Runs directly under WSL too (the script calls exes via cmd.exe, converting paths automatically).
 
-### 2.4 回归全量
+### 2.4 Full Regression
 
 ```bash
 deeptrace/out/bin/Debug/deeptrace_unit_test.exe
@@ -56,30 +56,30 @@ cli/out/bin/Debug/deeptrace_cli_integration_test.exe
 python3 cli/test/e2e/test_cli_e2e.py
 ```
 
-## 3. 测试目标程序(deeptrace_target.exe)
+## 3. Test Target Program (deeptrace_target.exe)
 
-两个测试树(deeptrace / cli)各有一个 target,作用相同:
+Each test tree (deeptrace / cli) has its own target with the same role:
 
-- **不链接 deeptrace**,是一个独立可执行程序。
-- **关闭 ASLR**(`/DYNAMICBASE:NO /HIGHENTROPYVA:NO`),保证模块基址与全局变量地址确定,测试可断言已知地址上的已知值。
-- 输出 banner:`PID: <number>` 行 + 全局变量地址表(`g_int`/`g_bytes` 等,`@0x...` 格式)。
-- 提供线程(输出 `WORKER_TID:`)、内存值(如 `g_int` 存 `0x11223344`)等测试锚点。
+- **Does not link deeptrace**; it is a standalone executable.
+- **ASLR disabled** (`/DYNAMICBASE:NO /HIGHENTROPYVA:NO`) so the module base and global variable addresses are deterministic and tests can assert known values at known addresses.
+- Prints a banner: `PID: <number>` line + global variable address table (`g_int`/`g_bytes` etc., `@0x...` format).
+- Provides thread (`WORKER_TID:`), memory values (e.g. `g_int` holds `0x11223344`), and other test anchors.
 
-新增集成测试时,优先在 target 中增加已知值锚点,而不是在测试里猜测地址。
+When adding integration tests, prefer adding known-value anchors to the target rather than guessing addresses in the test.
 
-## 4. 编写新测试
+## 4. Writing New Tests
 
-### 4.1 单元测试模板
+### 4.1 Unit Test Template
 
 ```cpp
-// cli/test/unit/parser_test.cpp 风格
+// cli/test/unit/parser_test.cpp style
 #include <gtest/gtest.h>
 #include "command/parser.h"
 
 namespace deeptrace_cli {
 namespace {
 
-TEST(ParserTest, 场景描述) {
+TEST(ParserTest, ScenarioDescription) {
     const char* argv[] = {"deeptrace_cli", "ps", "list"};
     ParseResult pr = parse_args(3, const_cast<char**>(argv));
     EXPECT_TRUE(pr.ok);
@@ -90,42 +90,42 @@ TEST(ParserTest, 场景描述) {
 }  // namespace deeptrace_cli
 ```
 
-- 新测试文件加入对应 `test/unit/CMakeLists.txt` 的 `add_executable` 列表。
-- 单元测试**不得启动真实进程**,只测纯逻辑(解析/格式化/算法)。
+- Add new test files to the `add_executable` list in the corresponding `test/unit/CMakeLists.txt`.
+- Unit tests **must not launch real processes**; they only test pure logic (parsing/formatting/algorithms).
 
-### 4.2 集成测试模板
+### 4.2 Integration Test Template
 
 ```cpp
-// deeptrace/test/integration/target_util.h 提供:
-//   launch_target() -> pid / 地址锚点 / 句柄
+// deeptrace/test/integration/target_util.h provides:
+//   launch_target() -> pid / address anchors / handle
 #include <gtest/gtest.h>
 #include "deeptrace.h"
 #include "target_util.h"
 
-TEST(ProcessIntegrationTest, 场景描述) {
+TEST(ProcessIntegrationTest, ScenarioDescription) {
     Target t = launch_target();
     std::vector<deeptrace::ProcessInfo> list;
     ASSERT_EQ(deeptrace::enumerate_processes(list), deeptrace::Result::Ok);
-    // 断言 list 包含 t.pid
+    // assert that list contains t.pid
 }
 ```
 
-- 集成测试启动真实 target,结束后必须清理(终止 target)。
-- 断点/watch/注入类用例注意 `%TEMP%/deeptrace_<pid>/` 状态文件的清理。
+- Integration tests launch a real target and must clean up when finished (terminate the target).
+- For breakpoint/watch/inject cases, watch out for state file cleanup under `%TEMP%/deeptrace_<pid>/`.
 
-### 4.3 e2e 测试
+### 4.3 e2e Tests
 
-在 `cli/test/e2e/test_cli_e2e.py` 中按 `check(name, cond, detail)` 模式追加断言:
+Add assertions in `cli/test/e2e/test_cli_e2e.py` following the `check(name, cond, detail)` pattern:
 
 ```python
 code, out, _ = run_cli(["-p", str(pid), "mem", "read", g_int, "4", "hex"])
 check("mem read exit 0", code == 0)
 ```
 
-新增命令/参数必须补 e2e 断言(命令行行为是产品契约的一部分)。
+New commands/parameters must add e2e assertions (command-line behavior is part of the product contract).
 
-## 5. 测试要求
+## 5. Testing Requirements
 
-- 新增功能必须有配套测试(单元 + 集成或 e2e),否则不予合入。
-- 修改算法/引擎(如反汇编格式)必须同步更新单元测试断言。
-- 测试不依赖网络、不依赖固定 PID、不依赖系统特定进程。
+- New features must ship with tests (unit + integration or e2e), otherwise they are not merged.
+- Modifying algorithms/engines (e.g. disassembly format) requires updating unit test assertions in sync.
+- Tests must not depend on the network, fixed PIDs, or system-specific processes.

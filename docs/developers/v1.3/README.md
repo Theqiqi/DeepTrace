@@ -1,49 +1,49 @@
-# DeepTrace 开发者文档
+# DeepTrace Developer Documentation
 
-> 目标读者:所有入项目开发者(新入 / 贡献者 / 维护者)。
-> 函数级 API 说明见 [API 文档](../../api/v1.3/README.md),本文档不重复。
+> Audience: every developer who joins the project (newcomers / contributors / maintainers).
+> For function-level API details see the [API Documentation](../../api/v1.3/README.md); not repeated here.
 
-## 项目简介
+## Project Overview
 
-本仓库包含两个独立的 Windows x64 C++20 项目:
+This repository contains two independent Windows x64 C++20 projects:
 
-- **deeptrace**(`deeptrace/`)— 进程内存操作**静态库**:进程/内存/模块/线程/调试/反汇编/汇编/解析/监视/注入,55 个公共 API。
-- **deeptrace_cli**(`cli/`)— **命令行程序**:把库能力包装为命令(ps/mem/module/thread/debug/disasm/asm/resolve/watch/dll/shellcode),纯 ASCII 输出。
+- **deeptrace** (`deeptrace/`) — a process memory operation **static library**: process/memory/module/thread/debug/disassembly/assembly/resolve/watch/inject, 55 public APIs.
+- **deeptrace_cli** (`cli/`) — a **command-line program**: wraps the library capabilities as commands (ps/mem/module/thread/debug/disasm/asm/resolve/watch/dll/shellcode), pure ASCII output.
 
-## 目录速览
+## Directory Overview
 
 ```
-deeptrace/   静态库(src 四层:domain/algorithm/infrastructure/service + include/deeptrace.h)
-cli/         命令行(src 三层:command/interface/printing + main.cpp)
-design/      设计文档(v1.0 / v1.1 / v1.2)
-docs/api/    公共 API 参考文档
-docs/developers/  开发者文档(本文档集)
-sandbox/     实验验证项目(不参与交付)
+deeptrace/   static library (four src layers: domain/algorithm/infrastructure/service + include/deeptrace.h)
+cli/         command-line program (three src layers: command/interface/printing + main.cpp)
+design/      design documents (v1.0 / v1.1 / v1.2)
+docs/api/    public API reference documentation
+docs/developers/  developer documentation (this doc set)
+sandbox/     experimental verification project (not part of the deliverable)
 ```
 
-## 快速开始
+## Quick Start
 
 ```bat
-:: 1. 构建 deeptrace 静态库(Debug)
+:: 1. Build the deeptrace static library (Debug)
 deeptrace\script\build_debug.bat
-:: 2. 构建 deeptrace_cli(Debug)
+:: 2. Build deeptrace_cli (Debug)
 cli\script\build_debug.bat
-:: 3. 运行
+:: 3. Run
 cli\out\bin\Debug\deeptrace_cli.exe -h
-cli\out\bin\Debug\deeptrace_cli.exe -p <pid> mem read <地址> 4 hex
+cli\out\bin\Debug\deeptrace_cli.exe -p <pid> mem read <address> 4 hex
 ```
 
-WSL 环境用同名 `*_wsl.sh` 脚本(自动桥接 cmd.exe)。
+In a WSL environment use the corresponding `*_wsl.sh` scripts (they bridge to cmd.exe automatically).
 
-## 文档地图
+## Documentation Map
 
-| 文档 | 目标读者 | 内容 |
-|------|---------|------|
-| [BUILDING.md](BUILDING.md) | 新入项目 | 环境要求、Debug/Release 构建、WSL、打包、常见问题 |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 新入 / 维护者 | 分层架构、数据流、跨项目依赖、状态持久化 |
-| [TESTING.md](TESTING.md) | 贡献者 | 单元/集成/e2e 测试、target 程序、编写新测试 |
-| [EXTENDING.md](EXTENDING.md) | 贡献者 | 添加命令/API/算法/引擎的扩展指南 |
-| [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) | 维护者 | 技术决策记录(ADR) |
-| [ANALYSIS.md](ANALYSIS.md) | 维护者 | 分析阶段产出(代码分析/读者画像/文档需求) |
-| [DESIGN.md](DESIGN.md) | 维护者 | 设计阶段产出(结构设计/示例设计/技术选型) |
-| [CHANGELOG.md](CHANGELOG.md) | 维护者 | 文档变更历史 |
+| Document | Audience | Content |
+|----------|----------|---------|
+| [BUILDING.md](BUILDING.md) | Newcomers | Environment requirements, Debug/Release builds, WSL, packaging, common issues |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Newcomers / maintainers | Layered architecture, data flow, cross-project dependencies, state persistence |
+| [TESTING.md](TESTING.md) | Contributors | Unit/integration/e2e tests, target program, writing new tests |
+| [EXTENDING.md](EXTENDING.md) | Contributors | Extension guide: adding commands/APIs/algorithms/engines |
+| [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) | Maintainers | Technical decision records (ADR) |
+| [ANALYSIS.md](ANALYSIS.md) | Maintainers | Analysis phase output (code analysis/reader profiles/doc requirements) |
+| [DESIGN.md](DESIGN.md) | Maintainers | Design phase output (structure design/example design/tech choices) |
+| [CHANGELOG.md](CHANGELOG.md) | Maintainers | Documentation change history |
