@@ -106,8 +106,8 @@ deeptrace_cli -p 1234 mem read 0x10000 4 hex
 
 ## 6. 常用下一步
 
-- 想读「数值」而不是原始字节 → [读数值 mem readval](USER_MANUAL.md#2-内存-mem)
-- 想修改内存 → [写入 mem write](USER_MANUAL.md#2-内存-mem)
+- 想读「数值」而不是原始字节 → [读数值 mem readval](USER_MANUAL.md#2-内存mem)
+- 想修改内存 → [写入 mem write](USER_MANUAL.md#2-内存mem)
 - 想看所有命令 → 随时输入 `deeptrace_cli -h`
 
 ## 7. 遇到问题?
