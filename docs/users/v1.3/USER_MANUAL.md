@@ -227,7 +227,7 @@ Most commands need a target process first: `-p <pid>`. Process IDs (PIDs) are li
 
 > The debug features put the target process into a "being debugged" state, allowing you to pause, single-step, set breakpoints, and view registers.
 
-### 5.1 Enter Debug Mode — `debug attach`
+### 5.1 Enter Debug Mode (`debug attach`)
 
 - **Steps**:
   ```
