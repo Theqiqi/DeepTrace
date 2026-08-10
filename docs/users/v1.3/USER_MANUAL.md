@@ -227,15 +227,15 @@ deeptrace_cli [选项] <命令组> <动作> [参数...]
 
 > 调试功能让目标进程进入「被调试」状态,可以暂停、单步、设断点、看寄存器。
 
-### 5.1 进入/退出调试 — `debug attach` / `debug detach`
+### 5.1 进入调试 — `debug attach`
 
 - **操作**:
   ```
   deeptrace_cli -p 1234 debug attach
-  deeptrace_cli -p 1234 debug detach
   ```
-- **预期输出**:均为 `OK`。
-- **注意**:`debug attach` 不会终止目标进程(已验证);`debug detach` 退出调试但仍保持附加。对受保护进程可能提示 `Error: AccessDenied`。
+- **预期输出**:`OK`。
+- **注意**:`debug attach` 不会终止目标进程(已验证);命令结束后调试自动退出,目标进程继续正常运行。对受保护进程可能提示 `Error: AccessDenied`。
+- **说明**:每次运行命令都是一次独立操作,调试会话不跨命令保留——所以单独运行 `debug detach` 会提示 `Error: NotAttached`(当前没有调试会话,属正常)。
 
 ### 5.2 暂停 / 恢复 — `debug pause` / `debug resume`
 

@@ -11,7 +11,7 @@
 | `Error: unknown command group: 'bogus'` | 命令组拼写错误 | 检查命令组名(ps/mem/module/thread/debug/disasm/resolve/watch/dll/asm/shellcode) |
 | `Error: invalid address: 'zzz'` | 地址格式不对 | 地址用十六进制 `0x` 开头,如 `0x14000D000` |
 | `Error: NoSuchProcess(99999999)` | 进程不存在 | 用 `ps list` 重新找进程号;进程可能已退出 |
-| `Error: NotAttached` | 还没有附加/指定目标进程 | 加 `-p <进程号>`,或先 `ps attach <进程号>` |
+| `Error: NotAttached` | 还没有附加/指定目标进程;或当前没有调试会话(单独运行 `debug detach`) | 加 `-p <进程号>`,或先 `ps attach <进程号>`;调试会话不跨命令保留,属正常现象(见[用户手册 5.1](USER_MANUAL.md#51-进入调试--debug-attach)) |
 | `Error: AccessDenied` | 权限不足 | 以管理员身份运行命令窗口;换普通进程测试 |
 | `Error: ReadFault` | 地址不可读 | 先用 `mem regions` 找可读区域;检查地址 |
 | `Error: WriteFault` | 地址不可写 | 该内存区域只读;找可写区域(protection 允许写) |
