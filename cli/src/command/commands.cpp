@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <sstream>
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 
 namespace {
 
@@ -178,9 +178,9 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "pmem_cli v1.0.0\n";
+    os << "deeptrace_cli v1.0.0\n";
     os << "\n";
-    os << "Usage: pmem_cli [options] <command> [args...]\n";
+    os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";
     os << "Options:\n";
     os << "  -p, --pid <pid>    Target process ID\n";
@@ -206,4 +206,4 @@ std::string build_help_text() {
     return os.str();
 }
 
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli

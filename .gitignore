@@ -15,6 +15,7 @@ assets
 .*/
 .flow/
 
+
 # 三方依赖源码不入库:git 只追踪配方(vcpkg.json)与收据(third_party/ 下 README)
 # 忽略所有 third_party 内容,但保留目录结构与收据文件(根级 README.md + python/README.txt)
 **/third_party/**
@@ -521,3 +522,9 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# 源码目录 src/infrastructure/debug/ 不适用上方 VisualStudio 的 [Dd]ebug/ 规则
+# (历史遗留:该目录被误忽略,导致 CMake 引用的 debug.h/debug.cpp 未入库,
+# 全新克隆无法编译)。此处显式解除忽略,使源码纳入版本控制。
+!**/infrastructure/debug/
+!**/infrastructure/debug/**

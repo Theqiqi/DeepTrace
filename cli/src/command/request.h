@@ -1,12 +1,12 @@
 #pragma once
 // command layer: parsed command request.
-// Only standard C++ types; no pmem / platform types.
+// Only standard C++ types; no deeptrace / platform types.
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 
 struct CommandRequest {
     std::string group;               // ps / mem / module / ...
@@ -18,4 +18,4 @@ struct CommandRequest {
     bool version = false;            // -v/--version
 };
 
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli

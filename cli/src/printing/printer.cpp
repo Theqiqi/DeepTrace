@@ -1,6 +1,6 @@
 #include "printing/printer.h"
 
-#include "pmem.h"
+#include "deeptrace.h"
 
 #include <cinttypes>
 #include <cstdio>
@@ -8,21 +8,21 @@
 
 namespace {
 
-const char* value_type_name(pmem::ValueType t) {
+const char* value_type_name(deeptrace::ValueType t) {
     switch (t) {
-        case pmem::ValueType::Byte: return "byte";
-        case pmem::ValueType::Word: return "word";
-        case pmem::ValueType::Dword: return "dword";
-        case pmem::ValueType::Qword: return "qword";
-        case pmem::ValueType::Float: return "float";
-        case pmem::ValueType::Double: return "double";
+        case deeptrace::ValueType::Byte: return "byte";
+        case deeptrace::ValueType::Word: return "word";
+        case deeptrace::ValueType::Dword: return "dword";
+        case deeptrace::ValueType::Qword: return "qword";
+        case deeptrace::ValueType::Float: return "float";
+        case deeptrace::ValueType::Double: return "double";
     }
     return "?";
 }
 
 }  // namespace
 
-namespace pmem_cli {
+namespace deeptrace_cli {
 namespace printer {
 
 void print_error(const std::string& msg) {
@@ -38,7 +38,7 @@ void print_help(const std::string& text) {
 }
 
 void print_version() {
-    std::printf("pmem_cli v1.0.0\n");
+    std::printf("deeptrace_cli v1.0.0\n");
 }
 
 std::string to_ascii(const std::wstring& s) {
@@ -59,7 +59,7 @@ std::string format_address(uintptr_t a) {
     return buf;
 }
 
-void print_processes(const std::vector<pmem::ProcessInfo>& list) {
+void print_processes(const std::vector<deeptrace::ProcessInfo>& list) {
     std::printf("%-10s %-40s %-8s %s\n", "PID", "NAME", "THREADS", "PPID");
     for (const auto& p : list) {
         std::printf("%-10u %-40s %-8u %u\n", p.pid, to_ascii(p.name).c_str(),
@@ -67,14 +67,14 @@ void print_processes(const std::vector<pmem::ProcessInfo>& list) {
     }
 }
 
-void print_process_info(const pmem::ProcessInfo& p) {
+void print_process_info(const deeptrace::ProcessInfo& p) {
     std::printf("PID: %u\n", p.pid);
     std::printf("Name: %s\n", to_ascii(p.name).c_str());
     std::printf("Threads: %u\n", p.thread_count);
     std::printf("ParentPID: %u\n", p.parent_pid);
 }
 
-void print_regions(const std::vector<pmem::MemoryRegion>& list) {
+void print_regions(const std::vector<deeptrace::MemoryRegion>& list) {
     std::printf("%-18s %-14s %-10s %s\n", "BASE", "SIZE", "PROTECTION", "STATE");
     for (const auto& r : list) {
         std::printf("%-18s %-14s 0x%08X    %u\n",
@@ -83,24 +83,24 @@ void print_regions(const std::vector<pmem::MemoryRegion>& list) {
     }
 }
 
-void print_modules(const std::vector<pmem::ModuleInfo>& list) {
+void print_modules(const std::vector<deeptrace::ModuleInfo>& list) {
     std::printf("%-18s %-12s %s\n", "BASE", "SIZE", "NAME");
     for (const auto& m : list) print_module(m);
 }
 
-void print_module(const pmem::ModuleInfo& m) {
+void print_module(const deeptrace::ModuleInfo& m) {
     std::printf("%-18s %-12s %s\n", format_address(m.base).c_str(),
                 std::to_string(m.size).c_str(), to_ascii(m.name).c_str());
 }
 
-void print_exports(const std::vector<pmem::ExportInfo>& list) {
+void print_exports(const std::vector<deeptrace::ExportInfo>& list) {
     std::printf("%-18s %s\n", "ADDRESS", "NAME");
     for (const auto& e : list) {
         std::printf("%-18s %s\n", format_address(e.address).c_str(), e.name.c_str());
     }
 }
 
-void print_threads(const std::vector<pmem::ThreadInfo>& list) {
+void print_threads(const std::vector<deeptrace::ThreadInfo>& list) {
     std::printf("%-10s %-10s %s\n", "TID", "PRIORITY", "START");
     for (const auto& t : list) {
         std::printf("%-10u %-10d %s\n", t.tid, t.priority,
@@ -108,14 +108,14 @@ void print_threads(const std::vector<pmem::ThreadInfo>& list) {
     }
 }
 
-void print_registers(const std::vector<pmem::RegisterInfo>& list) {
+void print_registers(const std::vector<deeptrace::RegisterInfo>& list) {
     std::printf("%-8s %s\n", "REG", "VALUE");
     for (const auto& r : list) {
         std::printf("%-8s %s\n", r.name.c_str(), format_address(r.value).c_str());
     }
 }
 
-void print_instructions(const std::vector<pmem::Instruction>& list) {
+void print_instructions(const std::vector<deeptrace::Instruction>& list) {
     std::printf("%-18s %-20s %s\n", "ADDRESS", "BYTES", "INSTRUCTION");
     for (const auto& i : list) {
         std::string bytes;
@@ -130,7 +130,7 @@ void print_instructions(const std::vector<pmem::Instruction>& list) {
     }
 }
 
-void print_watches(const std::vector<pmem::WatchEntry>& list) {
+void print_watches(const std::vector<deeptrace::WatchEntry>& list) {
     std::printf("%-6s %-24s %-18s %-8s %-20s %s\n", "IDX", "DESCRIPTION", "ADDRESS",
                 "TYPE", "VALUE", "VALID");
     for (const auto& w : list) {
@@ -199,29 +199,29 @@ void print_bytes_formatted(const std::vector<uint8_t>& bytes, const std::string&
     std::printf("\n");
 }
 
-void print_status(const pmem::DebugStatus& st) {
+void print_status(const deeptrace::DebugStatus& st) {
     std::printf("attached: %s\n", st.attached ? "yes" : "no");
     std::printf("pid: %u\n", st.pid);
     std::printf("breakpoints: %u\n", st.breakpoint_count);
     std::printf("hw_breakpoints: %u\n", st.hw_breakpoint_count);
 }
 
-void print_breakpoint(const pmem::BreakpointInfo& bp) {
+void print_breakpoint(const deeptrace::BreakpointInfo& bp) {
     std::printf("breakpoint set at %s (orig 0x%02X)\n",
                 format_address(bp.address).c_str(), bp.original_byte);
 }
 
-void print_injects(const std::vector<pmem::InjectInfo>& list) {
+void print_injects(const std::vector<deeptrace::InjectInfo>& list) {
     std::printf("%-8s %-40s %-18s %-10s %s\n", "KIND", "PATH", "ADDRESS", "TID",
                 "RUNNING");
     for (const auto& i : list) print_inject(i);
 }
 
-void print_inject(const pmem::InjectInfo& info) {
+void print_inject(const deeptrace::InjectInfo& info) {
     std::printf("%-8s %-40s %-18s %-10u %s\n", info.kind.c_str(),
                 to_ascii(info.path).c_str(), format_address(info.remote_base).c_str(),
                 info.thread_id, info.running ? "yes" : "no");
 }
 
 }  // namespace printer
-}  // namespace pmem_cli
+}  // namespace deeptrace_cli
