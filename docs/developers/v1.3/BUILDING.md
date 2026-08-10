@@ -1,24 +1,24 @@
-# 编译指南(BUILDING)
+# Build Guide (BUILDING)
 
-> 目标读者:新入项目开发者。本文档从零开始说明如何编译两个项目。
-> 函数级 API 说明见 [API 文档](../../api/v1.3/README.md)。
+> Audience: developers new to the project. This document explains from scratch how to build both projects.
+> For function-level API details see the [API Documentation](../../api/v1.3/README.md).
 
-## 1. 环境要求
+## 1. Environment Requirements
 
-| 项 | 要求 |
-|----|------|
-| 操作系统 | Windows 10/11 x64(仅 Windows x64 目标) |
-| 编译器 | MSVC(cl.exe),由 VS2022 提供(Community/Professional/Enterprise 均可) |
-| 构建工具 | CMake(≥3.24)+ Ninja(VS2022 自带:`Common7\IDE\CommonExtensions\Microsoft\CMake`) |
-| 包管理 | vcpkg(manifest 模式;构建脚本自动查找 VS 自带 vcpkg 或 `VCPKG_ROOT`) |
-| 第三方 | 无需联网下载:keystone/capstone 已以源码形式放在 `deeptrace/third_party/`;LLVM 构建需要 Python,已内嵌于 `deeptrace/third_party/python/` |
-| WSL(可选) | WSL 环境通过 `*_wsl.sh` 桥接 Windows 工具链 |
+| Item | Requirement |
+|------|-------------|
+| OS | Windows 10/11 x64 (Windows x64 targets only) |
+| Compiler | MSVC (cl.exe), provided by VS2022 (Community/Professional/Enterprise all work) |
+| Build tools | CMake (≥3.24) + Ninja (bundled with VS2022: `Common7\IDE\CommonExtensions\Microsoft\CMake`) |
+| Package manager | vcpkg (manifest mode; build scripts auto-locate the VS-bundled vcpkg or `VCPKG_ROOT`) |
+| Third-party | No network download needed: keystone/capstone ship as source under `deeptrace/third_party/`; LLVM build needs Python, embedded at `deeptrace/third_party/python/` |
+| WSL (optional) | WSL environments build through `*_wsl.sh` which bridges the Windows toolchain |
 
-构建脚本自动完成:vswhere 定位 VS → vcvars64 → 定位 vcpkg → cmake configure+build。**无需手动配置 PATH。**
+The build scripts handle everything automatically: vswhere locates VS → vcvars64 → vcpkg discovery → cmake configure+build. **No manual PATH setup required.**
 
-## 2. Debug 构建
+## 2. Debug Build
 
-构建顺序固定:**先 deeptrace,后 cli**(cli 通过 `find_library` 引用 deeptrace 的构建产物)。
+Build order is fixed: **deeptrace first, then cli** (cli references deeptrace's build output via `find_library`).
 
 ### 2.1 Windows
 
@@ -34,67 +34,64 @@ deeptrace/script/build_debug_wsl.sh
 cli/script/build_debug_wsl.sh
 ```
 
-WSL 脚本 = `cmd.exe /c script\build_debug.bat`,与 Windows 行为完全一致。
+The WSL scripts are equivalent to `cmd.exe /c script\build_debug.bat` and behave identically to Windows.
 
-### 2.3 产物验证
+### 2.3 Artifact Verification
 
 ```
-deeptrace/out/lib/Debug/deeptrace.lib      # 静态库
-deeptrace/out/bin/Debug/deeptrace_target.exe  # 测试目标程序
-deeptrace/out/bin/Debug/testdll.dll        # 注入测试伴生 DLL
-cli/out/bin/Debug/deeptrace_cli.exe        # 命令行主程序
-cli/out/bin/Debug/deeptrace_target.exe     # cli e2e 用目标程序
+deeptrace/out/lib/Debug/deeptrace.lib      # static library
+deeptrace/out/bin/Debug/deeptrace_target.exe  # test target program
+deeptrace/out/bin/Debug/testdll.dll        # companion DLL for inject tests
+cli/out/bin/Debug/deeptrace_cli.exe        # command-line main program
+cli/out/bin/Debug/deeptrace_target.exe     # target program for cli e2e
 ```
 
-验证运行:
+Verify the build:
 
 ```bat
 cli\out\bin\Debug\deeptrace_cli.exe -v
 :: deeptrace_cli v1.0.0
 ```
 
-## 3. Release 构建
+## 3. Release Build
 
 ```bat
 deeptrace\script\build_release.bat
 cli\script\build_release.bat
 ```
 
-- Release 使用 `/MT`(MultiThreaded 静态运行时)+ vcpkg triplet `x64-windows-static`,
-  产物为**单文件免 DLL**,可直接分发。
-- 产物验证:`cli/out/bin/Release/deeptrace_cli.exe -v`
+- Release uses `/MT` (MultiThreaded static runtime) + vcpkg triplet `x64-windows-static`, producing a **single self-contained exe with no DLLs**, ready to distribute.
+- Verify: `cli/out/bin/Release/deeptrace_cli.exe -v`
 
-> 注意:首次 Release 构建需编译 keystone 的 LLVM(X86 后端),耗时较长,属正常现象。
+> Note: the first Release build compiles keystone's LLVM (X86 backend), which takes a while — this is expected.
 
-## 4. 打包(zip 归档)
+## 4. Packaging (zip Archive)
 
 ```bat
-cli\script\package.bat          :: 默认版本 v1.3
-cli\script\package.bat v1.4     :: 指定版本
+cli\script\package.bat          :: default version v1.3
+cli\script\package.bat v1.4     :: specify a version
 ```
 
-流程:构建 deeptrace Release → 构建 cli Release → 收集 `deeptrace_cli.exe` → 打 zip。
-产物:`cli/out/dist/deeptrace_cli-<版本>-win64.zip`(内含唯一 exe)。
-WSL 下用 `cli/script/package_wsl.sh [版本]`。
+Process: build deeptrace Release → build cli Release → collect `deeptrace_cli.exe` → zip. Output: `cli/out/dist/deeptrace_cli-<version>-win64.zip` (contains the exe plus LICENSE). Under WSL use `cli/script/package_wsl.sh [version]`.
 
-## 5. 常见编译问题
+## 5. Common Build Issues
 
-| 现象 | 原因与解决 |
-|------|-----------|
-| `LNK2038: runtime library mismatch` | 运行库不匹配。Debug 用 `/MDd`、Release 用 `/MT`,两项目必须同配置链接;确认未混用 debug/release 的 .lib |
-| `cs_disasm`/`cs_free`/`ks_*` 链接未解析 | deeptrace 是静态库,不合并三方依赖;CLI 必须显式链接 `keystone.lib` + `capstone.lib`(cli/src/CMakeLists.txt 已处理,勿删除) |
-| vcpkg 下载失败 / SSL 错误 | 构建脚本已设 `GIT_SSL_NO_VERIFY=1`;或先 `vcpkg install` 安装 gtest 依赖 |
-| LLVM 构建报找不到 python | `PYTHON_EXECUTABLE` 指向 `deeptrace/third_party/python/python.exe`(build_debug.bat 已设置;手动 cmake 时需自行设置) |
-| cmake configure 报陈旧缓存 | 删除 `out/build/<配置>/CMakeCache.txt` 后重跑(keystone/capstone 对象会复用,增量构建) |
-| `.bat` 运行时报命令错乱 | 脚本必须 CRLF 行尾(`.gitattributes` 已强制;在 WSL 编辑后先 `sed -i 's/\r*$/\r/'` 转回) |
+| Symptom | Cause & Solution |
+|---------|------------------|
+| `LNK2038: runtime library mismatch` | Runtime library mismatch. Debug uses `/MDd`, Release uses `/MT`; both projects must link the same configuration; do not mix debug/release .lib files |
+| `cs_disasm`/`cs_free`/`ks_*` unresolved symbols | deeptrace is a static library and does not bundle third-party deps; the CLI must explicitly link `keystone.lib` + `capstone.lib` (handled in cli/src/CMakeLists.txt — do not remove) |
+| vcpkg download failure / SSL error | The build scripts set `GIT_SSL_NO_VERIFY=1`; or run `vcpkg install` first to install the gtest dependency |
+| LLVM build reports python not found | `PYTHON_EXECUTABLE` should point to `deeptrace/third_party/python/python.exe` (set by build_debug.bat; set it yourself for manual cmake) |
+| cmake configure reports stale cache | Delete `out/build/<config>/CMakeCache.txt` and rerun (keystone/capstone objects are reused, incremental build) |
+| `.bat` commands garbled at runtime | Scripts must use CRLF line endings (enforced by `.gitattributes`; after editing under WSL, convert back with `sed -i 's/\r*$/\r/'`) |
 
-## 6. 目录约定
+## 6. Directory Conventions
 
 ```
-<项目>/out/
-├── build/<配置>/      CMake 构建目录(Ninja)
-├── bin/<配置>/        exe/dll 产物
-└── lib/<配置>/        lib 产物
+<project>/out/
+├── build/<config>/      CMake build directory (Ninja)
+├── bin/<config>/        exe/dll artifacts
+└── lib/<config>/        lib artifacts
 ```
 
-公共头跨项目直接引用:`cli` 的 include 路径指向 `../../deeptrace/include`(无 install 中间层)。
+The public header is referenced directly across projects: cli's include path points to `../../deeptrace/include` (no install intermediate layer).

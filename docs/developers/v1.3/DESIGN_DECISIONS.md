@@ -1,83 +1,83 @@
-# 技术决策记录(DESIGN_DECISIONS)
+# Technical Decision Records (DESIGN_DECISIONS)
 
-> 目标读者:维护者。每个决策记录「背景 → 方案对比 → 最终选择 → 理由」,不只写结论。
-> 依据:design/v1.0~v1.2 技术选型与实现踩坑记录(design/v1.2/deeptrace/00_CHANGELOG.md)。
+> Audience: maintainers. Each decision records "background → option comparison → final choice → rationale", not just the conclusion.
+> Basis: tech choices and implementation pitfalls from design/v1.0~v1.2 (design/v1.2/deeptrace/00_CHANGELOG.md).
 
-## ADR-01 为什么是「静态库 + 独立 CLI」双项目
+## ADR-01 Why a "static library + separate CLI" two-project setup
 
-- **背景**:能力(进程内存操作)与交互(命令行)是两类不同生命周期的产物;库需要被多次调用且可复用,CLI 只是库的一个消费者。
-- **方案对比**:
-  - 单项目:库与 CLI 混在一个 CMake 目标里 → 无法单独复用库、无法独立测试库。
-  - 双独立 CMake 项目:cli 经 `find_library` + include 路径引用 deeptrace 产物 → 库可独立交付(design 约定产物 `deeptrace.lib` + `deeptrace.h`,无 install 中间层)。
-- **选择**:双项目。CLI 是 deeptrace 库的**第一个且当前唯一**的消费者,库 API 设计的验收标准就是「CLI 能干净调用」。
+- **Background**: capability (process memory operations) and interaction (command line) are products with different lifecycles; the library needs to be called multiple times and reused, and the CLI is just one consumer of the library.
+- **Option comparison**:
+  - Single project: library and CLI mixed into one CMake target → library cannot be reused or tested independently.
+  - Two independent CMake projects: cli references deeptrace's output via `find_library` + include path → library can be delivered independently (design convention: `deeptrace.lib` + `deeptrace.h`, no install intermediate layer).
+- **Choice**: two projects. The CLI is the library's **first and currently only** consumer; the acceptance criterion for the library API design is "the CLI can call it cleanly".
 
-## ADR-02 为什么 deeptrace 用四层(domain/algorithm/infrastructure/service)
+## ADR-02 Why deeptrace uses four layers (domain/algorithm/infrastructure/service)
 
-- **背景**:进程内存操作涉及纯计算(hex/AOB/解码)与系统调用(WinAPI)两类本质不同的逻辑,混在一起难以测试与替换。
-- **方案对比**:
-  - 两层(接口 + 实现):WinAPI 与算法内联 → 算法不可单测、引擎不可替换(v1.0 自研解码器无法替换为 Capstone 就是教训)。
-  - 四层:算法纯计算无 I/O(可独立单测);infrastructure 只做「一次系统调用」封装;service 组装 + 持久化。
-- **选择**:四层。约束:算法层禁止 WinAPI/I/O;service 禁止直接 WinAPI;依赖单向向下。分层之后,v1.2 自研解码器→Capstone、自研编码器→Keystone 的引擎替换实现了 service/公共 API/CLI 零改动——这正是四层分层的收益(引擎适配仅限 infrastructure 内部)。
+- **Background**: process memory operations involve two essentially different kinds of logic — pure computation (hex/AOB/decoding) and system calls (WinAPI) — which are hard to test and replace when mixed together.
+- **Option comparison**:
+  - Two layers (interface + implementation): WinAPI and algorithms inlined → algorithms not unit-testable, engines not replaceable (the v1.0 hand-written decoder that couldn't be replaced with Capstone was the lesson).
+  - Four layers: the algorithm layer is pure computation with no I/O (independently unit-testable); infrastructure only wraps "one system call" per file; service composes and persists.
+- **Choice**: four layers. Constraints: the algorithm layer forbids WinAPI/I/O; service forbids direct WinAPI; dependencies point one-way downward. After layering, the v1.2 engine replacements (hand-written decoder → Capstone, hand-written encoder → Keystone) were achieved with zero changes to service/public APIs/CLI — this is the payoff of four-layer layering (engine adaptation is confined to infrastructure internals).
 
-## ADR-03 为什么 cli 用三层(command/interface/printing)
+## ADR-03 Why cli uses three layers (command/interface/printing)
 
-- **背景**:CLI 需要把 55 个 API 映射为命令;解析、调用、格式化是三类独立可测的职责。
-- **方案对比**:
-  - 单文件 main:不可测、不可扩展。
-  - 三层:command 只解析与校验、interface 只调 API、printing 只格式化(纯 ASCII,不依赖前两层)。
-- **选择**:三层。单元测试可分别覆盖 parser/printer/executor;新增命令只需加 cmd_*.cpp + commands 表。
+- **Background**: the CLI needs to map 55 APIs to commands; parsing, calling, and formatting are three independently testable responsibilities.
+- **Option comparison**:
+  - Single main file: untestable, unextendable.
+  - Three layers: command only parses and validates, interface only calls APIs, printing only formats (pure ASCII, independent of the first two layers).
+- **Choice**: three layers. Unit tests can cover parser/printer/executor separately; adding a command only requires a cmd_*.cpp + commands table entry.
 
-## ADR-04 为什么反汇编用 Capstone、汇编用 Keystone(源码自建)
+## ADR-04 Why Capstone for disassembly and Keystone for assembly (source-built)
 
-- **背景**:
-  - 自研 x64 解码器(~26KB 子集)覆盖不全(SSE/SSE2/REP 字符串指令等),且「解码不了就静默停」;
-  - 自研编码器对 `add rax,0` 等指令报 BadFormat(汇编失效 bug);
-  - vcpkg 的 capstone port 在本环境默认禁用全部架构(cs_open 返回 CS_ERR_ARCH)。
-- **方案对比**:
-  - vcpkg 安装:keystone port 全架构构建需数十分钟;capstone port 本环境不可用。
-  - 源码自建到 `third_party/`:keystone 裁剪 `LLVM_TARGETS_TO_BUILD=X86`;capstone 仅启用 X86 后端(`CAPSTONE_ARCHITECTURE_DEFAULT=OFF` + `CAPSTONE_X86_SUPPORT=ON`),关闭 tests/cstool/install。
-- **选择**:源码自建(中大型/环境适配库「手动下载到 third_party 优先」原则)。接口不变,service/公共 API/CLI 零改动。
-- **踩坑**:keystone 绕开根 CMakeLists 直接集成 llvm 子目录(避免 kstool/fuzz 等目标与 /MD 替换冲突);LLVM 构建需 python,Windows 侧用 `third_party/python` 嵌入式 python。
+- **Background**:
+  - The hand-written x64 decoder (~26KB subset) had incomplete coverage (SSE/SSE2/REP string instructions, etc.) and "silently stops when it can't decode";
+  - The hand-written encoder reported BadFormat for instructions like `add rax,0` (assembly failure bug);
+  - The vcpkg capstone port disables all architectures by default in this environment (cs_open returns CS_ERR_ARCH).
+- **Option comparison**:
+  - vcpkg install: building the keystone port with all architectures takes tens of minutes; the capstone port is unusable in this environment.
+  - Source-built into `third_party/`: keystone trimmed with `LLVM_TARGETS_TO_BUILD=X86`; capstone enabling only the X86 backend (`CAPSTONE_ARCHITECTURE_DEFAULT=OFF` + `CAPSTONE_X86_SUPPORT=ON`), tests/cstool/install disabled.
+- **Choice**: source-built (per the "medium/large and environment-adaptive libraries are manually downloaded into third_party first" principle). Interface unchanged; zero changes to service/public APIs/CLI.
+- **Pitfalls**: keystone bypasses the root CMakeLists and integrates the llvm subdirectory directly (to avoid kstool/fuzz targets conflicting with the /MD replacement); LLVM needs python, using the embedded `third_party/python` on Windows.
 
-## ADR-05 为什么反汇编用 `cs_disasm` 而不用 `cs_disasm_iter`
+## ADR-05 Why disassembly uses `cs_disasm` and not `cs_disasm_iter`
 
-- **背景**:Capstone 5.0.9 + MSVC 下,`cs_disasm_iter` + 栈上未初始化 `cs_insn` 的所有解码路径立即访问违例(0xc0000005);sandbox 同源独立验证程序用 `cs_disasm` 正常。
-- **方案对比**:`cs_disasm_iter`(调用方提供 cs_insn 缓冲区,本环境崩溃)vs `cs_disasm(count=1)`(内部自分配 insn 数组,稳定)。
-- **选择**:统一使用 `cs_disasm` 路径,不用 `cs_disasm_iter` + 栈结构体(design/v1.2 CHANGELOG 已记录,回归防护注释在 disasm 源码中)。
+- **Background**: under Capstone 5.0.9 + MSVC, `cs_disasm_iter` + an uninitialized `cs_insn` on the stack immediately faults (0xc0000005) on all decode paths; the sandbox independent verification program with the same source works fine with `cs_disasm`.
+- **Option comparison**: `cs_disasm_iter` (caller supplies the cs_insn buffer; crashes in this environment) vs `cs_disasm(count=1)` (internally allocates the insn array; stable).
+- **Choice**: uniformly use the `cs_disasm` path, not `cs_disasm_iter` + stack structs (recorded in design/v1.2 CHANGELOG; a regression-guard comment is in the disasm source).
 
-## ADR-06 为什么 Debug=/MDd、Release=/MT
+## ADR-06 Why Debug=/MDd, Release=/MT
 
-- **背景**:两项目共享构建约定,运行库必须一致,否则 LNK2038。
-- **方案对比**:统一 /MDd(动态)→ Release 产物需要 VC 运行库 DLL,不便分发;Release 用 /MT(静态)→ 单文件免 DLL。
-- **选择**:Debug=`/MDd`(x64-windows)、Release=`/MT`(x64-windows-static)。vcpkg triplet 同步切换;keystone/capstone 的 `BUILD_STATIC_RUNTIME` 保持默认 OFF,遵循 preset 的 `CMAKE_MSVC_RUNTIME_LIBRARY`,与库一致。
+- **Background**: both projects share build conventions; the runtime library must match or LNK2038 occurs.
+- **Option comparison**: uniform /MDd (dynamic) → Release artifacts need the VC runtime DLL, inconvenient to distribute; Release with /MT (static) → single file with no DLLs.
+- **Choice**: Debug=`/MDd` (x64-windows), Release=`/MT` (x64-windows-static). The vcpkg triplet switches in sync; keystone/capstone keep `BUILD_STATIC_RUNTIME` at its default OFF and follow the preset's `CMAKE_MSVC_RUNTIME_LIBRARY`, consistent with the library.
 
-## ADR-07 为什么断点/watch/注入状态用文件持久化到 %TEMP%
+## ADR-07 Why breakpoint/watch/inject state is persisted to files in %TEMP%
 
-- **背景**:CLI 是「单次命令」进程(会话=单次进程),但断点/watch/注入是跨命令的长期状态;进程退出后状态必须保留,下一次 CLI 调用继续生效。
-- **方案对比**:内存驻留(不可跨进程)、注册表(污染系统)、`%TEMP%/deeptrace_<pid>/` 状态文件(进程私有、无需清理协议、按 pid 隔离)。
-- **选择**:状态文件(`breakpoints.dat`/`watch.dat`/`inject.dat`,ASCII `|` 分隔行)。持久化由 service 层实现,算法层不参与。
+- **Background**: the CLI is a "single-command" process (session = one process invocation), but breakpoints/watches/injections are long-lived cross-command state; the state must survive process exit and keep working on the next CLI call.
+- **Option comparison**: memory-resident (cannot cross processes), registry (pollutes the system), `%TEMP%/deeptrace_<pid>/` state files (process-private, no cleanup protocol needed, isolated per pid).
+- **Choice**: state files (`breakpoints.dat`/`watch.dat`/`inject.dat`, ASCII `|`-separated lines). Persistence is implemented by the service layer; the algorithm layer is not involved.
 
-## ADR-08 为什么测试目标程序关闭 ASLR
+## ADR-08 Why the test target program has ASLR disabled
 
-- **背景**:集成/e2e 测试需要「已知地址读已知值」,但 ASLR 使每次启动地址随机。
-- **方案对比**:运行时解析地址(复杂、脆弱)vs 关闭 ASLR 使地址确定(简单、可断言)。
-- **选择**:target 用 `/DYNAMICBASE:NO /HIGHENTROPYVA:NO` 关闭 ASLR,banner 输出 `PID:` 行 + 变量地址表(`g_int` 等)。target 不链接 deeptrace,是独立的可执行测试锚点。
+- **Background**: integration/e2e tests need "known values at known addresses", but ASLR randomizes addresses on every launch.
+- **Option comparison**: parse addresses at runtime (complex, fragile) vs disable ASLR so addresses are deterministic (simple, assertable).
+- **Choice**: the target uses `/DYNAMICBASE:NO /HIGHENTROPYVA:NO` to disable ASLR and prints a banner with the `PID:` line + variable address table (`g_int` etc.). The target does not link deeptrace; it is an independent executable test anchor.
 
-## ADR-09 为什么静态库不合并三方依赖,消费方需显式链接
+## ADR-09 Why the static library does not merge third-party dependencies (consumers link explicitly)
 
-- **背景**:`target_link_libraries(deeptrace PRIVATE capstone_static)` 的依赖不会进入 CLI 的链接行——CLI 是独立 CMake 项目,经 find_library 引用 deeptrace.lib,链接时报 `cs_disasm`/`cs_free` 未解析。
-- **方案对比**:把 capstone/keystone 合并进 deeptrace.lib(静态库本质不传递 PRIVATE 依赖,需换 OBJECT 库等复杂方案)vs 消费方显式 `find_library(keystone/capstone)` 并链接(透明、符合 CMake 静态库惯例)。
-- **选择**:消费方显式链接(cli/src/CMakeLists.txt 已实现,并有注释说明,勿删除)。
+- **Background**: `target_link_libraries(deeptrace PRIVATE capstone_static)` dependencies do not reach the CLI's link line — the CLI is an independent CMake project referencing deeptrace.lib via find_library, and linking fails with unresolved `cs_disasm`/`cs_free`.
+- **Option comparison**: merging capstone/keystone into deeptrace.lib (a static library does not propagate PRIVATE dependencies by nature; would require complex schemes like OBJECT libraries) vs consumers explicitly `find_library(keystone/capstone)` and link (transparent, matches CMake static-library conventions).
+- **Choice**: consumers link explicitly (implemented in cli/src/CMakeLists.txt with an explanatory comment — do not remove).
 
-## ADR-10 为什么状态目录用 `deeptrace_<pid>` 且状态文件按 pid 隔离
+## ADR-10 Why the state directory is `deeptrace_<pid>` with per-pid state file isolation
 
-- **背景**:同一目标进程的断点/watch 状态必须唯一且跨调用稳定;不同 pid 的状态不能互相污染。
-- **方案对比**:全局单文件(多进程冲突)vs 按 pid 子目录(`%TEMP%/deeptrace_<pid>/`,天然隔离、目录名含 pid 可追溯)。
-- **选择**:`%TEMP%/deeptrace_<pid>/`(session.cpp `state_dir()` 实现)。
+- **Background**: breakpoint/watch state for the same target process must be unique and stable across invocations; state for different pids must not pollute each other.
+- **Option comparison**: a single global file (multi-process conflicts) vs per-pid subdirectories (`%TEMP%/deeptrace_<pid>/`, naturally isolated, directory name contains the pid for traceability).
+- **Choice**: `%TEMP%/deeptrace_<pid>/` (implemented by `state_dir()` in session.cpp).
 
-## 已知限制与取舍
+## Known Limitations and Trade-offs
 
-- 仅 Windows x64;无跨平台计划(公共头已用标准类型,保留理论可移植性)。
-- 断点状态文件在目标进程退出后仍残留于 %TEMP%(无害,但需手动清理)。
-- 部分调试操作(硬件断点/页守卫)依赖 x64 架构能力,非 x64 目标不支持。
-- e2e 需要 Debug 构建 + testdll.dll;Release 打包产物仅含 deeptrace_cli.exe(不包含测试件)。
+- Windows x64 only; no cross-platform plans (the public header already uses standard types, preserving theoretical portability).
+- Breakpoint state files remain in %TEMP% after the target process exits (harmless, but needs manual cleanup).
+- Some debug operations (hardware breakpoints/page guards) depend on x64 architecture capabilities; non-x64 targets are unsupported.
+- e2e requires a Debug build + testdll.dll; Release packaging contains only deeptrace_cli.exe (no test artifacts).

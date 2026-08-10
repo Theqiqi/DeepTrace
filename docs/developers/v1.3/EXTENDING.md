@@ -1,41 +1,41 @@
-# 扩展开发指南(EXTENDING)
+# Extension Guide (EXTENDING)
 
-> 目标读者:贡献者。说明扩展点并给出完整示例(代码 + 预期输出)。
-> 函数级 API 说明见 [API 文档](../../api/v1.3/README.md);架构约定见 [ARCHITECTURE.md](ARCHITECTURE.md);测试要求见 [TESTING.md](TESTING.md)。
+> Audience: contributors. Explains the extension points and provides complete examples (code + expected output).
+> For function-level API details see the [API Documentation](../../api/v1.3/README.md); architecture conventions in [ARCHITECTURE.md](ARCHITECTURE.md); testing requirements in [TESTING.md](TESTING.md).
 
-## 1. 扩展点总览
+## 1. Extension Point Overview
 
-| 扩展类型 | 位置 | 改动面 |
-|---------|------|--------|
-| 新增 CLI 命令 | `cli/src/command/commands.cpp` + 新增/修改 `cli/src/interface/cmd_*.cpp` | 命令表 + 执行函数(+ e2e 断言) |
-| 新增公共 API | `deeptrace/include/deeptrace.h` + `deeptrace/src/service/` | 公共头 + service 实现(+ 集成测试) |
-| 新增算法 | `deeptrace/src/algorithm/` | 纯计算模块 + 单元测试 |
-| 替换引擎(汇编/反汇编) | `deeptrace/src/infrastructure/assembly|disassembly/` | 仅基础设施内部,上层零改动 |
+| Extension type | Location | Files touched |
+|----------------|----------|---------------|
+| New CLI command | `cli/src/command/commands.cpp` + new/edit `cli/src/interface/cmd_*.cpp` | command table + executor function (+ e2e assertions) |
+| New public API | `deeptrace/include/deeptrace.h` + `deeptrace/src/service/` | public header + service implementation (+ integration tests) |
+| New algorithm | `deeptrace/src/algorithm/` | pure-computation module + unit tests |
+| Engine replacement (assembly/disassembly) | `deeptrace/src/infrastructure/assembly|disassembly/` | infrastructure internal only, zero changes above |
 
-所有扩展都必须配套测试(见 [TESTING.md](TESTING.md)),并同步更新 API 文档(`docs/api/v1.3/`)。
+All extensions must ship with tests (see [TESTING.md](TESTING.md)) and update the API documentation (`docs/api/v1.3/`) in sync.
 
 ---
 
-## 2. 新增 CLI 命令(完整示例)
+## 2. Adding a New CLI Command (Complete Example)
 
-目标:新增 `ps list2` 命令(与 `ps list` 等价,仅展示一个动作里多个分支的写法)。
+Goal: add a `ps list2` command (equivalent to `ps list`, demonstrating how multiple branches are written in one action).
 
-### 2.1 命令表(cli/src/command/commands.cpp)
+### 2.1 Command Table (cli/src/command/commands.cpp)
 
-在 `command_table()` 的 `// ---- ps ----` 段追加:
+Append to the `// ---- ps ----` section of `command_table()`:
 
 ```cpp
 cmd("ps", "list2", "ps list2", "List all processes (example)", {}),
 ```
 
-`cmd(group, action, usage, brief, params)` 构造一行命令规格;`req()`/`opt()` 声明必填/可选参数,类型枚举见 `commands.h` 的 `ParamSpec::type` 注释。
+`cmd(group, action, usage, brief, params)` builds one row of command specs; `req()`/`opt()` declare required/optional parameters, type enums are documented in the `ParamSpec::type` comment in commands.h.
 
-### 2.2 执行函数(cli/src/interface/cmd_process.cpp)
+### 2.2 Executor Function (cli/src/interface/cmd_process.cpp)
 
-在 `cmd_ps` 中追加分支:
+Add a branch in `cmd_ps`:
 
 ```cpp
-if (req.action == "list2") {          // 与 list 相同的实现,展示多分支
+if (req.action == "list2") {          // same implementation as list, shows multi-branch
     std::vector<deeptrace::ProcessInfo> procs;
     Result r = deeptrace::enumerate_processes(procs);
     if (r != Result::Ok) return internal::report_error(r, "");
@@ -44,43 +44,43 @@ if (req.action == "list2") {          // 与 list 相同的实现,展示多分�
 }
 ```
 
-### 2.3 预期输出
+### 2.3 Expected Output
 
 ```bat
 cli\out\bin\Debug\deeptrace_cli.exe ps list2
 :: PID        NAME
 :: 1234       deeptrace_target.exe
-:: ...        (与 ps list 一致)
+:: ...        (same as ps list)
 ```
 
-### 2.4 约定与检查
+### 2.4 Conventions & Checks
 
-- `cmd_ps` 是 `deeptrace_cli` 命名空间函数,声明在 `interface/cmd.h`(按 `req.action` 分派)。
-- 参数从 `req.args[i]` 取,`internal::to_u32`/`to_u64` 等辅助在 `interface/executor.cpp` 的 `internal` 命名空间。
-- 错误统一 `internal::report_error(r, arg)`,成功经 `printer::print_*` 输出;禁止直接 printf 业务结果。
-- 退出码:0 成功 / 1 执行失败 / 2 用法错误。
-- 必须补 e2e 断言(`cli/test/e2e/test_cli_e2e.py` 的 `check(...)`)。
+- `cmd_ps` is a `deeptrace_cli` namespace function declared in `interface/cmd.h` (dispatched by `req.action`).
+- Parameters are read from `req.args[i]`; helpers like `internal::to_u32`/`to_u64` live in the `internal` namespace of `interface/executor.cpp`.
+- Errors go through `internal::report_error(r, arg)` uniformly; success is printed via `printer::print_*`; direct printf of business results is forbidden.
+- Exit codes: 0 success / 1 execution failure / 2 usage error.
+- e2e assertions are mandatory (`check(...)` in `cli/test/e2e/test_cli_e2e.py`).
 
 ---
 
-## 3. 新增公共 API(分层改动清单)
+## 3. Adding a New Public API (Layer-by-Layer Change Checklist)
 
-目标:新增 `deeptrace::foo_bar()` 的完整改动面。
+Goal: the complete change surface for a new `deeptrace::foo_bar()`.
 
-### 3.1 公共头(deeptrace/include/deeptrace.h)
+### 3.1 Public Header (deeptrace/include/deeptrace.h)
 
 ```cpp
 // ---- foo ------------------------------------------------------------------
-// 说明:xxx。前置:已 attach。返回 Result 错误码见 API 文档。
+// Description: xxx. Prerequisite: attached. See the API docs for Result error codes.
 Result foo_bar(uint32_t param, std::vector<uint32_t>& out);
 ```
 
-### 3.2 service 实现(deeptrace/src/service/foo.cpp,新文件)
+### 3.2 service Implementation (deeptrace/src/service/foo.cpp, new file)
 
-遵循既有约定:每个 service 有自己的头文件(如 `service/process.h`),公共 API 由 `include/deeptrace.h` 暴露。先建 `service/foo.h` 声明内部签名,再实现:
+Follow existing conventions: each service has its own header (e.g. `service/process.h`); public APIs are exposed by `include/deeptrace.h`. First create `service/foo.h` declaring the internal signature, then implement:
 
 ```cpp
-// service/foo.h(仅库内使用,不进公共头)
+// service/foo.h (library-internal only, not in the public header)
 #pragma once
 #include "domain/types.h"
 namespace deeptrace {
@@ -96,32 +96,32 @@ Result foo_bar(uint32_t param, std::vector<uint32_t>& out);
 namespace deeptrace {
 
 Result foo_bar(uint32_t param, std::vector<uint32_t>& out) {
-    if (param == 0) return Result::InvalidArg;          // 参数校验
-    // 组装:internal 算法 / 基础设施能力,禁止直接 WinAPI
+    if (param == 0) return Result::InvalidArg;          // parameter validation
+    // compose: internal algorithms / infrastructure capabilities, no direct WinAPI
     return Result::Ok;
 }
 
 }  // namespace deeptrace
 ```
 
-service 公共函数放 `deeptrace` 命名空间;会话相关辅助(session()/state_dir())在 `deeptrace::internal`,经 `service/session.h` 引用。
+service public functions go in the `deeptrace` namespace; session-related helpers (session()/state_dir()) are in `deeptrace::internal`, referenced via `service/session.h`.
 
-### 3.3 注册构建(deeptrace/src/CMakeLists.txt)
+### 3.3 Build Registration (deeptrace/src/CMakeLists.txt)
 
-在 `add_library(deeptrace STATIC ...)` 列表追加 `service/foo.h` + `service/foo.cpp`。
+Append `service/foo.h` + `service/foo.cpp` to the `add_library(deeptrace STATIC ...)` list.
 
-### 3.4 同步事项
+### 3.4 Sync Checklist
 
-- 若涉及新枚举/结构体:追加到 `src/domain/types.h` **并同步** `include/domain/types.h`(两个文件必须一致)。
-- 集成测试:在 `deeptrace/test/integration/` 新增用例(真实 target)。
-- API 文档:更新 `docs/api/v1.3/`(函数签名/参数/返回值/行为),并记录 CHANGELOG。
-- CLI(可选):按第 2 节包装为命令。
+- If new enums/structs are involved: append to `src/domain/types.h` **and sync** `include/domain/types.h` (the two files must be identical).
+- Integration tests: add cases in `deeptrace/test/integration/` (real target).
+- API docs: update `docs/api/v1.3/` (function signature/parameters/return values/behavior) and record in the CHANGELOG.
+- CLI (optional): wrap it as a command per section 2.
 
 ---
 
-## 4. 新增算法(纯计算 + 单元测试)
+## 4. Adding a New Algorithm (Pure Computation + Unit Tests)
 
-### 4.1 实现(deeptrace/src/algorithm/foo.h/.cpp)
+### 4.1 Implementation (deeptrace/src/algorithm/foo.h/.cpp)
 
 ```cpp
 // foo.h
@@ -129,16 +129,16 @@ service 公共函数放 `deeptrace` 命名空间;会话相关辅助(session()/st
 #include <cstdint>
 #include <vector>
 namespace deeptrace::internal {
-// 纯计算:无 WinAPI、无 I/O。返回 false 表示输入非法。
+// Pure computation: no WinAPI, no I/O. Returns false for invalid input.
 bool foo_transform(const std::vector<uint8_t>& in, std::vector<uint8_t>& out);
 }
 ```
 
-### 4.2 注册(deeptrace/src/CMakeLists.txt)
+### 4.2 Registration (deeptrace/src/CMakeLists.txt)
 
-在 `add_library` 列表追加 `algorithm/foo.h` + `algorithm/foo.cpp`。
+Append `algorithm/foo.h` + `algorithm/foo.cpp` to the `add_library` list.
 
-### 4.3 单元测试(deeptrace/test/unit/foo_test.cpp)
+### 4.3 Unit Test (deeptrace/test/unit/foo_test.cpp)
 
 ```cpp
 #include <gtest/gtest.h>
@@ -153,30 +153,30 @@ TEST(FooTest, Transform) {
 }
 ```
 
-加入 `deeptrace/test/unit/CMakeLists.txt` 的 `add_executable(deeptrace_unit_test ...)` 列表。算法层单测不启动进程,只测纯函数。
+Add to the `add_executable(deeptrace_unit_test ...)` list in `deeptrace/test/unit/CMakeLists.txt`. Algorithm-layer unit tests do not launch processes; they test pure functions only.
 
 ---
 
-## 5. 替换引擎(汇编/反汇编)
+## 5. Engine Replacement (Assembly/Disassembly)
 
-先例:`design/v1.2/deeptrace/00_CHANGELOG.md`(自研解码器 → Capstone、自研编码器 → Keystone)。
+Precedent: `design/v1.2/deeptrace/00_CHANGELOG.md` (hand-written decoder → Capstone, hand-written encoder → Keystone).
 
-原则:
-- 引擎适配文件(`infrastructure/disassembly/disasm.{h,cpp}`、`infrastructure/assembly/asmenc.{h,cpp}`)只暴露纯函数接口;
-- 替换实现时**保持接口不变**,service/公共 API/CLI 零改动;
-- 引擎以源码形式放在 `deeptrace/third_party/`,CMake 裁剪后端;静态库不合并依赖,CLI 需显式链接;
-- 输出格式变化时同步更新 `test/unit/disasm_test.cpp` / `asm_test.cpp` 断言与 API 文档示例;
-- 踩坑:本环境统一用 `cs_disasm` 路径(不用 `cs_disasm_iter` + 栈结构体,见 DESIGN_DECISIONS ADR-05)。
+Principles:
+- Engine adapter files (`infrastructure/disassembly/disasm.{h,cpp}`, `infrastructure/assembly/asmenc.{h,cpp}`) expose only pure-function interfaces;
+- When replacing the implementation, **keep the interface unchanged**; service/public APIs/CLI change zero lines;
+- Engines ship as source under `deeptrace/third_party/`, CMake trims the backends; the static library does not merge dependencies, so the CLI must link explicitly;
+- When output formats change, update the assertions in `test/unit/disasm_test.cpp` / `asm_test.cpp` and the API doc examples in sync;
+- Pitfall: use the `cs_disasm` path uniformly in this environment (not `cs_disasm_iter` + stack structs, see ADR-05 in DESIGN_DECISIONS).
 
 ---
 
-## 6. 测试要求(扩展必读)
+## 6. Testing Requirements (Must-Read for Extensions)
 
-| 扩展 | 必须配套 |
-|------|---------|
-| 新命令 | parser 单测(如涉及参数)+ e2e 断言 |
-| 新 API | 集成测试(真实 target) |
-| 新算法 | 单元测试(纯函数边界/条件/分组) |
-| 引擎替换 | 单元测试断言更新 + 全量回归(Debug/Release) |
+| Extension | Required companion tests |
+|-----------|--------------------------|
+| New command | parser unit tests (if parameters involved) + e2e assertions |
+| New API | integration tests (real target) |
+| New algorithm | unit tests (pure-function boundaries/conditions/groups) |
+| Engine replacement | unit test assertion updates + full regression (Debug/Release) |
 
-全量回归命令见 [TESTING.md](TESTING.md) 第 2.4 节。
+Full regression commands are in section 2.4 of [TESTING.md](TESTING.md).
