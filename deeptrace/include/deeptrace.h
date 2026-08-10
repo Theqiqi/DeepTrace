@@ -3,7 +3,7 @@
 // Public API header. This is the ONLY header a consumer (CLI) may include.
 // All public types use standard C++ types only (no windows.h types).
 // Detailed per-function docs (params/returns/error codes) live in
-// docs/api/v1.3/ (see docs/developers/v1.3/ for architecture).
+// docs/api/v1.3.0/ (see docs/developers/v1.3.0/ for architecture).
 
 #include "domain/types.h"
 
