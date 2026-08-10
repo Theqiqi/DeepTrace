@@ -1,54 +1,56 @@
-# 模块:内存
+# Module: Memory
 
-远程内存读写能力。全部函数要求已 `attach` 目标进程,否则返回 `NotAttached`。
+Remote memory read/write capabilities. All functions require an `attach` to the target process, otherwise they return `NotAttached`.
 
 ## deeptrace::memory_read
 
-### 语法
+### Syntax
 
 ```cpp
 Result memory_read(uintptr_t addr, void* buf, size_t size, size_t* out_read);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `addr` | `uintptr_t` | 目标进程内起始地址 |
-| `buf` | `void*` | 输出缓冲区(调用方分配,至少 `size` 字节) |
-| `size` | `size_t` | 期望读取字节数,必须非 0 |
-| `out_read` | `size_t*` | 可选,实际读取字节数;传 `nullptr` 忽略 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `addr` | `uintptr_t` | start address inside the target process |
+| `buf` | `void*` | output buffer (caller-allocated, at least `size` bytes) |
+| `size` | `size_t` | number of bytes requested; must be non-zero |
+| `out_read` | `size_t*` | optional, actual number of bytes read; pass `nullptr` to ignore |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 读取调用成功(可能为部分读取,以 `*out_read` 为准) |
-| `Result::InvalidArg` | `buf == nullptr` 或 `size == 0` |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::ReadFault` | 目标内存不可读 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | read call succeeded (may be partial; trust `*out_read`) |
+| `Result::InvalidArg` | `buf == nullptr` or `size == 0` |
+| `Result::NotAttached` | no attached session |
+| `Result::ReadFault` | target memory unreadable |
 
-### 说明从目标进程 `addr` 处读取最多 `size` 字节到本地 `buf`。与 `memory_dump` 不同,该函数不强制读满:实际读取长度写入 `out_read`(底层 `ReadProcessMemory` 对不可读页通常整体失败,仅在跨页边界等场景可能出现部分读取)。适合读取已知大小的结构体、变量或不确定可读性的区域。地址越界或页不可读时返回 `ReadFault` 而非崩溃。
+### Description
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Reads up to `size` bytes from `addr` in the target process into the local `buf`. Unlike `memory_dump`, this function does not force a full read: the actual length read is written to `out_read` (the underlying `ReadProcessMemory` typically fails wholesale on unreadable pages; partial reads only occur in scenarios such as page-boundary crossings). Suitable for reading structs/variables of known size or regions of uncertain readability. Out-of-range addresses or unreadable pages return `ReadFault` instead of crashing.
 
-### 示例
+Prerequisites: `attach(pid)` done. Postconditions: none.
+
+### Example
 
 ```cpp
 uint8_t buf[16];
 size_t got = 0;
 if (deeptrace::memory_read(0x140001000, buf, sizeof buf, &got) == deeptrace::Result::Ok) {
-    // buf[0..got) 为读取到的数据
+    // buf[0..got) contains the data read
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::memory_write](#deeptracememory_write)
 - [deeptrace::memory_dump](#deeptracememory_dump)
@@ -57,39 +59,37 @@ if (deeptrace::memory_read(0x140001000, buf, sizeof buf, &got) == deeptrace::Res
 
 ## deeptrace::memory_write
 
-### 语法
+### Syntax
 
 ```cpp
 Result memory_write(uintptr_t addr, const void* buf, size_t size, size_t* out_written);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `addr` | `uintptr_t` | 目标进程内起始地址 |
-| `buf` | `const void*` | 待写入的本地数据 |
-| `size` | `size_t` | 写入字节数,必须非 0 |
-| `out_written` | `size_t*` | 可选,实际写入字节数 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `addr` | `uintptr_t` | start address inside the target process |
+| `buf` | `const void*` | local data to write |
+| `size` | `size_t` | number of bytes to write; must be non-zero |
+| `out_written` | `size_t*` | optional, actual number of bytes written |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 写入调用成功(可能部分写入) |
-| `Result::InvalidArg` | `buf == nullptr` 或 `size == 0` |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::WriteFault` | 目标内存不可写(只读页/越界) |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | write call succeeded (may be partial) |
+| `Result::InvalidArg` | `buf == nullptr` or `size == 0` |
+| `Result::NotAttached` | no attached session |
+| `Result::WriteFault` | target memory not writable (read-only page/out of range) |
 
-### 说明
+### Description
 
-向目标进程 `addr` 处写入 `size` 字节本地数据。目标内存必须可写(如 `PAGE_READWRITE`),
-写只读代码段或代码页会返回 `WriteFault`。典型用途:修改全局变量、游戏数值、绕过检查等。
-注意写目标代码段通常需要先调整页保护(见 `guard_clear`/`ProtectRegion` 相关能力)。
+Writes `size` bytes of local data to `addr` in the target process. The target memory must be writable (e.g. `PAGE_READWRITE`); writing a read-only code section or code page returns `WriteFault`. Typical uses: modifying global variables, game values, bypassing checks, etc. Note that writing to the target's code section usually requires adjusting page protection first (see the `guard_clear`/`ProtectRegion` capabilities).
 
-前置条件:已 `attach(pid)`;目标地址可写。后置条件:目标内存被修改。
+Prerequisites: `attach(pid)` done; the target address is writable. Postconditions: target memory modified.
 
-### 示例
+### Example
 
 ```cpp
 uint32_t v = 0xCAFEBABE;
@@ -97,13 +97,13 @@ size_t written = 0;
 deeptrace::memory_write(0x140001000, &v, sizeof v, &written);
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::memory_read](#deeptracememory_read)
 
@@ -111,39 +111,36 @@ deeptrace::memory_write(0x140001000, &v, sizeof v, &written);
 
 ## deeptrace::memory_dump
 
-### 语法
+### Syntax
 
 ```cpp
 Result memory_dump(uintptr_t addr, size_t size, std::vector<uint8_t>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `addr` | `uintptr_t` | 目标进程内起始地址 |
-| `size` | `size_t` | 读取字节数,范围 1 ~ 64 MiB |
-| `out` | `std::vector<uint8_t>&` | 输出参数,完整字节序列 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `addr` | `uintptr_t` | start address inside the target process |
+| `size` | `size_t` | number of bytes to read, range 1 ~ 64 MiB |
+| `out` | `std::vector<uint8_t>&` | output parameter, complete byte sequence |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 完整读取 `size` 字节 |
-| `Result::InvalidArg` | `size == 0` 或 `size > 64 MiB` |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::ReadFault` | 读取不完整(区域含不可读页) |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | fully read `size` bytes |
+| `Result::InvalidArg` | `size == 0` or `size > 64 MiB` |
+| `Result::NotAttached` | no attached session |
+| `Result::ReadFault` | incomplete read (region contains unreadable pages) |
 
-### 说明
+### Description
 
-一次性读取目标进程 `addr` 起 `size` 字节到 `out`。与 `memory_read` 不同,它要求
-**完整读取**:任何不完整都返回 `ReadFault` 且不输出部分数据,适合转储连续内存区域、
-模块数据或用于十六进制查看。上限 64 MiB 防止单次分配过大;更大的区域应分块调用
-或使用 `memory_regions` 规划。
+Reads `size` bytes starting at `addr` in the target process into `out` in one call. Unlike `memory_read`, it requires a **full read**: any incompleteness returns `ReadFault` without outputting partial data. Suitable for dumping contiguous memory regions, module data, or hex viewing. The 64 MiB cap prevents oversized single allocations; larger regions should be read in chunks or planned with `memory_regions`.
 
-前置条件:已 `attach(pid)`;目标区域连续可读。后置条件:无。
+Prerequisites: `attach(pid)` done; the target region is contiguously readable. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<uint8_t> bytes;
@@ -152,13 +149,13 @@ if (deeptrace::memory_dump(0x140001000, 0x100, bytes) == deeptrace::Result::Ok) 
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::memory_read](#deeptracememory_read)
 - [deeptrace::memory_regions](#deeptracememory_regions)
@@ -167,50 +164,48 @@ if (deeptrace::memory_dump(0x140001000, 0x100, bytes) == deeptrace::Result::Ok) 
 
 ## deeptrace::memory_regions
 
-### 语法
+### Syntax
 
 ```cpp
 Result memory_regions(std::vector<MemoryRegion>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `out` | `std::vector<MemoryRegion>&` | 输出参数,目标进程内存区域列表 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `out` | `std::vector<MemoryRegion>&` | output parameter, list of the target process's memory regions |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 枚举成功 |
-| `Result::NotAttached` | 未附加会话 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | enumeration succeeded |
+| `Result::NotAttached` | no attached session |
 
-### 说明
+### Description
 
-枚举目标进程全部已提交/保留的内存区域(基址、大小、保护、状态、类型),供内存布局
-分析、特征码扫描规划(`pattern_scan` 内部即使用该接口)或防护策略设计使用。
-`MemoryRegion.protection` 为 `PAGE_*` 位组合,`state` 区分 `MEM_COMMIT`/`MEM_RESERVE`。
+Enumerates all committed/reserved memory regions of the target process (base, size, protection, state, type) for memory layout analysis, pattern-scan planning (`pattern_scan` uses this interface internally), or protection strategy design. `MemoryRegion.protection` is a combination of `PAGE_*` bits; `state` distinguishes `MEM_COMMIT`/`MEM_RESERVE`.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<deeptrace::MemoryRegion> regions;
 deeptrace::memory_regions(regions);
 for (const auto& rg : regions) {
-    if (rg.state == MEM_COMMIT) { /* 处理已提交区域 */ }
+    if (rg.state == MEM_COMMIT) { /* handle committed regions */ }
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::pattern_scan](RESOLVE.md#deeptracepattern_scan)
 
@@ -218,39 +213,36 @@ for (const auto& rg : regions) {
 
 ## deeptrace::memory_readval
 
-### 语法
+### Syntax
 
 ```cpp
 Result memory_readval(uintptr_t addr, ValueType type, std::string& out_text);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `addr` | `uintptr_t` | 目标进程内起始地址 |
-| `type` | `ValueType` | 值类型(决定读取长度与格式化方式) |
-| `out_text` | `std::string&` | 输出参数,格式化后的值文本 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `addr` | `uintptr_t` | start address inside the target process |
+| `type` | `ValueType` | value type (determines read length and formatting) |
+| `out_text` | `std::string&` | output parameter, formatted value text |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 读取并格式化成功 |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::ReadFault` | 无法完整读取该类型所需字节数 |
-| `Result::Error` | 值格式化失败(理论不可达) |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | read and formatted successfully |
+| `Result::NotAttached` | no attached session |
+| `Result::ReadFault` | could not fully read the bytes required for this type |
+| `Result::Error` | value formatting failed (theoretically unreachable) |
 
-### 说明
+### Description
 
-按 `ValueType` 读取目标地址处的类型化值并格式化为文本:整数类型输出 `0x` 前缀十六进制
-(如 `0x11223344`),浮点类型输出十进制。读取长度为该类型的固定大小(见
-[Types/ENUMS.md](../Types/ENUMS.md)),不足则 `ReadFault`。该函数是「查看目标某个
-变量的当前值」的快捷方式,CLI 的 `mem readval` 命令即基于此。
+Reads a typed value at the target address per `ValueType` and formats it as text: integer types output `0x`-prefixed hex (e.g. `0x11223344`), float types output decimal. The read length is the type's fixed size (see [Types/ENUMS.md](../Types/ENUMS.md)); anything short returns `ReadFault`. This function is a shortcut for "view the current value of some variable in the target"; the CLI's `mem readval` command is based on it.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::string text;
@@ -259,13 +251,13 @@ if (deeptrace::memory_readval(addr, deeptrace::ValueType::Dword, text) == deeptr
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::memory_read](#deeptracememory_read)
 - [ValueType](../Types/ENUMS.md)

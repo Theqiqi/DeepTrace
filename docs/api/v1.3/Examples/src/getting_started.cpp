@@ -18,7 +18,7 @@ int main() {
     // 1. enumerate processes, let the user choose a target
     std::vector<deeptrace::ProcessInfo> procs;
     if (deeptrace::enumerate_processes(procs) != deeptrace::Result::Ok) {
-        std::cerr << "枚举进程失败\n";
+        std::cerr << "failed to enumerate processes\n";
         return 1;
     }
     uint32_t pid = 0;
@@ -30,7 +30,7 @@ int main() {
 
     // 2. attach to the target (establish session)
     if (deeptrace::attach(pid) != deeptrace::Result::Ok) {
-        std::cerr << "附加失败(可能需要管理员权限)\n";
+        std::cerr << "attach failed (may need administrator privileges)\n";
         return 1;
     }
 
@@ -40,7 +40,7 @@ int main() {
     if (deeptrace::memory_read(0x140000000, &val, sizeof val, &got) ==
             deeptrace::Result::Ok &&
         got == sizeof val) {
-        std::cout << "读到的值: 0x" << std::hex << val << "\n";
+        std::cout << "read value: 0x" << std::hex << val << "\n";
     }
 
     // 4. detach session (required: prevents debuggee termination in debug mode)

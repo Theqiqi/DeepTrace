@@ -1,53 +1,52 @@
-# 示例:会话生命周期
+# Example: Session Lifecycle
 
-演示 deeptrace 最基础的流程:**枚举进程 → 附加 → 查询 → 分离**。
-源码:[src/session_lifecycle.cpp](src/session_lifecycle.cpp)(可直接编译运行)。
+Demonstrates the most basic deeptrace flow: **enumerate → attach → query → detach**.
+Source: [src/session_lifecycle.cpp](src/session_lifecycle.cpp) (compilable and runnable directly).
 
-## API 调用顺序
+## API Call Order
 
-| 步骤 | API | 说明 |
-|------|-----|------|
-| 1 | `enumerate_processes` | 无需会话,获取进程候选列表 |
-| 2 | `process_info` | 无需会话,按 pid 查询目标信息 |
-| 3 | `attach(pid)` | 建立会话(后续操作的前提) |
-| 4 | `session_pid` | 确认当前会话目标 |
-| 5 | `detach()` | 关闭会话 |
+| Step | API | Description |
+|------|-----|-------------|
+| 1 | `enumerate_processes` | no session needed; get the candidate process list |
+| 2 | `process_info` | no session needed; query target info by pid |
+| 3 | `attach(pid)` | establish a session (prerequisite for later operations) |
+| 4 | `session_pid` | confirm the current session target |
+| 5 | `detach()` | close the session |
 
-## 代码
+## Code
 
 ```cpp
-// 完整代码见 src/session_lifecycle.cpp,关键片段:
+// Full code in src/session_lifecycle.cpp; key excerpts:
 std::vector<deeptrace::ProcessInfo> procs;
-deeptrace::enumerate_processes(procs);              // 1. 枚举
+deeptrace::enumerate_processes(procs);              // 1. enumerate
 
 if (deeptrace::process_info(pid, info) == deeptrace::Result::Ok) {
     std::printf("pid=%u threads=%u\n", info.pid, info.thread_count);
-}                                                   // 2. 查询
+}                                                   // 2. query
 
-if (deeptrace::attach(pid) != deeptrace::Result::Ok) return 1;  // 3. 附加
+if (deeptrace::attach(pid) != deeptrace::Result::Ok) return 1;  // 3. attach
 
 uint32_t cur = 0;
-deeptrace::session_pid(&cur);                       // 4. 会话确认
+deeptrace::session_pid(&cur);                       // 4. confirm session
 
-deeptrace::detach();                                // 5. 分离
+deeptrace::detach();                                // 5. detach
 ```
 
-## 构建与运行
+## Build & Run
 
 ```bat
-build_examples.bat                      rem 或直接:
+build_examples.bat                      rem or directly:
 cl /nologo /std:c++20 /EHsc /MDd /I deeptrace\include src\session_lifecycle.cpp ^
    deeptrace\out\lib\Debug\deeptrace.lib ^
    deeptrace\out\build\debug\third_party\keystone\lib\keystone.lib ^
    deeptrace\out\lib\Debug\capstone.lib /link /out:session_lifecycle.exe
 
-session_lifecycle.exe 1234              rem 附加 pid 1234
+session_lifecycle.exe 1234              rem attach pid 1234
 ```
 
-> 注意:附加其他进程通常需要管理员权限;库的静态链接依赖见
-> [GettingStarted](../GettingStarted.md)。
+> Note: attaching to other processes usually requires administrator privileges; the library's static link dependencies are described in [GettingStarted](../GettingStarted.md).
 
-## 相关 API
+## Related APIs
 
 - [attach](../Modules/PROCESS.md#deeptraceattach)
 - [detach](../Modules/PROCESS.md#deeptracedetach)

@@ -1,9 +1,9 @@
 @echo off
 setlocal
 rem ============================================================
-rem  编译 docs/api/v1.3/Examples 下的全部示例(链接 Debug 版 deeptrace.lib)
-rem  用法:build_examples.bat
-rem  前置:deeptrace 库已构建(deeptrace\script\build_debug.bat)
+rem  Compile all examples under docs/api/v1.3/Examples (link Debug deeptrace.lib)
+rem  Usage: build_examples.bat
+rem  Prerequisite: deeptrace library built (deeptrace\script\build_debug.bat)
 rem ============================================================
 
 set "VSWHERE=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"

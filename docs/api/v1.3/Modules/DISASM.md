@@ -1,42 +1,39 @@
-# 模块:反汇编
+# Module: Disassembly
 
-对目标进程内存进行 x64 反汇编。要求已 `attach` 目标进程。
+x64 disassembly of the target process's memory. Requires an `attach` to the target process.
 
 ## deeptrace::disasm_at
 
-### 语法
+### Syntax
 
 ```cpp
 Result disasm_at(uintptr_t addr, uint32_t count, std::vector<Instruction>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `addr` | `uintptr_t` | 目标进程内起始地址 |
-| `count` | `uint32_t` | 期望反汇编的指令条数,范围 1 ~ 10000 |
-| `out` | `std::vector<Instruction>&` | 输出参数,指令列表(地址/机器码/文本) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `addr` | `uintptr_t` | start address inside the target process |
+| `count` | `uint32_t` | number of instructions to disassemble, range 1 ~ 10000 |
+| `out` | `std::vector<Instruction>&` | output parameter, instruction list (address/machine code/text) |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 反汇编成功(可能少于 `count` 条,以 `out.size()` 为准) |
-| `Result::InvalidArg` | `count == 0` 或 `count > 10000` |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::ReadFault` | 起始内存不可读 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | disassembly succeeded (may be fewer than `count` instructions; trust `out.size()`) |
+| `Result::InvalidArg` | `count == 0` or `count > 10000` |
+| `Result::NotAttached` | no attached session |
+| `Result::ReadFault` | start memory unreadable |
 
-### 说明
+### Description
 
-从 `addr` 起反汇编最多 `count` 条指令。内部按 `count × 15` 字节(x64 最长指令)预读,
-逐条解码;遇无法解码的字节或内存边界提前停止,返回已解码部分。每条 `Instruction`
-含指令地址、机器码字节与纯 ASCII 反汇编文本。典型用途:单步后查看 `*out_rip` 处的
-后续指令、HOOK 点定位、代码分析。
+Disassembles up to `count` instructions starting at `addr`. Internally it pre-reads `count × 15` bytes (the longest x64 instruction) and decodes instruction by instruction; it stops early on undecodable bytes or memory boundaries, returning the decoded portion. Each `Instruction` contains the instruction address, machine-code bytes, and pure-ASCII disassembly text. Typical uses: viewing the instructions after `*out_rip` after a single step, HOOK-point location, code analysis.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<deeptrace::Instruction> insns;
@@ -47,13 +44,13 @@ if (deeptrace::disasm_at(0x140001000, 10, insns) == deeptrace::Result::Ok) {
 }
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::disasm_range](#deeptracedisasm_range)
 
@@ -61,49 +58,48 @@ if (deeptrace::disasm_at(0x140001000, 10, insns) == deeptrace::Result::Ok) {
 
 ## deeptrace::disasm_range
 
-### 语法
+### Syntax
 
 ```cpp
 Result disasm_range(uintptr_t start, uintptr_t end, std::vector<Instruction>& out);
 ```
 
-### 参数
+### Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `start` | `uintptr_t` | 反汇编起始地址 |
-| `end` | `uintptr_t` | 反汇编结束地址(不含),`end >= start`,区间上限 64 MiB |
-| `out` | `std::vector<Instruction>&` | 输出参数,指令列表 |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `start` | `uintptr_t` | disassembly start address |
+| `end` | `uintptr_t` | disassembly end address (exclusive); `end >= start`, range cap 64 MiB |
+| `out` | `std::vector<Instruction>&` | output parameter, instruction list |
 
-### 返回值
+### Return Value
 
-| 返回值 | 含义 |
-|--------|------|
-| `Result::Ok` | 反汇编成功 |
-| `Result::InvalidArg` | `end < start` 或区间超过 64 MiB |
-| `Result::NotAttached` | 未附加会话 |
-| `Result::ReadFault` | 区间起始内存不可读 |
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | disassembly succeeded |
+| `Result::InvalidArg` | `end < start` or range over 64 MiB |
+| `Result::NotAttached` | no attached session |
+| `Result::ReadFault` | range start memory unreadable |
 
-### 说明
+### Description
 
-反汇编 `[start, end)` 地址区间内的全部可解码指令。相比 `disasm_at`,适合已知边界
-的整段代码分析(如整个函数体)。区间过大(>64 MiB)返回 `InvalidArg` 防止失控。
+Disassembles all decodable instructions in the `[start, end)` address range. Compared to `disasm_at`, it suits whole-section analysis with known boundaries (e.g. an entire function body). An oversized range (>64 MiB) returns `InvalidArg` to prevent runaway.
 
-前置条件:已 `attach(pid)`。后置条件:无。
+Prerequisites: `attach(pid)` done. Postconditions: none.
 
-### 示例
+### Example
 
 ```cpp
 std::vector<deeptrace::Instruction> insns;
 deeptrace::disasm_range(func_addr, func_addr + 0x200, insns);
 ```
 
-### 头文件
+### Header
 
 ```cpp
 #include "deeptrace.h"
 ```
 
-### 参见
+### See Also
 
 - [deeptrace::disasm_at](#deeptracedisasm_at)
