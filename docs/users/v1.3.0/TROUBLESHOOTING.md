@@ -58,7 +58,7 @@ The repo ships a test target program `deeptrace_target.exe` with address randomi
 ## 4. Verifying Your Installation
 
 ```
-deeptrace_cli -v        :: should show deeptrace_cli v1.0.0
+deeptrace_cli -v        :: should show deeptrace_cli v1.3.0
 deeptrace_cli -h        :: should show the command list
 deeptrace_cli ps list   :: should show the process table
 ```
