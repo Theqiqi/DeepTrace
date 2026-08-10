@@ -44,4 +44,6 @@ WSL 环境用同名 `*_wsl.sh` 脚本(自动桥接 cmd.exe)。
 | [TESTING.md](TESTING.md) | 贡献者 | 单元/集成/e2e 测试、target 程序、编写新测试 |
 | [EXTENDING.md](EXTENDING.md) | 贡献者 | 添加命令/API/算法/引擎的扩展指南 |
 | [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) | 维护者 | 技术决策记录(ADR) |
+| [ANALYSIS.md](ANALYSIS.md) | 维护者 | 分析阶段产出(代码分析/读者画像/文档需求) |
+| [DESIGN.md](DESIGN.md) | 维护者 | 设计阶段产出(结构设计/示例设计/技术选型) |
 | [CHANGELOG.md](CHANGELOG.md) | 维护者 | 文档变更历史 |
