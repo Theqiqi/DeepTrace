@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/build-CMake%20%2B%20Ninja%20%2B%20MSVC-informational" alt="CMake + Ninja + MSVC"/>
   <img src="https://img.shields.io/badge/version-v1.3-blueviolet" alt="v1.3"/>
   <img src="https://img.shields.io/badge/API-55%20functions-green" alt="55 个公共 API"/>
-  <img src="https://img.shields.io/badge/license-none%20yet-lightgrey" alt="许可证"/>
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="许可证"/>
 </p>
 
 # DeepTrace
@@ -144,4 +144,4 @@ sandbox/     实验验证项目(不参与交付)
 
 ## 许可证
 
-尚未指定。如有许可相关问题,见 [issue tracker](https://github.com/Theqiqi/DeepTrace/issues)。
+采用 [MIT 许可证](LICENSE) 分发。Copyright (c) 2026 Theqiqi。

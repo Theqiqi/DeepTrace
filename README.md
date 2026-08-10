@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/build-CMake%20%2B%20Ninja%20%2B%20MSVC-informational" alt="CMake + Ninja + MSVC"/>
   <img src="https://img.shields.io/badge/version-v1.3-blueviolet" alt="v1.3"/>
   <img src="https://img.shields.io/badge/API-55%20functions-green" alt="55 API functions"/>
-  <img src="https://img.shields.io/badge/license-none%20yet-lightgrey" alt="License"/>
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="License"/>
 </p>
 
 # DeepTrace
@@ -144,4 +144,4 @@ Additional references: [User Manual](docs/users/v1.3/USER_MANUAL.md) (full comma
 
 ## License
 
-Not yet specified. See [issue tracker](https://github.com/Theqiqi/DeepTrace/issues) if you have licensing questions.
+Distributed under the [MIT License](LICENSE). Copyright (c) 2026 Theqiqi.

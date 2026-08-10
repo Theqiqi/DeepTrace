@@ -65,6 +65,12 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem 随包附带 LICENSE(MIT,开源分发惯例)
+copy /y "..\LICENSE" "%STAGE%\" >nul 2>&1
+if errorlevel 1 (
+    echo WARNING: LICENSE copy failed, continuing.
+)
+
 rem ---- 4. 压缩为 zip ----
 if exist "%ARCHIVE%" del "%ARCHIVE%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path '%STAGE%\*' -DestinationPath '%ARCHIVE%'"
