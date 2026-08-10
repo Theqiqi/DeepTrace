@@ -1,79 +1,79 @@
-# 常见问题(FAQ)
+# Frequently Asked Questions (FAQ)
 
-> 目标读者:所有用户。按提问频率从高到低排列。
-> 每个问题:一句话问题 + 简短答案。详细步骤见[用户手册](USER_MANUAL.md)。
+> Audience: all users. Ordered by question frequency, highest first.
+> Each question: a one-line question + a short answer. Detailed steps are in the [User Manual](USER_MANUAL.md).
 
-## 1. 提示 `'deeptrace_cli' 不是内部或外部命令` 怎么办?
+## 1. What should I do when I see `'deeptrace_cli' is not recognized as an internal or external command`?
 
-**原因**:命令提示符找不到程序——你不在程序所在的文件夹。
-**解决**:回到程序所在文件夹再运行。例如:
+**Cause**: the command prompt can't find the program — you're not in the folder that contains it.
+**Fix**: go back to the program's folder and run it again. For example:
 
 ```
-cd /d C:\Users\你\Downloads\deeptrace_cli
+cd /d C:\Users\you\Downloads\deeptrace_cli
 deeptrace_cli -h
 ```
 
-或者每次用完整路径:`C:\Users\你\Downloads\deeptrace_cli\deeptrace_cli.exe -h`。
+Or use the full path every time: `C:\Users\you\Downloads\deeptrace_cli\deeptrace_cli.exe -h`.
 
-## 2. 提示 `Error: NoSuchProcess(1234)` 是什么意思?
+## 2. What does `Error: NoSuchProcess(1234)` mean?
 
-**原因**:指定的进程号(1234)不存在——程序已退出、进程号记错、或换了启动时间进程号不同。
-**解决**:重新运行 `deeptrace_cli ps list` 找当前的进程号,再重试。
-**注意**:Windows 每次启动程序,进程号都可能不同;每次使用前重新确认。
+**Cause**: the specified PID (1234) doesn't exist — the program exited, the PID was noted down wrong, or the PID changed because the program was restarted.
+**Fix**: run `deeptrace_cli ps list` again to find the current PID, then retry.
+**Note**: Windows can assign a different PID every time a program starts; re-confirm it before each use.
 
-## 3. 提示 `Error: AccessDenied` 怎么办?
+## 3. What should I do when I see `Error: AccessDenied`?
 
-**原因**:没有权限访问该进程——目标进程是系统进程/受保护进程,或你的权限不够(64 位目标、反作弊保护等)。
-**解决**:
-- 换成普通程序(如记事本)测试;
-- 以**管理员身份**打开命令提示符:开始菜单搜索 `cmd` → 右键 → 「以管理员身份运行」,再执行命令;
-- 游戏反作弊系统会阻止外部读写,属正常现象,不属于本工具问题。
+**Cause**: no permission to access the process — the target is a system/protected process, or your privileges are insufficient (64-bit targets, anti-cheat protection, etc.).
+**Fix**:
+- Try a normal program instead (e.g. Notepad);
+- Open the command prompt **as administrator**: search `cmd` in the Start menu → right-click → "Run as administrator", then run the command;
+- Game anti-cheat systems block external reads/writes by design; that is normal and not a bug in this tool.
 
-## 4. 断点/watch 为什么跨命令还在?
+## 4. Why do breakpoints and watches persist across commands?
 
-**原因**:设计如此——断点、监视(watch)、注入记录会保存到临时目录(`%TEMP%\deeptrace_<进程号>\`),下次运行同一进程的命令时自动恢复。
-**解决**:不想要了就显式清除:`debug clear <地址>` / `watch clear` / `dll eject`。
-**注意**:目标进程**退出后**,这些记录文件仍留在临时目录;不影响使用,可手动删除 `%TEMP%` 下对应文件夹。
+**Cause**: by design — breakpoints, watches, and injection records are saved to a temp directory (`%TEMP%\deeptrace_<pid>\`) and automatically restored the next time you run a command for the same process.
+**Fix**: clear them explicitly when you don't need them: `debug clear <address>` / `watch clear` / `dll eject`.
+**Note**: after the target process **exits**, these record files remain in the temp directory; they are harmless and can be deleted manually from `%TEMP%`.
 
-## 5. 读内存提示 `Error: ReadFault` 是什么意思?
+## 5. What does `Error: ReadFault` mean when reading memory?
 
-**原因**:该地址不可读——地址超出进程范围、位于不可读区域(如 `0x00000000` 附近)、或地址写错。
-**解决**:先用 `mem regions` 查看哪些地址范围可读,再读范围内的地址;检查地址是否以 `0x` 开头、位数是否正确。
-**提示**:读写内存前先用 `mem regions` 确认地址在可读区域内。
+**Cause**: the address is unreadable — outside the process's address space, in an unreadable region (e.g. near `0x00000000`), or mistyped.
+**Fix**: first use `mem regions` to see which address ranges are readable, then read an address within one; check that the address starts with `0x` and has the right number of digits.
+**Tip**: before reading/writing memory, use `mem regions` to confirm the address is inside a readable region.
 
-## 6. 找不到我要的模块/函数怎么办?
+## 6. I can't find the module/function I need?
 
-**原因**:`module list` 只列出目标进程已加载的模块;DLL 未加载时找不到;函数名大小写或模块名不对。
-**解决**:
-- `module list` 确认模块是否已加载(某些 DLL 延迟到使用时才加载);
-- `module exports <模块>` 用实际模块名(如 `kernel32.dll`,注意大小写不敏感但扩展名要带)。
+**Cause**: `module list` only lists modules already loaded by the target process; a DLL that isn't loaded can't be found; the function name may be wrong in case or the module name incorrect.
+**Fix**:
+- Use `module list` to confirm the module is loaded (some DLLs load lazily on first use);
+- Use `module exports <module>` with the actual module name (e.g. `kernel32.dll` — case-insensitive, but the extension is required).
 
-## 7. `resolve scan` 扫描没结果?
+## 7. `resolve scan` finds nothing?
 
-**原因**:特征码写错(字节间要有空格)、字节不是 16 进制、或该字节序列在内存中不存在。
-**解决**:
-- 格式检查:字节间空格分隔,如 `"DE AD BE EF"`;
-- 通配符 `??` 表示任意字节:如 `"48 8B ?? ?? 00"`;
-- 特征码长度至少 4 字节,越长越精确;
-- 特征码存在但跨页/跨不可读区域时也可能漏掉,换一段更短的试试。
+**Cause**: the pattern is malformed (bytes must be space-separated), the bytes aren't hexadecimal, or the byte sequence doesn't exist in memory.
+**Fix**:
+- Format check: bytes separated by spaces, e.g. `"DE AD BE EF"`;
+- `??` wildcard means any byte: e.g. `"48 8B ?? ?? 00"`;
+- Patterns should be at least 4 bytes; the longer the better for precision;
+- A pattern that spans pages or unreadable regions can be missed; try a shorter one.
 
-## 8. `dll inject` 不成功?
+## 8. `dll inject` doesn't succeed?
 
-**原因**:路径格式不对(要用 Windows 路径)、DLL 位数不匹配(64 位进程只能注入 64 位 DLL)、目标进程受保护。
-**解决**:
-- 路径用 Windows 格式:`C:\path\to\test.dll` 或 `C:/path/to/test.dll`;
-- 确认 DLL 是 64 位构建;
-- 用 `dll list` 查看是否已注入。
+**Cause**: wrong path format (must use Windows paths), DLL bitness mismatch (a 64-bit process can only load 64-bit DLLs), or a protected target process.
+**Fix**:
+- Use Windows-style paths: `C:\path\to\test.dll` or `C:/path/to/test.dll`;
+- Confirm the DLL is a 64-bit build;
+- Use `dll list` to check whether it was already injected.
 
-## 9. 汇编 `asm assemble` 报 `Error: BadFormat`?
+## 9. `asm assemble` reports `Error: BadFormat`?
 
-**原因**:指令写法不被支持或语法错误。
-**解决**:
-- 指令要加引号:`deeptrace_cli asm assemble "nop; ret"`;
-- 多指令用 `;` 分隔;
-- 换一种等价写法(如 `add rax, 0` 若报错,可写成 `xor eax, eax` 等)。
+**Cause**: the instruction syntax isn't supported or is malformed.
+**Fix**:
+- Quote the instructions: `deeptrace_cli asm assemble "nop; ret"`;
+- Separate multiple instructions with `;`;
+- Try an equivalent form (e.g. if `add rax, 0` errors, use `xor eax, eax`).
 
-## 10. 帮助里看不懂命令参数?
+## 10. I can't understand the command arguments in the help?
 
-**解决**:命令参数在[用户手册](USER_MANUAL.md)有每个命令的完整说明和例子;也可以随时运行 `deeptrace_cli -h` 看命令列表。
-**提示**:参数有默认值的可以不写,例如 `mem read <地址>` 默认读 1 字节十六进制。
+**Fix**: the [User Manual](USER_MANUAL.md) explains every command's arguments with examples; you can also run `deeptrace_cli -h` anytime to see the command list.
+**Tip**: optional parameters with defaults can be omitted, e.g. `mem read <address>` reads 1 byte in hex by default.

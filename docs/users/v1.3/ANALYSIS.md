@@ -1,70 +1,70 @@
-# 用户文档 - 分析阶段(v1.3)
+# User Documentation — Analysis Phase (v1.3)
 
-> 本文件是 `.flow/user_docs_development_process.md` 第 1 阶段的产出:
-> 1.1 用户画像
-> 1.2 用例分析
-> 1.3 文档分级规划
+> This file is the output of stage 1 of `.flow/user_docs_development_process.md`:
+> 1.1 User profiles
+> 1.2 Use case analysis
+> 1.3 Documentation tier planning
 
 ---
 
-## 1.1 用户画像
+## 1.1 User Profiles
 
-| 要素 | 内容 |
-|------|------|
-| 用户身份 | 游戏修改/逆向分析人员、软件调试人员、安全研究者、AI 工具使用者 |
-| 技术水平 | 会打开命令提示符/PowerShell 并输入命令;**不假设会编程、不假设会看代码** |
-| 使用目标 | 查看进程列表、读取/修改目标进程内存、查看模块与导出、控制线程、调试(断点/单步/寄存器)、反汇编、汇编、AOB 扫描、监视变量、DLL/壳码注入 |
-| 使用环境 | Windows 10/11 x64(目标进程也是 Windows 程序) |
-| 关键认知 | 用户通过**命令行参数**与工具交互;每次执行一条命令;断点/watch/注入状态跨命令保留 |
+| Factor | Content |
+|--------|---------|
+| User identity | game modders / reverse engineers, software debuggers, security researchers, AI tool users |
+| Skill level | can open a command prompt/PowerShell and type commands; **no programming assumed, no code-reading assumed** |
+| Goals | view process lists, read/modify target process memory, view modules and exports, control threads, debug (breakpoints/single-step/registers), disassemble, assemble, AOB scan, watch variables, DLL/shellcode injection |
+| Environment | Windows 10/11 x64 (the target process is also a Windows program) |
+| Key understanding | users interact with the tool via **command-line arguments**; one command per run; breakpoint/watch/inject state persists across commands |
 
-## 1.2 用例分析(用真实命令描述,不用代码术语)
+## 1.2 Use Case Analysis (described with real commands, not code terms)
 
 ```
-用例1:查看系统里正在运行的进程
-  输入 deeptrace_cli ps list → 看到进程表格(名称/PID/线程数/父进程)
+Use case 1: View running processes on the system
+  Run deeptrace_cli ps list → see a process table (name/PID/threads/parent PID)
 
-用例2:选中一个目标进程
-  找到目标程序进程号(PID)→ 用 -p <PID> 参数指向它 → 查看进程信息 ps info
+Use case 2: Select a target process
+  Find the target program's PID → point at it with the -p <PID> option → view process info with ps info
 
-用例3:读取目标进程的内存值
-  用 -p <PID> 加上 mem read <地址> → 看到十六进制字节;mem readval <地址> dword 直接看到数值
+Use case 3: Read a value from the target process's memory
+  Use -p <PID> plus mem read <address> → see hex bytes; mem readval <address> dword shows the value directly
 
-用例4:修改目标进程的内存值
-  mem write <地址> <值> → 返回 OK;再读一次确认值已变化
+Use case 4: Modify a value in the target process's memory
+  mem write <address> <value> → returns OK; read again to confirm the value changed
 
-用例5:查看模块与导出
-  module list 列出已加载模块;module base <名字> 得到模块基址;module exports <模块> 列出导出函数
+Use case 5: View modules and exports
+  module list lists loaded modules; module base <name> gives the module base address; module exports <module> lists exported functions
 
-用例6:扫描内存特征码(AOB)
-  resolve scan "48 8B ?? ?? 00" → 找到所有匹配地址
+Use case 6: Scan memory for a pattern (AOB)
+  resolve scan "48 8B ?? ?? 00" → find all matching addresses
 
-用例7:监视变量变化
-  watch add <描述> <地址> <类型> → watch refresh / watch list 实时看到当前值
+Use case 7: Watch a variable change
+  watch add <description> <address> <type> → watch refresh / watch list shows the live value
 
-用例8:设置断点并查看状态
-  debug break <地址> → debug status 看到断点计数 → debug clear <地址> 清除
+Use case 8: Set a breakpoint and check status
+  debug break <address> → debug status shows the breakpoint count → debug clear <address> clears it
 
-用例9:查看 CPU 寄存器
-  debug registers 看到所有寄存器;debug register rip 只看某个寄存器
+Use case 9: View CPU registers
+  debug registers shows all registers; debug register rip shows just one
 
-用例10:反汇编一段内存
-  disasm at <地址> <条数> → 看到地址/机器码/汇编指令对照
+Use case 10: Disassemble a memory region
+  disasm at <address> <count> → see address/machine code/assembly side by side
 
-用例11:把汇编代码变成机器码
-  asm assemble "nop; ret" → 得到 90C3
+Use case 11: Turn assembly code into machine code
+  asm assemble "nop; ret" → get 90C3
 
-用例12:注入 DLL 或壳码
-  dll inject <dll路径> → dll list 查看运行状态;shellcode inject <hex> → shellcode status 查看
+Use case 12: Inject a DLL or shellcode
+  dll inject <dll path> → dll list shows runtime status; shellcode inject <hex> → shellcode status to check
 ```
 
-> 注意:本产品是**命令行工具**,用户流程即上述命令输入 → 输出查看。所有命令在目标进程上执行前需先用 `-p <PID>` 指定目标。
+> Note: this product is a **command-line tool**; the user flow is exactly the command input → output inspection described above. Every command that operates on a target process needs `-p <PID>` first.
 
-## 1.3 文档分级规划
+## 1.3 Documentation Tier Planning
 
-| 级别 | 目标读者 | 内容 | 文档 |
-|------|---------|------|------|
-| **L1 入门** | 零基础用户 | 下载安装、如何打开命令窗口、第一次查看进程、第一次读内存 | `GETTING_STARTED.md` |
-| **L2 日常使用** | 有基础的用户 | 每个命令组怎么用(ps/mem/module/thread/debug/disasm/resolve/watch/dll/asm/shellcode) | `USER_MANUAL.md` |
-| **L3 参考** | 高级用户 | 常见问题、错误提示对照、故障排除 | `FAQ.md`、`TROUBLESHOOTING.md` |
+| Tier | Audience | Content | Documents |
+|------|----------|---------|-----------|
+| **L1 Getting started** | absolute beginners | download/install, how to open a command window, first process listing, first memory read | `GETTING_STARTED.md` |
+| **L2 Everyday use** | users with some experience | how to use each command group (ps/mem/module/thread/debug/disasm/resolve/watch/dll/asm/shellcode) | `USER_MANUAL.md` |
+| **L3 Reference** | advanced users | FAQ, error message reference, troubleshooting | `FAQ.md`, `TROUBLESHOOTING.md` |
 
-分级原则:入门文档不出现进阶内容(不解释 AOB 语法、不解释断点类型);参考文档不重复入门步骤(直接指向对应章节)。
+Tiering principle: getting-started docs avoid advanced content (no AOB syntax, no breakpoint types); reference docs don't repeat getting-started steps (they point to the relevant sections).

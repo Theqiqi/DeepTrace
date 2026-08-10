@@ -1,40 +1,40 @@
-# 快速开始(GETTING_STARTED)
+# Quick Start (GETTING_STARTED)
 
-> 目标读者:零基础用户。跟着做,10 分钟内完成「安装 → 查看进程 → 读取内存」。
-> 遇到看不懂的提示,先看 [常见问题](FAQ.md)。
+> Audience: absolute beginners. Follow along and finish "install → view processes → read memory" within 10 minutes.
+> If you see a message you don't understand, check the [FAQ](FAQ.md) first.
 
-## 1. 需要什么
+## 1. What You Need
 
-- 一台 **Windows 10/11 64 位**电脑(x64)
-- `deeptrace_cli.exe` 程序文件(见第 2 节)
-- 想查看/修改的**目标程序**(任何 Windows 程序,比如一个游戏)
+- A **Windows 10/11 64-bit** computer (x64)
+- The `deeptrace_cli.exe` program file (see section 2)
+- A **target program** you want to view/modify (any Windows program, e.g. a game)
 
-> 说明:本工具是**命令行程序**,用键盘输入命令、按回车执行,没有图形窗口。
+> Note: this tool is a **command-line program** — you type commands and press Enter; there is no graphical window.
 
-## 2. 获取程序
+## 2. Getting the Program
 
-### 方式一:使用打包好的压缩包(推荐)
+### Option 1: Use the packaged zip (recommended)
 
-拿到 `deeptrace_cli-<版本>-win64.zip` 后:
+Once you have `deeptrace_cli-<version>-win64.zip`:
 
-1. 右键压缩包 → **解压到当前文件夹**(或任意文件夹)。
-2. 解压后你会看到一个文件:`deeptrace_cli.exe`。
-3. 记住这个文件夹的位置(例如 `C:\Users\你\Downloads\deeptrace_cli`)。
+1. Right-click the zip → **Extract All** (or extract to any folder).
+2. After extraction you'll see one file: `deeptrace_cli.exe`.
+3. Remember this folder's location (e.g. `C:\Users\you\Downloads\deeptrace_cli`).
 
-### 方式二:使用开发版本(Debug 构建产物)
+### Option 2: Use a dev build (Debug build artifact)
 
-如果你是从源码构建的,程序在 `cli\out\bin\Debug\deeptrace_cli.exe`。
+If you built from source, the program is at `cli\out\bin\Debug\deeptrace_cli.exe`.
 
-## 3. 第一次运行
+## 3. First Run
 
-1. 按 **Win + R**,输入 `cmd`,按回车 → 打开命令提示符。
-2. 输入以下命令进入程序所在文件夹(把路径换成你的实际位置):
+1. Press **Win + R**, type `cmd`, press Enter → the command prompt opens.
+2. Type the following command to enter the folder containing the program (replace the path with your actual location):
 
 ```
-cd /d C:\Users\你\Downloads\deeptrace_cli
+cd /d C:\Users\you\Downloads\deeptrace_cli
 ```
 
-3. 输入 `deeptrace_cli -h` 查看帮助,你会看到程序版本和全部命令列表:
+3. Type `deeptrace_cli -h` to view help; you'll see the program version and the full command list:
 
 ```
 deeptrace_cli v1.0.0
@@ -43,23 +43,23 @@ Usage: deeptrace_cli [options] <command> [args...]
 ...
 ```
 
-4. 输入 `deeptrace_cli -v` 查看版本:
+4. Type `deeptrace_cli -v` to view the version:
 
 ```
 deeptrace_cli v1.0.0
 ```
 
-看到上面两行,说明程序可以正常使用了。
+Seeing both lines above means the program works correctly.
 
-## 4. 第一个任务:查看正在运行的进程
+## 4. First Task: View Running Processes
 
-输入:
+Type:
 
 ```
 deeptrace_cli ps list
 ```
 
-你会看到一个进程表格(每行是一个正在运行的程序,列依次是:进程号 PID、名称、线程数、父进程号):
+You'll see a process table (each row is a running program; columns are: process ID PID, name, thread count, parent PID):
 
 ```
 PID        NAME                                     THREADS  PPID
@@ -68,20 +68,20 @@ PID        NAME                                     THREADS  PPID
 ...
 ```
 
-**预期结果**:屏幕上列出几十个进程。如果看到这个表格,恭喜,第一步完成!
+**Expected result**: dozens of processes listed on screen. If you see this table, congratulations — step one is done!
 
-## 5. 第二个任务:读取一个进程的内存
+## 5. Second Task: Read a Process's Memory
 
-要读取某进程的内存,先要知道它的**进程号(PID)**。
+To read a process's memory, you first need its **process ID (PID)**.
 
-1. 从第 4 步的表格里,记下一个想查看的进程号(比如 `1234`)。
-2. 输入以下命令查看该进程的信息:
+1. From the table in step 4, note down a process ID you want to inspect (e.g. `1234`).
+2. Type the following command to view that process's info:
 
 ```
 deeptrace_cli -p 1234 ps info
 ```
 
-你会看到类似:
+You'll see something like:
 
 ```
 PID: 1234
@@ -90,30 +90,30 @@ Threads: 3
 ParentPID: 1000
 ```
 
-3. 读取该进程某个内存地址的值(地址用十六进制,前面加 `0x`):
+3. Read the value at a memory address in that process (addresses are hexadecimal, prefixed with `0x`):
 
 ```
 deeptrace_cli -p 1234 mem read 0x10000 4 hex
 ```
 
-这会读出地址 `0x10000` 开始的 4 个字节,以十六进制显示(每字节 2 位,空格分隔):
+This reads 4 bytes starting at address `0x10000`, displayed in hexadecimal (2 digits per byte, space-separated):
 
 ```
 44 33 22 11
 ```
 
-**预期结果**:一行十六进制字节。注意:上面的 `44 33 22 11` 只是示例,**实际内容取决于目标进程该地址的值**——你看到别的字节是正常的。
+**Expected result**: one line of hexadecimal bytes. Note: the `44 33 22 11` above is only an example — **the actual content depends on the value at that address in the target process**; seeing different bytes is normal.
 
-如果报错(比如 `Error: ReadFault` 或 `Error: AccessDenied`),说明这个地址不可读或没有权限——换一个地址试试,或参考[故障排除](TROUBLESHOOTING.md)。
+If you get an error (e.g. `Error: ReadFault` or `Error: AccessDenied`), the address is unreadable or you lack permission — try a different address, or see [Troubleshooting](TROUBLESHOOTING.md).
 
-## 6. 常用下一步
+## 6. Common Next Steps
 
-- 想读「数值」而不是原始字节 → [读数值 mem readval](USER_MANUAL.md#2-内存mem)
-- 想修改内存 → [写入 mem write](USER_MANUAL.md#2-内存mem)
-- 想看所有命令 → 随时输入 `deeptrace_cli -h`
+- Want to read a "value" instead of raw bytes → [Read typed values: mem readval](USER_MANUAL.md#2-memory-mem)
+- Want to modify memory → [Write: mem write](USER_MANUAL.md#2-memory-mem)
+- Want to see all commands → type `deeptrace_cli -h` any time
 
-## 7. 遇到问题?
+## 7. Having Trouble?
 
-- 提示 `'deeptrace_cli' 不是内部或外部命令` → 文件夹没进对,回第 3 步用 `cd /d` 进入程序所在文件夹
-- 提示 `NoSuchProcess` → 进程号不对或程序已退出,回第 5 步重新找 PID
-- 其他问题 → [常见问题](FAQ.md) / [故障排除](TROUBLESHOOTING.md)
+- `'deeptrace_cli' is not recognized as an internal or external command` → you're not in the right folder; go back to step 3 and use `cd /d` to enter the program's folder
+- `NoSuchProcess` → the PID is wrong or the program has exited; go back to step 5 and find the PID again
+- Anything else → [FAQ](FAQ.md) / [Troubleshooting](TROUBLESHOOTING.md)
