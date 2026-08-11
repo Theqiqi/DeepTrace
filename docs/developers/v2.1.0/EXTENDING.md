@@ -63,7 +63,7 @@ cli\out\bin\Debug\deeptrace_cli.exe ps list2
 
 ### 2.5 Debug Scripts: Adding a Script Step
 
-Debug capabilities are not exposed as standalone commands anymore (see [ADR-11](DESIGN_DECISIONS.md#adr-11-why-the-cli-exposes-a-single-debug-run-entry-one-invocation--one-debug-session)); adding a debug capability means **adding a step to the script engine**:
+Debug capabilities are not exposed as standalone commands anymore (see [ADR-11](DESIGN_DECISIONS.md#adr-11-why-the-cli-exposes-a-single-debug-run-entry-one-invocation-one-debug-session)); adding a debug capability means **adding a step to the script engine**:
 
 1. **Step table** (`cli/src/interface/script.cpp`): declare the op name and its parameters (name / type / required / default) in the ops table, e.g.
 

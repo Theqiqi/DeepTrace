@@ -60,7 +60,7 @@ cli/test/scripts/
 
 - The cli integration test's POST_BUILD step copies them next to the test exe (same pattern as `testdll.dll`).
 - Scripts use a `%G_INT%` placeholder for the runtime `g_int` address; tests substitute the real address because it is only known at runtime (the fixtures stay committable and the tests still run against a live target).
-- Integration coverage: `DebugRunScriptedSession`, `DebugRunWriteSpacedHex`, `DebugRunScriptErrors`, `DebugRunBreakOnlyCleansUp` + removed-command rejection (`DebugSingleCommandsRejected` — exit 2 and the target stays intact).
+- Integration coverage: `DebugRunScriptedSession`, `DebugRunWriteSpacedHex`, `DebugRunScriptErrors`, `DebugRunSessionCleanupRestoresByte` (break set but never cleared → byte restored on detach) + removed-command rejection (`DebugSingleCommandsRejected` — exit 2 and the target stays intact).
 
 ### 2.5 Full Regression
 
