@@ -248,7 +248,12 @@ int run_step(size_t index, const script::Step& s, SessionState& st) {
     }
     if (op == "write") {
         uintptr_t addr = internal::to_addr(field(s, "addr"));
-        std::vector<uint8_t> bytes = internal::hex_bytes(field(s, "bytes"));
+        // bytes may be space-separated (validated); compact before hex decode
+        std::string compact;
+        for (char c : field(s, "bytes")) {
+            if (c != ' ' && c != '\t') compact.push_back(c);
+        }
+        std::vector<uint8_t> bytes = internal::hex_bytes(compact);
         size_t written = 0;
         Result r = deeptrace::memory_write(addr, bytes.data(), bytes.size(), &written);
         if (r != Result::Ok) return fail(r);
