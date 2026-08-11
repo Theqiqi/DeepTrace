@@ -4,6 +4,7 @@ add_executable(deeptrace_cli_unit_test
     parser_test.cpp
     printer_test.cpp
     executor_test.cpp
+    script_test.cpp
 )
 
 target_include_directories(deeptrace_cli_unit_test PRIVATE

@@ -18,6 +18,7 @@ int cmd_mem(const CommandRequest& req);
 int cmd_module(const CommandRequest& req);
 int cmd_thread(const CommandRequest& req);
 int cmd_debug(const CommandRequest& req);
+int cmd_debug_run(const CommandRequest& req);  // scripted debug session
 int cmd_disasm(const CommandRequest& req);
 int cmd_resolve(const CommandRequest& req);
 int cmd_watch(const CommandRequest& req);

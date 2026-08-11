@@ -212,6 +212,7 @@ bool valid_param(const ParamSpec& p, const std::string& v) {
     if (t == "convert-value") return !v.empty();  // full check depends on type
     if (t == "exit-code") return valid_exit_code(v);
     if (t == "index") return valid_index(v);
+    if (t == "script-path") return !v.empty();  // existence/readability checked by script module
     if (t == "flag") return v == p.name;
     return true;
 }

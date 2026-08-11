@@ -19,6 +19,9 @@ uint32_t tid_arg(const CommandRequest& req) {
 
 int cmd_debug(const CommandRequest& req) {
     using deeptrace::Result;
+    if (req.action == "run") {
+        return cmd_debug_run(req);
+    }
     if (req.action == "attach") {
         Result r = deeptrace::debug_attach();
         if (r != Result::Ok) return internal::report_error(r, "");

@@ -85,6 +85,9 @@ const std::vector<CommandSpec>& command_table() {
         cmd("thread", "kill", "thread kill <tid>", "Terminate a thread", {req("tid", "tid")}),
 
         // ---- debug ----
+        cmd("debug", "run", "debug run <script.json>",
+            "Run a scripted debug session (one invocation = one session)",
+            {req("script", "script-path")}),
         cmd("debug", "attach", "debug attach", "Enter debug mode", {}),
         cmd("debug", "detach", "debug detach", "Exit debug mode, remain attached", {}),
         cmd("debug", "pause", "debug pause", "Pause the debugged process", {}),
@@ -184,7 +187,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v1.4.1\n";
+    os << "deeptrace_cli v2.0.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

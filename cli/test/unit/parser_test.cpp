@@ -213,6 +213,19 @@ TEST(Parser, PsKillDefaultExitCode) {
     EXPECT_EQ(r.req.args[0], "0");
 }
 
+TEST(Parser, DebugRunScriptPath) {
+    auto r = parse({"deeptrace_cli", "-p", "1234", "debug", "run", "demo.json"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "debug");
+    EXPECT_EQ(r.req.action, "run");
+    EXPECT_EQ(r.req.args.size(), 1u);
+    EXPECT_EQ(r.req.args[0], "demo.json");
+    auto missing = parse({"deeptrace_cli", "debug", "run"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+    EXPECT_NE(missing.error.find("missing argument: script"), std::string::npos);
+}
+
 TEST(Parser, DebugStepDefaultTid) {
     auto r = parse({"deeptrace_cli", "debug", "step"});
     ASSERT_TRUE(r.ok);
