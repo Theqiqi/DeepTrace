@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -113,6 +114,86 @@ int value_type_id(const std::string& s) {
     return 5;  // double
 }
 
+bool read_text_file(const std::string& path, std::string& out) {
+    std::ifstream f(path);
+    if (!f.is_open()) return false;
+    std::string line;
+    while (std::getline(f, line)) {
+        out += line;
+        out += '\n';
+    }
+    return true;
+}
+
+bool read_binary_file(const std::string& path, std::vector<uint8_t>& out) {
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    if (!f.is_open()) return false;
+    std::streampos end = f.tellg();
+    if (end < 0) return false;
+    out.resize(static_cast<size_t>(end));
+    f.seekg(0, std::ios::beg);
+    if (out.empty()) return true;
+    f.read(reinterpret_cast<char*>(out.data()),
+           static_cast<std::streamsize>(out.size()));
+    return static_cast<bool>(f);
+}
+
+bool write_binary_file(const std::string& path, const std::vector<uint8_t>& bytes) {
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    if (!f.is_open()) return false;
+    if (!bytes.empty()) {
+        f.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+    }
+    return static_cast<bool>(f);
+}
+
+bool is_hex_string(const std::string& s) {
+    size_t start = 0;
+    if (s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) start = 2;
+    size_t n = s.size() - start;
+    if (n == 0 || (n % 2) != 0) return false;
+    for (size_t i = start; i < s.size(); ++i) {
+        char c = s[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+              (c >= 'A' && c <= 'F')))
+            return false;
+    }
+    return true;
+}
+
+bool has_suffix(const std::string& s, const char* suffix) {
+    size_t sl = s.size();
+    size_t fl = std::strlen(suffix);
+    if (sl < fl) return false;
+    size_t off = sl - fl;
+    for (size_t i = 0; i < fl; ++i) {
+        char a = s[off + i];
+        char b = suffix[i];
+        if (a >= 'A' && a <= 'Z') a = static_cast<char>(a - 'A' + 'a');
+        if (a != b) return false;
+    }
+    return true;
+}
+
+deeptrace::Result resolve_source(const std::string& source, bool asm_ok,
+                                 std::vector<uint8_t>& out) {
+    if (is_hex_string(source)) {
+        out = hex_bytes(source);
+        return out.empty() ? deeptrace::Result::InvalidArg : deeptrace::Result::Ok;
+    }
+    std::ifstream probe(source);
+    if (!probe.is_open()) return deeptrace::Result::InvalidArg;
+    probe.close();
+    if (asm_ok && (has_suffix(source, ".asm") || has_suffix(source, ".s"))) {
+        std::string text;
+        if (!read_text_file(source, text)) return deeptrace::Result::InvalidArg;
+        return deeptrace::asm_assemble(text, out, nullptr);
+    }
+    return read_binary_file(source, out) ? deeptrace::Result::Ok
+                                         : deeptrace::Result::InvalidArg;
+}
+
 }  // namespace internal
 
 namespace {
@@ -152,6 +233,7 @@ int execute(const CommandRequest& req) {
     else if (req.group == "asm") rc = cmd_asm(req);
     else if (req.group == "shellcode") rc = cmd_shellcode(req);
     else if (req.group == "convert") rc = cmd_convert(req);
+    else if (req.group == "hex2bin") rc = cmd_hex2bin(req);
     else {
         printer::print_error("unknown command group: '" + req.group + "'");
     }

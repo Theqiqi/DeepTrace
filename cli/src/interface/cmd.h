@@ -26,6 +26,7 @@ int cmd_dll(const CommandRequest& req);
 int cmd_asm(const CommandRequest& req);
 int cmd_shellcode(const CommandRequest& req);
 int cmd_convert(const CommandRequest& req);
+int cmd_hex2bin(const CommandRequest& req);
 
 namespace internal {
 
@@ -50,6 +51,23 @@ bool typed_bytes(const std::string& value, const std::string& type,
 
 // Value type name -> deeptrace::ValueType (already validated by the parser).
 int value_type_id(const std::string& s);
+
+// ---- file I/O helpers (standard library only) ----
+// Read an ASCII text file; returns false on open/read failure.
+bool read_text_file(const std::string& path, std::string& out);
+// Read a binary file; returns false on open/read failure.
+bool read_binary_file(const std::string& path, std::vector<uint8_t>& out);
+// Write raw bytes to a file; returns false on open/write failure.
+bool write_binary_file(const std::string& path, const std::vector<uint8_t>& bytes);
+
+// Resolve a shellcode source argument into bytes:
+//  - valid hex string (0x prefix or even hex digits)  -> hex bytes
+//  - existing file ending in .asm/.s (asm_ok=true)     -> read text + asm_assemble
+//  - existing file (any other extension)               -> read binary
+//  - otherwise                                          -> InvalidArg
+// asm_ok controls whether .asm/.s files are accepted (exec yes, alloc no).
+deeptrace::Result resolve_source(const std::string& source, bool asm_ok,
+                                 std::vector<uint8_t>& out);
 
 }  // namespace internal
 }  // namespace deeptrace_cli

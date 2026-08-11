@@ -123,6 +123,10 @@ const std::vector<CommandSpec>& command_table() {
         cmd("asm", "assemble", "asm assemble <code> [--hex] [--c-array]",
             "Assemble x64 assembly to bytes (--hex: hex bytes, --c-array: C array)",
             {req("code", "string"), opt("--hex", "flag", ""), opt("--c-array", "flag", "")}),
+        cmd("asm", "file", "asm file <path.asm> [--hex] [--c-array] [--out <path.bin>]",
+            "Assemble assembly source file to bytes (--out: write raw .bin)",
+            {req("path", "string"), opt("--hex", "flag", ""), opt("--c-array", "flag", ""),
+             opt("--out", "out-flag", "")}),
 
         // ---- shellcode ----
         cmd("shellcode", "inject", "shellcode inject <hex_bytes>", "Inject shellcode (auto-alloc)",
@@ -130,6 +134,18 @@ const std::vector<CommandSpec>& command_table() {
         cmd("shellcode", "injectat", "shellcode injectat <address> <hex_bytes>",
             "Inject shellcode at address",
             {req("address", "address"), req("hex_bytes", "hex-bytes")}),
+        cmd("shellcode", "injectfile", "shellcode injectfile <path.bin>",
+            "Read .bin file and inject (execute immediately)", {req("path", "string")}),
+        cmd("shellcode", "alloc", "shellcode alloc <source>",
+            "Allocate + write only, print address (no execute; source: hex or .bin)",
+            {req("source", "shellcode-source")}),
+        cmd("shellcode", "run", "shellcode run <address>",
+            "Trigger recorded shellcode once (repeatable)", {req("address", "address")}),
+        cmd("shellcode", "free", "shellcode free <address>",
+            "Free recorded shellcode memory + clear record", {req("address", "address")}),
+        cmd("shellcode", "exec", "shellcode exec <source>",
+            "Pipeline: convert -> write -> trigger in one call (source: hex/.bin/.asm)",
+            {req("source", "shellcode-source")}),
         cmd("shellcode", "status", "shellcode status", "Show shellcode inject status", {}),
 
         // ---- convert (standalone command, no sub-action) ----
@@ -137,6 +153,11 @@ const std::vector<CommandSpec>& command_table() {
             "Convert typed data to hex bytes "
             "(type: byte|word|dword|qword|float|double|string|hex)",
             {req("type", "convert-type"), req("value", "convert-value")}),
+
+        // ---- hex2bin (standalone command, no sub-action) ----
+        cmd("hex2bin", "", "hex2bin <hex> <output.bin>",
+            "Write hex bytes to a raw binary file",
+            {req("hex", "hex-bytes"), req("output", "string")}),
     };
     return kTable;
 }
@@ -161,7 +182,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.1.0\n";
+    os << "deeptrace_cli v2.2.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

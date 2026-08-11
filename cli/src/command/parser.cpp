@@ -208,7 +208,9 @@ bool valid_param(const ParamSpec& p, const std::string& v) {
     if (t == "exit-code") return valid_exit_code(v);
     if (t == "index") return valid_index(v);
     if (t == "script-path") return !v.empty();  // existence/readability checked by script module
+    if (t == "shellcode-source") return !v.empty();  // hex/file resolution in interface layer
     if (t == "flag") return v == p.name;
+    if (t == "out-flag") return v.empty() || v == "--out";
     return true;
 }
 
@@ -314,6 +316,26 @@ ParseResult parse_args(int argc, char* argv[]) {
                 ++ai;
             } else {
                 res.req.args.push_back("");  // not set
+            }
+            continue;
+        }
+        if (p.type == "out-flag") {
+            // value-bearing flag: consume "--out" plus the next non-flag token
+            if (ai < args.size() && args[ai] == "--out") {
+                res.req.args.push_back(args[ai]);
+                ++ai;
+                if (ai < args.size() && !(args[ai].size() > 1 && args[ai][0] == '-')) {
+                    res.req.args.push_back(args[ai]);
+                    ++ai;
+                } else {
+                    res.ok = false;
+                    res.exit_code = 2;
+                    res.error = "missing argument for option: --out";
+                    return res;
+                }
+            } else {
+                res.req.args.push_back("");  // not set (two slots: flag + value)
+                res.req.args.push_back("");
             }
             continue;
         }
