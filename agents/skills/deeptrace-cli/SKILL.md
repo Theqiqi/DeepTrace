@@ -15,39 +15,39 @@ description: >
 
 ## 安装
 
-**优先下载官方发布版本**(免构建);仅当发布版不可用时才从源码构建。
+> 本技能的目标:① 把 `deeptrace_cli.exe` 安装到**当前工作目录**;② 把本技能放到运行时技能目录 `.agents/skills/deeptrace-cli/`。
 
-1. 确认发布版存在(HTTP 200 才继续;404/网络失败则跳到第 3 步源码构建):
+### ① 把工具安装到当前目录(优先下载发布版)
 
-   ```bash
-   curl -sI -f \
-     "https://github.com/Theqiqi/DeepTrace/releases/download/v2.1.0/deeptrace_cli-v2.1.0-win64.zip"
-   ```
+发布版 zip 挂在 [GitHub Releases](https://github.com/Theqiqi/DeepTrace/releases) 的 `v2.0.0` release 下(文件名 `deeptrace_cli-v2.1.0-win64.zip`,内含单个 `deeptrace_cli.exe`,Release 静态运行时,免依赖)。下载并解压到**当前目录**:
 
-2. 下载发布版 zip 并解压(版本号以仓库最新 tag 为准,当前 `v2.1.0`;压缩包内含单个 `deeptrace_cli.exe`,Release 静态运行时,免依赖):
+```bash
+curl -fL -o deeptrace_cli-v2.1.0-win64.zip \
+  "https://github.com/Theqiqi/DeepTrace/releases/download/v2.0.0/deeptrace_cli-v2.1.0-win64.zip"
+unzip -o deeptrace_cli-v2.1.0-win64.zip          # 解压出 deeptrace_cli.exe 到当前目录
+# Windows cmd/PowerShell 无 unzip 时:
+# powershell -c "Expand-Archive -Path deeptrace_cli-v2.1.0-win64.zip -DestinationPath ."
+./deeptrace_cli.exe -v                           # 应输出 deeptrace_cli v2.1.0
+./deeptrace_cli.exe -h                           # 应输出命令列表(12 组)
+```
 
-   ```bash
-   curl -fL -o deeptrace_cli.zip \
-     "https://github.com/Theqiqi/DeepTrace/releases/download/v2.1.0/deeptrace_cli-v2.1.0-win64.zip"
-   unzip -o deeptrace_cli.zip -d deeptrace_cli
-   # Windows cmd/PowerShell 无 unzip 时:
-   # powershell -c "Expand-Archive -Path deeptrace_cli.zip -DestinationPath deeptrace_cli"
-   ```
+下载不到发布版(404/网络失败)时,才从源码构建(需 Windows + VS2022/MSVC + CMake≥3.24 + Ninja + vcpkg;WSL 用 `*_wsl.sh` 同名脚本):
 
-2. 验证安装:
+```bash
+deeptrace/script/build_release.bat      # 先库(CLI 经 find_library 引用库产物)
+cli/script/build_release.bat            # 后 CLI
+cli/script/package.bat v2.1.0           # 产物: cli/out/dist/deeptrace_cli-v2.1.0-win64.zip
+```
 
-   ```bash
-   ./deeptrace_cli/deeptrace_cli.exe -v   # 应输出 deeptrace_cli v2.1.0
-   ./deeptrace_cli/deeptrace_cli.exe -h   # 应输出命令列表(12 组)
-   ```
+### ② 把本技能下载到 .agents/
 
-3. 下载不到发布版时,再从源码构建(需 Windows + VS2022/MSVC + CMake≥3.24 + Ninja + vcpkg;WSL 用 `*_wsl.sh` 同名脚本):
+若本文件不在运行时技能目录 `.agents/skills/deeptrace-cli/SKILL.md`,先把技能及其参考复制过去(仓库只跟踪 `agents/`,点目录不入库,由本步在本地生成):
 
-   ```bash
-   deeptrace/script/build_release.bat      # 先库(CLI 经 find_library 引用库产物)
-   cli/script/build_release.bat            # 后 CLI
-   cli/script/package.bat v2.1.0           # 产物: cli/out/dist/deeptrace_cli-v2.1.0-win64.zip
-   ```
+```bash
+mkdir -p .agents/skills/deeptrace-cli/references
+cp agents/skills/deeptrace-cli/SKILL.md         .agents/skills/deeptrace-cli/
+cp agents/skills/deeptrace-cli/references/*.md  .agents/skills/deeptrace-cli/references/
+```
 
 详见 [references/INSTALL.md](references/INSTALL.md)。
 
@@ -80,6 +80,6 @@ deeptrace_cli -p 1234 debug run session.json             # 调试会话(唯一�
 ## 参考
 
 - [安装参考](references/INSTALL.md) / [使用参考](references/USAGE.md)
-- 用户手册: `docs/users/v2.1.0/USER_MANUAL.md`
-- 开发者文档: `docs/developers/v2.1.0/README.md`
-- API 参考: `docs/api/v2.1.0/README.md`
+- 用户手册: [`docs/users/v2.1.0/USER_MANUAL.md`](../../../docs/users/v2.1.0/USER_MANUAL.md)
+- 开发者文档: [`docs/developers/v2.1.0/README.md`](../../../docs/developers/v2.1.0/README.md)
+- API 参考: [`docs/api/v2.1.0/README.md`](../../../docs/api/v2.1.0/README.md)

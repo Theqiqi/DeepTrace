@@ -1,38 +1,37 @@
 # deeptrace-cli 安装参考
 
-> 顺序:**优先下载发布版本**;仅当发布版不存在或不可下载时,才从源码构建。
+> 顺序:**优先下载发布版本**;仅当发布版不存在或不可下载时,才从源码构建。目标:把 `deeptrace_cli.exe` 安装到**当前工作目录**。
 
-## 1. 优先:下载发布版本
+## 1. 优先:下载发布版本并解压到当前目录
 
-官方打包 zip 命名:`deeptrace_cli-<版本>-win64.zip`(Release 静态运行时,内含单个 `deeptrace_cli.exe`,免依赖)。
+官方打包 zip 命名:`deeptrace_cli-<版本>-win64.zip`(Release 静态运行时,内含单个 `deeptrace_cli.exe`,免依赖)。当前发布版挂在 `v2.0.0` release 下。
 
 先确认发布版存在(HTTP 200;404/网络失败 → 跳第 3 节源码构建):
 
 ```bash
-# 版本号以仓库最新 git tag 为准(当前 v2.1.0)
 VERSION=v2.1.0
 curl -sI -f \
-  "https://github.com/Theqiqi/DeepTrace/releases/download/$VERSION/deeptrace_cli-$VERSION-win64.zip" \
+  "https://github.com/Theqiqi/DeepTrace/releases/download/v2.0.0/deeptrace_cli-$VERSION-win64.zip" \
   && echo "release available"
 ```
 
-确认后下载并解压:
+确认后下载并解压到**当前目录**:
 
 ```bash
 curl -fL -o deeptrace_cli-$VERSION-win64.zip \
-  "https://github.com/Theqiqi/DeepTrace/releases/download/$VERSION/deeptrace_cli-$VERSION-win64.zip"
-unzip -o deeptrace_cli-$VERSION-win64.zip -d deeptrace_cli
+  "https://github.com/Theqiqi/DeepTrace/releases/download/v2.0.0/deeptrace_cli-$VERSION-win64.zip"
+unzip -o deeptrace_cli-$VERSION-win64.zip     # 解压出 deeptrace_cli.exe 到当前目录
 # Windows cmd/PowerShell(无 unzip):
-# powershell -c "Expand-Archive -Path deeptrace_cli-$VERSION-win64.zip -DestinationPath deeptrace_cli"
+# powershell -c "Expand-Archive -Path deeptrace_cli-$VERSION-win64.zip -DestinationPath ."
 ```
 
-> 也可以在仓库内找到本地打包产物:`cli/out/dist/deeptrace_cli-<版本>-win64.zip`(若已存在,直接解压,同样免构建)。
+> 也可以在仓库内找到本地打包产物:`cli/out/dist/deeptrace_cli-<版本>-win64.zip`(若已存在,直接解压到当前目录,同样免构建)。
 
 ## 2. 验证安装
 
 ```bash
-./deeptrace_cli/deeptrace_cli.exe -v   # 应输出 deeptrace_cli v2.1.0
-./deeptrace_cli/deeptrace_cli.exe -h   # 应输出命令列表(12 组)
+./deeptrace_cli.exe -v   # 应输出 deeptrace_cli v2.1.0
+./deeptrace_cli.exe -h   # 应输出命令列表(12 组)
 ```
 
 两条输出正常即安装完成,可进入[使用参考](USAGE.md)。
