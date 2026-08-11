@@ -1,4 +1,4 @@
-# deeptrace-cli 使用参考
+# deeptrace-cli 使用技能(命令 / 用法)
 
 命令格式:`deeptrace_cli [选项] <命令组> <动作> [参数...]`
 
@@ -122,8 +122,8 @@ deeptrace_cli -p 1234 watch list / watch refresh / watch remove 0 / watch clear
 ## 10. DLL 注入(dll)
 
 ```bash
-deeptrace_cli -p 1234 dll inject C:\\path\\to\\testdll.dll   # Windows 路径
-deeptrace_cli -p 1234 dll eject C:\\path\\to\\testdll.dll
+deeptrace_cli -p 1234 dll inject C:\path\to\testdll.dll   # Windows 路径
+deeptrace_cli -p 1234 dll eject C:\path\to\testdll.dll
 deeptrace_cli -p 1234 dll list / dll status
 ```
 

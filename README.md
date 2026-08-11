@@ -115,7 +115,7 @@ deeptrace/   static library (domain / algorithm / infrastructure / service) + in
 cli/         command-line tool (command / interface / printing layers)
 design/      design documents (v1.0.0 … v2.1.0)
 docs/        api reference, developer docs, user manual (v2.1.0)
-agents/      AI-agent docs (agents/README.md) + deeptrace-cli skill (agents/skills/deeptrace-cli/)
+agents/      AI-agent setup guide (agents/README.md) + two skills (agents/deeptrace-cli-install.md, agents/deeptrace-cli-usage.md)
 sandbox/     experiments (not part of the deliverable)
 ```
 
@@ -133,9 +133,9 @@ sandbox/     experiments (not part of the deliverable)
 
 **Step 1 — Read the agent doc.** [agents/README.md](agents/README.md) is the setup guide for AI agents (written in English): project overview, key facts, and the two setup actions — install `deeptrace_cli` into your working directory and download the skill into `.agents/`.
 
-**Step 2 — Install the tool into your working directory (prefer the release download).** This repo is a Windows x64 C++20 process-memory tool. Download `deeptrace_cli-v2.1.0-win64.zip` from the [v2.0.0 release](https://github.com/Theqiqi/DeepTrace/releases/tag/v2.0.0) (single exe, no dependencies) and extract it into the **current directory** so `deeptrace_cli.exe` is available; build from source only when no release is available (build order: `deeptrace` library first, then `deeptrace_cli`). Details: [agents/README.md](agents/README.md) or the skill's [INSTALL.md](agents/skills/deeptrace-cli/references/INSTALL.md).
+**Step 2 — Install the tool into your working directory (prefer the release download).** This repo is a Windows x64 C++20 process-memory tool. Download `deeptrace_cli-v2.1.0-win64.zip` from the [v2.0.0 release](https://github.com/Theqiqi/DeepTrace/releases/tag/v2.0.0) (single exe, no dependencies) and extract it into the **current directory** so `deeptrace_cli.exe` is available; build from source only when no release is available (build order: `deeptrace` library first, then `deeptrace_cli`). Details: [agents/README.md](agents/README.md) or the install skill [deeptrace-cli-install.md](agents/deeptrace-cli-install.md).
 
-**Step 3 — Download the skill into `.agents/`.** Copy the skill and its references from `agents/skills/deeptrace-cli/` into `.agents/skills/deeptrace-cli/` (the runtime skill directory); the skill (written in Chinese) then tells the agent when and how to install and call this tool.
+**Step 3 — Download the skills into `.agents/`.** Copy the two skills into `.agents/` in your current directory: `agents/deeptrace-cli-install.md` (install/build) and `agents/deeptrace-cli-usage.md` (usage), both written in Chinese.
 
 **Step 4 — Use the skill to call the tool.** The agent can run commands such as `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex`. Key facts: exit codes `0`/`1`/`2` (success / failure / usage error); addresses are `0x`-prefixed hex; state (watches/injections) persists in `%TEMP%\deeptrace_<pid>\`; debug is scripted via the single entry `debug run <script.json>` (v2.1.0); test target `deeptrace_target.exe` has ASLR disabled with known values at fixed addresses (e.g. `0x14000D000` = `0x11223344`).
 

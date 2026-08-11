@@ -115,7 +115,7 @@ deeptrace/   静态库(domain / algorithm / infrastructure / service)+ include/d
 cli/         命令行工具(command / interface / printing 三层)
 design/      设计文档(v1.0.0 … v2.1.0)
 docs/        API 参考、开发者文档、用户手册(v2.1.0)
-agents/      AI agent 文档(agents/README.md)+ deeptrace-cli 技能(agents/skills/deeptrace-cli/)
+agents/      AI agent 设置指南(agents/README.md)+ 两个技能(agents/deeptrace-cli-install.md、agents/deeptrace-cli-usage.md)
 sandbox/     实验验证项目(不参与交付)
 ```
 
@@ -133,9 +133,9 @@ sandbox/     实验验证项目(不参与交付)
 
 **第 ① 步 — 读 agent 文档。** [agents/README.md](agents/README.md) 是给 AI agent 看的设置指南(文档为英文):项目概览、关键事实,以及两个设置动作——把 `deeptrace_cli` 安装到当前工作目录、把技能下载到 `.agents/`。
 
-**第 ② 步 — 安装工具到当前工作目录(优先下载发布版)。** 本仓库是 Windows x64 C++20 进程内存工具。从 [v2.0.0 Release](https://github.com/Theqiqi/DeepTrace/releases/tag/v2.0.0) 下载 `deeptrace_cli-v2.1.0-win64.zip`(单个 exe,免依赖)并**解压到当前目录**,使 `deeptrace_cli.exe` 可用;仅当没有发布版时才从源码构建(构建顺序:先 `deeptrace` 库,后 `deeptrace_cli`)。见 [agents/README.md](agents/README.md) 或技能的 [INSTALL.md](agents/skills/deeptrace-cli/references/INSTALL.md)。
+**第 ② 步 — 安装工具到当前工作目录(优先下载发布版)。** 本仓库是 Windows x64 C++20 进程内存工具。从 [v2.0.0 Release](https://github.com/Theqiqi/DeepTrace/releases/tag/v2.0.0) 下载 `deeptrace_cli-v2.1.0-win64.zip`(单个 exe,免依赖)并**解压到当前目录**,使 `deeptrace_cli.exe` 可用;仅当没有发布版时才从源码构建(构建顺序:先 `deeptrace` 库,后 `deeptrace_cli`)。见 [agents/README.md](agents/README.md) 或安装技能 [deeptrace-cli-install.md](agents/deeptrace-cli-install.md)。
 
-**第 ③ 步 — 把技能下载到 .agents/。** 把 `agents/skills/deeptrace-cli/` 下的技能与参考复制到 `.agents/skills/deeptrace-cli/`(运行时技能目录);技能(中文)会告诉 agent 何时以及如何安装与调用本工具。
+**第 ③ 步 — 把技能下载到 .agents/。** 把两个技能复制到当前目录的 `.agents/` 中:`agents/deeptrace-cli-install.md`(安装/编译)与 `agents/deeptrace-cli-usage.md`(用法),均为中文。
 
 **第 ④ 步 — 用技能调用软件。** 复制完成后,agent 即可执行如 `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex` 的命令。关键事实:退出码 `0`/`1`/`2`(成功/执行失败/用法错误);地址为 `0x` 前缀十六进制;watch/注入状态存于 `%TEMP%\deeptrace_<pid>\`;调试为脚本化会话,唯一入口 `debug run <script.json>`(v2.1.0);测试目标 `deeptrace_target.exe` 关闭 ASLR,固定地址存已知值(如 `0x14000D000` = `0x11223344`)。
 
