@@ -29,7 +29,7 @@ deeptrace_cli [options] <command group> <action> [args...]
 
 Most commands need a target process first: `-p <pid>`. Process IDs (PIDs) are listed with `ps list`. Without `-p`, the tool operates on the **currently attached process** (usually one you specified earlier with `-p`, or one you attached with `ps attach`).
 
-> Every `deeptrace_cli` run is an independent operation; breakpoints, watches, and injection records **persist across commands** (stored in a temp directory, see [FAQ](FAQ.md#4-why-do-breakpoints-and-watches-persist-across-commands)).
+> Every `deeptrace_cli` run is an independent operation; watches and injection records **persist across commands** (stored in a temp directory, see [FAQ](FAQ.md#4-why-do-watches-and-injection-records-persist-across-commands)). Breakpoints exist only inside a `debug run` session and are automatically restored/cleaned when the session ends (see [Debugging](#5-debugging-debug)).
 
 ---
 
@@ -225,81 +225,129 @@ Most commands need a target process first: `-p <pid>`. Process IDs (PIDs) are li
 
 ## 5. Debugging (debug)
 
-> The debug features put the target process into a "being debugged" state, allowing you to pause, single-step, set breakpoints, and view registers.
+> Since v2.1.0 the debug group has a **single entry: `debug run <script.json>`** — one invocation is one complete debug session. The standalone debug commands of earlier versions (`debug attach/detach/pause/resume/step/next/break/clear/hbreak/hclear/guard/unguard/status/registers/register`) no longer exist; typing one reports `Error: unknown command: '<action>'` (exit code 2).
 
-### 5.1 Enter Debug Mode (`debug attach`)
+### 5.1 Why a script?
 
-- **Steps**:
-  ```
-  deeptrace_cli -p 1234 debug attach
-  ```
-- **Expected output**: `OK`.
-- **Note**: `debug attach` does not terminate the target process (verified); after the command finishes, debugging exits automatically and the target process continues running normally. Protected processes may report `Error: AccessDenied`.
-- **Explanation**: every command run is an independent operation; debug sessions are not preserved across commands — so running `debug detach` alone reports `Error: NotAttached` (no debug session currently, which is normal).
+Debugging is **stateful** — it needs a live debug session (attached debuggee, armed breakpoints, paused threads), while every `deeptrace_cli` run is a single independent command. A script turns "one debug session" into "one command": the tool attaches → enters debug mode → runs your steps in order → cleans everything up → detaches. The target process always survives; software breakpoints and page guards are restored even when a step fails.
 
-### 5.2 Pause / Resume — `debug pause` / `debug resume`
+### 5.2 Script format
 
-- **When to use**: to stop the process (convenient for editing memory / checking state) or let it continue.
-- **Steps**: `deeptrace_cli -p 1234 debug pause` → the process pauses; `debug resume` → it continues.
-- **Expected output**: `OK`.
-- **Note**: `debug pause`/`debug resume` work directly with `-p`; a prior `debug attach` is not required (pausing is handled automatically).
+A script is a JSON array of steps. All field values are strings (addresses use `0x`):
 
-### 5.3 Single Step — `debug step [tid]` / `debug next [tid]`
+```json
+[
+  {"op": "<operation>", "<field>": "<value>", ...}
+]
+```
 
-- **When to use**: to execute code line by line and observe each instruction. `step` enters function bodies; `next` skips function calls.
-- **Steps**: `deeptrace_cli -p 1234 debug step`
-- **Expected output**: `OK` (combine with `debug register rip` to see the current execution position change).
+Supported operations:
 
-### 5.4 Software Breakpoints — `debug break <address>` / `debug clear <address>`
+| op | fields | description |
+|----|--------|-------------|
+| `status` | — | show debug state (attached / pid / breakpoint counts) |
+| `registers` | `tid` (optional) | show all registers of a thread (default: first thread) |
+| `register` | `name`, `tid` (optional) | show one register (e.g. `"name": "rip"`) |
+| `break` | `addr` | set a software breakpoint |
+| `clear` | `addr` | clear a software breakpoint |
+| `hbreak` | `addr`, `type`, `length` | set a hardware breakpoint (`type`: 0=execute / 1=write / 2=read-write; `length`: 1/2/4/8) |
+| `hclear` | `addr` | clear a hardware breakpoint |
+| `guard` | `addr`, `size` | guard a memory page (one-shot access watch) |
+| `unguard` | `addr`, `size` | remove the page guard |
+| `pause` | — | pause the target |
+| `resume` | — | resume the target |
+| `step` | `tid` (optional) | single-step one instruction |
+| `next` | `tid` (optional) | step over calls |
+| `continue` | `timeout_ms` (optional, default `5000`) | run until a breakpoint / process exit / timeout; the stop reason is reported |
+| `read` | `addr`, `size`, `format` (optional) | read memory (`format`: hex/dec/bin/ascii, default hex) |
+| `write` | `addr`, `bytes` | write memory; `bytes` is space-separated hex (e.g. `"BE BA FE CA"`) |
+| `disasm` | `addr`, `count` (optional) | disassemble at an address |
+| `watch_add` | `desc`, `addr`, `type` | add a watch |
+| `watch_remove` | `index` | remove a watch |
+| `watch_list` | — | list watches (with live values) |
+| `watch_refresh` | — | refresh watch values |
+| `watch_clear` | — | clear all watches |
 
-- **When to use**: to pause the program when it reaches an address.
-- **Steps**:
-  ```
-  deeptrace_cli -p 1234 debug break 0x14000D000
-  ```
-- **Expected output** (real sample):
-  ```
-  breakpoint set at 0x000000014000D000 (orig 0x44)
-  ```
-  `orig` is the original byte at the address before the breakpoint replaced it (automatically restored when the breakpoint is cleared).
-- **Clearing**: `deeptrace_cli -p 1234 debug clear 0x14000D000` → `OK`.
+### 5.3 Example: scripted debug session
 
-### 5.5 Hardware Breakpoints — `debug hbreak <address> [type] [length]`
+Prepare a script file `session.json` (this example mirrors the repository fixture `cli/test/scripts/debug_session.json`; replace `0x14000D000` with the address of a value in the target — e.g. the `g_int` address printed by `deeptrace_target.exe`):
 
-- **When to use**: breakpoints that don't modify memory (types `0`=execute, `1`=write, `2`=read/write). Limited count (usually 4).
-- **Steps**: `deeptrace_cli -p 1234 debug hbreak 0x14000D000 0 1`
-- **Clearing**: `deeptrace_cli -p 1234 debug hclear <address>`.
+```json
+[
+  {"op": "status"},
+  {"op": "registers"},
+  {"op": "read", "addr": "0x14000D000", "size": "4"},
+  {"op": "break", "addr": "0x14000D000"},
+  {"op": "clear", "addr": "0x14000D000"},
+  {"op": "watch_add", "desc": "sc_g", "addr": "0x14000D000", "type": "dword"},
+  {"op": "watch_list"},
+  {"op": "watch_clear"}
+]
+```
 
-### 5.6 Page Guard Breakpoints — `debug guard <address> <size>` / `debug unguard <address> <size>`
+Run it:
 
-- **When to use**: to monitor access to a range of memory.
-- **Steps**: `deeptrace_cli -p 1234 debug guard 0x14000D000 16`
+```
+deeptrace_cli -p 1234 debug run session.json
+```
 
-### 5.7 Debug Status — `debug status`
+Expected output (real sample, excerpt):
 
-- **When to use**: to confirm whether debugging is active and how many breakpoints exist.
-- **Steps**: `deeptrace_cli -p 1234 debug status`
-- **Expected output** (real sample):
-  ```
-  attached: yes
-  pid: 26128
-  breakpoints: 1
-  hw_breakpoints: 0
-  ```
+```
+[1] status
+attached: yes
+pid: 26128
+breakpoints: 0
+hw_breakpoints: 0
+[2] registers
+REG      VALUE
+rax      0x0000000000000034
+...
+[3] read
+44 33 22 11
+[4] break
+breakpoint set at 0x000000014000D000 (orig 0x44)
+[5] clear
+OK
+[6] watch_add
+OK
+[7] watch_list
+IDX    DESCRIPTION              ADDRESS            TYPE     VALUE                VALID
+0      sc_g                     0x000000014000D000 dword    0x11223344           yes
+[8] watch_clear
+OK
+```
 
-### 5.8 Registers — `debug registers [tid]` / `debug register <name> [tid]`
+Each step prints `[N] <op>` followed by its result. If a step fails, the session stops there and the target is cleaned up (breakpoints restored, guards removed) before detaching.
 
-- **When to use**: to view CPU registers (key debug information).
-- **Steps**: `deeptrace_cli -p 1234 debug registers`
-- **Expected output** (real sample, excerpt):
-  ```
-  REG      VALUE
-  rax      0x0000000000000034
-  ...
-  rip      0x00007FFC98E606E4
-  eflags   0x0000000000000246
-  ```
-- **View one register**: `deeptrace_cli -p 1234 debug register rip` → `rip = 0x00007FFC98E606E4`.
+### 5.4 Exit codes
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | all steps succeeded |
+| 1 | a step failed at runtime (session already cleaned up) |
+| 2 | script file / format / validation error (e.g. unknown op, missing required field) |
+
+### 5.5 Running to a breakpoint (`continue`)
+
+To actually stop at a breakpoint, pair `break` with `continue`:
+
+```json
+[
+  {"op": "break", "addr": "0x14000D000"},
+  {"op": "continue", "timeout_ms": "10000"},
+  {"op": "registers"}
+]
+```
+
+When the target reaches the breakpoint address, `continue` stops and reports the stop reason (breakpoint hit / other exception / process exit / timeout); the following steps then run against the paused target.
+
+### 5.6 Notes
+
+- Every address in a script is a hexadecimal string with `0x`, e.g. `"0x14000D000"`.
+- The target is never left in a broken state: software breakpoints are restored and page guards removed before the session ends, even on failure.
+- Writing memory, breakpoints, and injection can crash or change the target — practice on the test program first.
+- Standalone debug commands are gone: `deeptrace_cli -p 1234 debug step` now reports `Error: unknown command: 'step'` — write a script instead.
 
 ---
 
@@ -467,10 +515,7 @@ Most commands need a target process first: `-p <pid>`. Process IDs (PIDs) are li
 | `mem readval <addr> <type>` | Read typed values |
 | `module list` / `find` / `base` / `exports` / `dump` | Module operations |
 | `thread list` / `suspend` / `resume` / `kill` | Thread operations |
-| `debug attach` / `detach` / `pause` / `resume` | Debug control |
-| `debug step` / `next` | Single step |
-| `debug break` / `clear` / `hbreak` / `hclear` / `guard` / `unguard` | Breakpoints |
-| `debug status` / `registers` / `register <name>` | Debug status / registers |
+| `debug run <script.json>` | One scripted debug session (breakpoints / step / continue / registers / status + read / write / watch) |
 | `disasm at <addr> [n]` / `disasm range <a> <b>` | Disassembly |
 | `resolve base <mod>` / `resolve scan <pattern>` | Base address / pattern scan |
 | `watch add/list/remove/refresh/clear` | Watches |

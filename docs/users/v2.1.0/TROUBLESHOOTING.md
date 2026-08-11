@@ -11,7 +11,8 @@
 | `Error: unknown command group: 'bogus'` | Command group misspelled | Check the group name (ps/mem/module/thread/debug/disasm/resolve/watch/dll/asm/shellcode) |
 | `Error: invalid address: 'zzz'` | Address format is wrong | Use hex addresses starting with `0x`, e.g. `0x14000D000` |
 | `Error: NoSuchProcess(99999999)` | Process doesn't exist | Use `ps list` to find the PID again; the process may have exited |
-| `Error: NotAttached` | No target process attached/specified; or no debug session currently (running `debug detach` alone) | Add `-p <pid>`, or `ps attach <pid>` first; debug sessions don't persist across commands — normal (see [User Manual 5.1](USER_MANUAL.md#51-enter-debug-mode-debug-attach)) |
+| `Error: NotAttached` | No target process attached/specified | Add `-p <pid>`, or `ps attach <pid>` first; inside a `debug run` session this means a step ran without a valid session (see [User Manual 5](USER_MANUAL.md#5-debugging-debug)) |
+| `Error: unknown command: 'step'` (or `break`/`registers`/…) | A debug command that no longer exists (all standalone debug commands were removed in v2.1.0) | Use `debug run <script.json>` — every debug operation is now a step inside a script (see [User Manual 5](USER_MANUAL.md#5-debugging-debug) and [FAQ 6](FAQ.md#6-why-does-debug-step-or-debug-breakdebug-registers-report-error-unknown-command)) |
 | `Error: AccessDenied` | Insufficient permissions | Run the command window as administrator; try a normal process |
 | `Error: ReadFault` | Address unreadable | Use `mem regions` to find readable regions; check the address |
 | `Error: WriteFault` | Address not writable | That memory region is read-only; find a writable region (protection allows writes) |
@@ -33,7 +34,7 @@
 - **Memory regions**: `mem write` can only write "writable" regions; some regions (e.g. code sections) are read-only.
 - **Hardware breakpoints are limited**: usually 4 (DR0-DR3).
 - **State file residue**: after the target exits, record files remain under `%TEMP%\deeptrace_<pid>\` (harmless).
-- **One command at a time**: the tool is command-line based; each run executes one command and exits (breakpoint/watch state is kept, see [FAQ item 4](FAQ.md#4-why-do-breakpoints-and-watches-persist-across-commands)).
+- **One command at a time**: the tool is command-line based; each run executes one command and exits (watch/injection state is kept, see [FAQ item 4](FAQ.md#4-why-do-watches-and-injection-records-persist-across-commands); debug is scripted via `debug run`, see [User Manual 5](USER_MANUAL.md#5-debugging-debug)).
 
 ## 3. Recommended: Practice on the Test Program First
 
@@ -58,7 +59,7 @@ The repo ships a test target program `deeptrace_target.exe` with address randomi
 ## 4. Verifying Your Installation
 
 ```
-deeptrace_cli -v        :: should show deeptrace_cli v1.3.0
+deeptrace_cli -v        :: should show deeptrace_cli v2.1.0
 deeptrace_cli -h        :: should show the command list
 deeptrace_cli ps list   :: should show the process table
 ```

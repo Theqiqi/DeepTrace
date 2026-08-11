@@ -37,7 +37,7 @@ cd /d C:\Users\you\Downloads\deeptrace_cli
 3. Type `deeptrace_cli -h` to view help; you'll see the program version and the full command list:
 
 ```
-deeptrace_cli v1.3.0
+deeptrace_cli v2.1.0
 
 Usage: deeptrace_cli [options] <command> [args...]
 ...
@@ -46,7 +46,7 @@ Usage: deeptrace_cli [options] <command> [args...]
 4. Type `deeptrace_cli -v` to view the version:
 
 ```
-deeptrace_cli v1.3.0
+deeptrace_cli v2.1.0
 ```
 
 Seeing both lines above means the program works correctly.
