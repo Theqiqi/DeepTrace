@@ -94,10 +94,6 @@ bool valid_value_type(const std::string& s) {
            s == "float" || s == "double";
 }
 
-bool valid_hw_type(const std::string& s) {
-    return s == "0" || s == "1" || s == "2";
-}
-
 // AOB pattern: space-separated bytes; each token is "??" or exactly 2 hex chars.
 bool valid_pattern(const std::string& s) {
     if (s.empty()) return false;
@@ -205,7 +201,6 @@ bool valid_param(const ParamSpec& p, const std::string& v) {
     if (t == "format") return valid_format(v);
     if (t == "format-rw") return valid_format_rw(v);
     if (t == "value-type") return valid_value_type(v);
-    if (t == "hw-type") return valid_hw_type(v);
     if (t == "pattern") return valid_pattern(v);
     if (t == "hex-bytes") return valid_hex_bytes(v);
     if (t == "convert-type") return valid_convert_type(v);

@@ -33,6 +33,9 @@ add_custom_command(TARGET deeptrace_cli_integration_test POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/debug_bad.json"
         "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/debug_bad.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/debug_break_only.json"
+        "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/debug_break_only.json"
     COMMENT "Copying debug-run script fixtures"
 )
 

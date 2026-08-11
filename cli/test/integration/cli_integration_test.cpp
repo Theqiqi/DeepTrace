@@ -397,6 +397,31 @@ TEST(CliChain, DebugRunWriteSpacedHex) {
     deeptrace::detach();
 }
 
+// Session-end cleanup: a breakpoint armed in the script and never cleared
+// must be restored by cleanup_session at detach (no residual 0xCC in the
+// target after debug run returns).
+// Fixture: cli/test/scripts/debug_break_only.json.
+TEST(CliChain, DebugRunSessionCleanupRestoresByte) {
+    std::string script = materialize_script("debug_break_only.json", g_target.g_int, 4);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       script}),
+              0);
+    std::remove(script.c_str());
+    uint8_t b = 0;
+    size_t n = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(g_target.g_int, &b, 1, &n), deeptrace::Result::Ok);
+    EXPECT_EQ(b, 0x44);  // original byte restored (no 0xCC residual)
+    deeptrace::detach();
+    // side effect check: target survived the session
+    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, g_target.pid);
+    ASSERT_NE(h, nullptr);
+    DWORD code = 0;
+    EXPECT_TRUE(::GetExitCodeProcess(h, &code));
+    EXPECT_EQ(code, STILL_ACTIVE);
+    ::CloseHandle(h);
+}
+
 // Script errors: missing file and invalid content -> exit 2, no session opened.
 // The bad script comes from the real fixture cli/test/scripts/debug_bad.json.
 TEST(CliChain, DebugRunScriptErrors) {
