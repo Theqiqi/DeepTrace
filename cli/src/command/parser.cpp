@@ -210,7 +210,6 @@ bool valid_param(const ParamSpec& p, const std::string& v) {
     if (t == "script-path") return !v.empty();  // existence/readability checked by script module
     if (t == "shellcode-source") return !v.empty();  // hex/file resolution in interface layer
     if (t == "flag") return v == p.name;
-    if (t == "out-flag") return v.empty() || v == "--out";
     return true;
 }
 

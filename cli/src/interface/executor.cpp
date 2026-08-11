@@ -182,13 +182,15 @@ deeptrace::Result resolve_source(const std::string& source, bool asm_ok,
         out = hex_bytes(source);
         return out.empty() ? deeptrace::Result::InvalidArg : deeptrace::Result::Ok;
     }
+    bool asm_src = has_suffix(source, ".asm") || has_suffix(source, ".s");
+    if (asm_src && !asm_ok) return deeptrace::Result::InvalidArg;  // alloc: .asm not accepted
     std::ifstream probe(source);
     if (!probe.is_open()) return deeptrace::Result::InvalidArg;
     probe.close();
-    if (asm_ok && (has_suffix(source, ".asm") || has_suffix(source, ".s"))) {
+    if (asm_src) {
         std::string text;
         if (!read_text_file(source, text)) return deeptrace::Result::InvalidArg;
-        return deeptrace::asm_assemble(text, out, nullptr);
+        return deeptrace::asm_assemble(text, out, nullptr);  // BadFormat on syntax error
     }
     return read_binary_file(source, out) ? deeptrace::Result::Ok
                                          : deeptrace::Result::InvalidArg;

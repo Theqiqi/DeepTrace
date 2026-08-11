@@ -11,11 +11,15 @@ namespace deeptrace_cli {
 
 namespace {
 
-// Resolve source into bytes; on failure print a usage-style error and return
-// the exit code (2). asm_ok allows .asm/.s files (exec only).
+// Resolve source into bytes; on failure print the right error and return the
+// exit code. Assembly failures (BadFormat) are business errors (exit 1);
+// anything else is a usage error on the source value (exit 2).
 int resolve_or_error(const std::string& source, bool asm_ok, std::vector<uint8_t>& out) {
     deeptrace::Result r = internal::resolve_source(source, asm_ok, out);
     if (r == deeptrace::Result::Ok && !out.empty()) return 0;
+    if (r == deeptrace::Result::BadFormat) {
+        return internal::report_error(r, source);
+    }
     printer::print_error("invalid shellcode source: '" + source + "'");
     return 2;
 }

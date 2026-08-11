@@ -9,8 +9,6 @@
 #include <string>
 #include <vector>
 
-#include "interface/cmd.h"
-
 namespace deeptrace_cli {
 
 namespace {
@@ -84,6 +82,12 @@ int cmd_asm(const CommandRequest& req) {
         if (!out_path.empty() && !internal::write_binary_file(out_path, bytes)) {
             printer::print_error("cannot write file: " + out_path);
             return 1;
+        }
+        if (!out_path.empty()) {
+            char buf[64];
+            std::snprintf(buf, sizeof buf, "wrote %s (%zu bytes)", out_path.c_str(),
+                          bytes.size());
+            printer::print_message(buf);
         }
 
         bool c_array = has_flag(req, "--c-array");

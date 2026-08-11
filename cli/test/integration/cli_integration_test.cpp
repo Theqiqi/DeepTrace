@@ -549,6 +549,38 @@ TEST(CliChain, ShellcodeAllocBadSource) {
               2);
 }
 
+// Capability boundary (negative): alloc must NOT accept .asm source files
+// (assembly is exec-only); the raw text must not be injected as shellcode.
+TEST(CliChain, ShellcodeAllocRejectsAsmFile) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string asm_path = std::string(tmpname) + ".asm";
+    {
+        std::ofstream f(asm_path);
+        f << "ret\n";
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "shellcode",
+                       "alloc", asm_path}),
+              2);
+    std::remove(asm_path.c_str());
+}
+
+// exec with an .asm source whose assembly fails (syntax error) is a business
+// error (exit 1, BadFormat), not a usage error.
+TEST(CliChain, ShellcodeExecBadAsm) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string asm_path = std::string(tmpname) + ".asm";
+    {
+        std::ofstream f(asm_path);
+        f << "bogus rax, 1\n";
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "shellcode",
+                       "exec", asm_path}),
+              1);
+    std::remove(asm_path.c_str());
+}
+
 // shellcode exec: one invocation = complete flow (convert -> write -> trigger)
 // using a .bin file produced by hex2bin. Target must survive.
 TEST(CliChain, ShellcodeExecBinFile) {
