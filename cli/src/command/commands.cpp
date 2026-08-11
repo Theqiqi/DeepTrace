@@ -154,6 +154,12 @@ const std::vector<CommandSpec>& command_table() {
             "Inject shellcode at address",
             {req("address", "address"), req("hex_bytes", "hex-bytes")}),
         cmd("shellcode", "status", "shellcode status", "Show shellcode inject status", {}),
+
+        // ---- convert (standalone command, no sub-action) ----
+        cmd("convert", "", "convert <type> <value>",
+            "Convert typed data to hex bytes "
+            "(type: byte|word|dword|qword|float|double|string|hex)",
+            {req("type", "convert-type"), req("value", "convert-value")}),
     };
     return kTable;
 }
@@ -178,7 +184,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v1.3.0\n";
+    os << "deeptrace_cli v1.4.1\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

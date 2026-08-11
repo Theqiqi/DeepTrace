@@ -38,7 +38,7 @@ void print_help(const std::string& text) {
 }
 
 void print_version() {
-    std::printf("deeptrace_cli v1.4.0\n");
+    std::printf("deeptrace_cli v1.4.1\n");
 }
 
 std::string to_ascii(const std::wstring& s) {

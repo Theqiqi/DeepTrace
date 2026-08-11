@@ -6,7 +6,9 @@
 
 #include "deeptrace.h"
 
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -52,6 +54,54 @@ std::vector<uint8_t> hex_bytes(const std::string& s) {
         out.push_back(static_cast<uint8_t>((hexv(s[i]) << 4) | hexv(s[i + 1])));
     }
     return out;
+}
+
+bool typed_bytes(const std::string& value, const std::string& type,
+                 std::vector<uint8_t>& out) {
+    if (type == "hex") {
+        out = hex_bytes(value);
+        return !out.empty();
+    }
+    if (type == "string") {
+        out.assign(value.begin(), value.end());
+        return !out.empty();
+    }
+    if (type == "byte" || type == "word" || type == "dword" || type == "qword") {
+        // value was validated as an unsigned integer (dec or 0x-prefixed hex);
+        // parse with the same base rule as the parser to avoid octal pitfalls.
+        bool hex_pref = value.size() >= 2 && value[0] == '0' &&
+                        (value[1] == 'x' || value[1] == 'X');
+        unsigned long long v = std::strtoull(value.c_str() + (hex_pref ? 2 : 0),
+                                             nullptr, hex_pref ? 16 : 10);
+        size_t width = type == "byte" ? 1 : type == "word" ? 2
+                     : type == "dword" ? 4 : 8;
+        out.clear();
+        for (size_t i = 0; i < width; ++i) {
+            out.push_back(static_cast<uint8_t>((v >> (8 * i)) & 0xFF));
+        }
+        return true;
+    }
+    if (type == "float") {
+        float f = std::strtof(value.c_str(), nullptr);
+        uint32_t bits = 0;
+        std::memcpy(&bits, &f, sizeof(bits));
+        out.clear();
+        for (int i = 0; i < 4; ++i) {
+            out.push_back(static_cast<uint8_t>((bits >> (8 * i)) & 0xFF));
+        }
+        return true;
+    }
+    if (type == "double") {
+        double d = std::strtod(value.c_str(), nullptr);
+        uint64_t bits = 0;
+        std::memcpy(&bits, &d, sizeof(bits));
+        out.clear();
+        for (int i = 0; i < 8; ++i) {
+            out.push_back(static_cast<uint8_t>((bits >> (8 * i)) & 0xFF));
+        }
+        return true;
+    }
+    return false;
 }
 
 int value_type_id(const std::string& s) {
@@ -101,6 +151,7 @@ int execute(const CommandRequest& req) {
     else if (req.group == "dll") rc = cmd_dll(req);
     else if (req.group == "asm") rc = cmd_asm(req);
     else if (req.group == "shellcode") rc = cmd_shellcode(req);
+    else if (req.group == "convert") rc = cmd_convert(req);
     else {
         printer::print_error("unknown command group: '" + req.group + "'");
     }

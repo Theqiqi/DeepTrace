@@ -20,6 +20,7 @@ add_library(deeptrace_cli_core STATIC
     interface/cmd_inject.cpp
     interface/cmd_asm.cpp
     interface/cmd_shellcode.cpp
+    interface/cmd_convert.cpp
 
     printing/printer.h
     printing/printer.cpp
