@@ -9,7 +9,7 @@ struct ContinueInfo {
     bool hit = false;             // 停在异常上(断点/守护页/其他)
     bool exited = false;          // 目标进程退出
     uint32_t exit_code = 0;       // 退出码(exited 时有效)
-    uint32_t exception_code = 0;  // 异常码(hit 时有效)
+    uint32_t exception = 0;       // 异常码(hit 时有效)
     uintptr_t address = 0;        // 异常地址(hit 时有效)
     uintptr_t rip = 0;            // 命中线程 RIP(hit 时有效;软件断点=执行后 RIP)
     uint32_t tid = 0;             // 命中线程 ID(hit 时有效)

@@ -109,6 +109,7 @@ bool spawn_target(const std::string& exe_path, TargetInfo& out) {
     out.g_flag = parse_addr(all, "g_flag");
     out.g_counter = parse_addr(all, "g_counter");
     out.worker_fn = parse_addr(all, "worker_fn");
+    out.worker_tick = parse_addr(all, "worker_tick");
     return out.pid != 0;
 }
 

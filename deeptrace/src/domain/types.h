@@ -96,6 +96,17 @@ struct DebugStatus {
     uint32_t hw_breakpoint_count = 0;
 };
 
+// Outcome of debug_continue: stop reason after resuming the debuggee.
+struct ContinueInfo {
+    bool hit = false;             // stopped on an exception (breakpoint/guard/other)
+    bool exited = false;          // target process exited
+    uint32_t exit_code = 0;       // valid when exited
+    uint32_t exception = 0;       // exception code (valid when hit)
+    uintptr_t address = 0;        // exception address (valid when hit)
+    uintptr_t rip = 0;            // stopped-thread RIP (software breakpoint: post-instruction)
+    uint32_t tid = 0;             // stopped-thread id (valid when hit)
+};
+
 struct InjectInfo {
     std::wstring path;
     uintptr_t remote_base = 0;

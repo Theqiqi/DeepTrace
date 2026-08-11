@@ -27,11 +27,15 @@ volatile uint8_t g_work_loop[16] = {0x48, 0xFF, 0xC0, 0x48, 0x8B, 0x05, 0x00,
                                     0x00, 0x00, 0x00, 0xEB, 0xF4, 0x90, 0x90,
                                     0x90, 0x90};  // bytes resembling a loop
 
+// Called on every worker iteration so breakpoint/continue tests have a
+// stable, constantly-executed address to break at.
+__declspec(noinline) void WorkerTick() { ++g_counter; }
+
 DWORD WINAPI WorkerProc(LPVOID) {
     // Busy loop: keeps RIP inside user code so single-step / breakpoint
     // tests have a stable target.
     for (;;) {
-        ++g_counter;
+        WorkerTick();
         if (g_flag == 0xCAFE) break;
     }
     return 0;
@@ -59,6 +63,8 @@ void PrintBanner() {
            (unsigned long long)(uintptr_t)&g_counter);
     printf(" worker_fn   = 0x%llX\n",
            (unsigned long long)(uintptr_t)&WorkerProc);
+    printf(" worker_tick = 0x%llX\n",
+           (unsigned long long)(uintptr_t)&WorkerTick);
     printf("---------------------------------------------\n");
     fflush(stdout);
 }

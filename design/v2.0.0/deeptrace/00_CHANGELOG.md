@@ -10,7 +10,7 @@
 | # | 改动点 | 新增/修改/删除 | 影响 |
 |---|--------|----------------|------|
 | 1 | 新增公共 API `Result debug_continue(uint32_t timeout_ms, ContinueInfo& out)` | 新增 | service/debug |
-| 2 | 新增公共数据结构 `ContinueInfo{hit, exited, exit_code, exception_code, address, rip, tid}` | 新增 | domain/types |
+| 2 | 新增公共数据结构 `ContinueInfo{hit, exited, exit_code, exception, address, rip, tid}` | 新增 | domain/types |
 | 3 | 基础设施新增 `DebugContinue`(等待调试事件:软件断点命中/其他异常/进程退出/超时) | 新增 | infrastructure/debug |
 | 4 | 版本号 1.3.0 → 2.0.0 | 修改 | 全局 |
 
