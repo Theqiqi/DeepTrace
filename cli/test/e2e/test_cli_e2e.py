@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v1.4.1" in out, repr(out))
+    check("version string", "deeptrace_cli v2.0.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -296,6 +296,57 @@ def main():
         check("debug attach exit 0", code == 0)
         code, out, _ = run_cli(["ps", "list"])
         check("target alive after debug attach", str(pid) in out, repr(out[:200]))
+
+        # ---- debug run: scripted session (one invocation = one session) ----
+        # The CLI is a Windows binary; the script path arg must be a Windows
+        # path (the WSL /mnt/c/... path is not visible to it).
+        script = os.path.join(BIN_DIR, "e2e_session.json")
+        script_win = win_path(script)
+        with open(script, "w") as f:
+            f.write("[\n"
+                    "  {\"op\": \"status\"},\n"
+                    "  {\"op\": \"registers\"},\n"
+                    f"  {{\"op\": \"read\", \"addr\": \"{g_int}\", \"size\": \"4\"}},\n"
+                    f"  {{\"op\": \"break\", \"addr\": \"{g_int}\"}},\n"
+                    f"  {{\"op\": \"clear\", \"addr\": \"{g_int}\"}},\n"
+                    f"  {{\"op\": \"watch_add\", \"desc\": \"e2e_g\", \"addr\": \"{g_int}\", "
+                    "\"type\": \"dword\"},\n"
+                    "  {\"op\": \"watch_list\"},\n"
+                    "  {\"op\": \"watch_clear\"}\n"
+                    "]\n")
+        code, out, _ = run_cli(["-p", str(pid), "debug", "run", script_win])
+        check("debug run scripted session exit 0", code == 0)
+        check("debug run step headers", "[1] status" in out, repr(out[:200]))
+        check("debug run watch value", "0x11223344" in out, repr(out))
+        code, out, _ = run_cli(["ps", "list"])
+        check("target alive after debug run", str(pid) in out, repr(out[:200]))
+        os.remove(script)
+
+        # ---- debug run: write with space-separated hex bytes ----
+        script2 = os.path.join(BIN_DIR, "e2e_write.json")
+        script2_win = win_path(script2)
+        with open(script2, "w") as f:
+            f.write(f"[{{\"op\": \"write\", \"addr\": \"{g_int}\", "
+                    "\"bytes\": \"BE BA FE CA\"}]\n")
+        code, _, _ = run_cli(["-p", str(pid), "debug", "run", script2_win])
+        check("debug run spaced write exit 0", code == 0)
+        code, out, _ = run_cli(["-p", str(pid), "mem", "read", g_int, "4", "hex"])
+        check("debug run spaced write applied", "BE BA FE CA" in out, repr(out))
+        run_cli(["-p", str(pid), "mem", "write", g_int, "44332211", "hex"])
+        os.remove(script2)
+
+        # ---- debug run: script errors -> exit 2 ----
+        code, _, err = run_cli(["-p", str(pid), "debug", "run", "no_such.json"])
+        check("debug run missing file exit 2", code == 2)
+        check("debug run missing file msg", "cannot open script file" in err, repr(err))
+        script3 = os.path.join(BIN_DIR, "e2e_bad.json")
+        script3_win = win_path(script3)
+        with open(script3, "w") as f:
+            f.write("[{\"op\": \"frobnicate\"}]\n")
+        code, _, err = run_cli(["-p", str(pid), "debug", "run", script3_win])
+        check("debug run unknown op exit 2", code == 2)
+        check("debug run unknown op msg", "unknown op" in err, repr(err))
+        os.remove(script3)
 
         # ---- dll inject round trip (companion testdll.dll) ----
         # The path must be a Windows path: it is written into the target and

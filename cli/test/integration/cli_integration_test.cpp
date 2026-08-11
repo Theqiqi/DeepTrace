@@ -363,6 +363,79 @@ TEST(CliChain, BreakpointAffectsDeeptraceState) {
               0);
 }
 
+// Helper: write a script file and return its path (unique per call).
+std::string write_script(const std::string& content, int tag) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string path = std::string(tmpname) + "_" + std::to_string(tag) + ".json";
+    std::ofstream f(path, std::ios::binary);
+    f << content;
+    f.close();
+    return path;
+}
+
+// One invocation = one debug session: attach -> debug_attach -> steps ->
+// cleanup -> debug_detach -> detach. The target must survive.
+TEST(CliChain, DebugRunScriptedSession) {
+    std::string script = write_script(
+        "[\n"
+        "  {\"op\": \"status\"},\n"
+        "  {\"op\": \"registers\"},\n"
+        "  {\"op\": \"read\", \"addr\": \"" + hex(g_target.g_int) +
+            "\", \"size\": \"4\"},\n"
+        "  {\"op\": \"break\", \"addr\": \"" + hex(g_target.g_int) + "\"},\n"
+        "  {\"op\": \"clear\", \"addr\": \"" + hex(g_target.g_int) + "\"},\n"
+        "  {\"op\": \"watch_add\", \"desc\": \"sc_g\", \"addr\": \"" +
+            hex(g_target.g_int) + "\", \"type\": \"dword\"},\n"
+        "  {\"op\": \"watch_list\"},\n"
+        "  {\"op\": \"watch_clear\"}\n"
+        "]\n",
+        1);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       script}),
+              0);
+    std::remove(script.c_str());
+    // side effect check: target must still be alive after the session
+    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, g_target.pid);
+    ASSERT_NE(h, nullptr);
+    DWORD code = 0;
+    EXPECT_TRUE(::GetExitCodeProcess(h, &code));
+    EXPECT_EQ(code, STILL_ACTIVE);
+    ::CloseHandle(h);
+}
+
+// Regression: write accepts space-separated hex; the bytes must land correctly.
+TEST(CliChain, DebugRunWriteSpacedHex) {
+    std::string script = write_script(
+        "[{\"op\": \"write\", \"addr\": \"" + hex(g_target.g_int) +
+            "\", \"bytes\": \"BE BA FE CA\"}]\n",
+        2);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       script}),
+              0);
+    std::remove(script.c_str());
+    uint32_t v = 0;
+    size_t n = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(g_target.g_int, &v, 4, &n), deeptrace::Result::Ok);
+    EXPECT_EQ(v, 0xCAFEBABEu);  // little-endian: BE BA FE CA -> 0xCAFEBABE
+    v = 0x11223344;
+    deeptrace::memory_write(g_target.g_int, &v, 4, &n);
+    deeptrace::detach();
+}
+
+// Script errors: missing file and invalid content -> exit 2, no session opened.
+TEST(CliChain, DebugRunScriptErrors) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       "no_such_script.json"}),
+              2);
+    std::string bad = write_script("[{\"op\": \"frobnicate\"}]\n", 3);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       bad}),
+              2);
+    std::remove(bad.c_str());
+}
+
 TEST(CliChain, NoSuchProcessAttach) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "attach", "99999999"}), 1);
 }
