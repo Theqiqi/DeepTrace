@@ -90,6 +90,9 @@ Result asm_assemble(const std::string& code, std::vector<uint8_t>& out, std::str
 // ---- shellcode -------------------------------------------------------------------
 Result shellcode_inject(const std::vector<uint8_t>& bytes, InjectInfo& out);
 Result shellcode_inject_at(uintptr_t addr, const std::vector<uint8_t>& bytes, InjectInfo& out);
+Result shellcode_alloc(const std::vector<uint8_t>& bytes, InjectInfo& out);  // alloc+write, no execute
+Result shellcode_run(uintptr_t addr, InjectInfo& out);                     // trigger at recorded addr (repeatable)
+Result shellcode_free(uintptr_t addr);                                     // free recorded addr
 Result shellcode_status(std::vector<InjectInfo>& out);
 
 }  // namespace deeptrace

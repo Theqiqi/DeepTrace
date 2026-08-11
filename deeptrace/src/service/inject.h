@@ -13,5 +13,8 @@ Result dll_status(std::vector<InjectInfo>& out);
 Result shellcode_inject(const std::vector<uint8_t>& bytes, InjectInfo& out);
 Result shellcode_inject_at(uintptr_t addr, const std::vector<uint8_t>& bytes,
                            InjectInfo& out);
+Result shellcode_alloc(const std::vector<uint8_t>& bytes, InjectInfo& out);
+Result shellcode_run(uintptr_t addr, InjectInfo& out);
+Result shellcode_free(uintptr_t addr);
 Result shellcode_status(std::vector<InjectInfo>& out);
 }  // namespace deeptrace

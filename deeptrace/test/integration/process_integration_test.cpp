@@ -389,6 +389,70 @@ TEST_F(DeeptraceIntegration, ShellcodeRoundTrip) {
     EXPECT_TRUE(found);
 }
 
+// shellcode_alloc: alloc+write only (no thread), memory readable, record visible;
+// shellcode_run: creates a remote thread at the recorded addr (repeatable);
+// shellcode_free: releases memory and removes the record (second op -> NotFound).
+TEST_F(DeeptraceIntegration, ShellcodeAllocRunFree) {
+    std::vector<uint8_t> code = {0xC3};  // ret
+    deeptrace::InjectInfo info;
+    EXPECT_EQ(deeptrace::shellcode_alloc(code, info), deeptrace::Result::Ok);
+    EXPECT_EQ(info.kind, "shellcode");
+    EXPECT_NE(info.remote_base, 0u);
+    EXPECT_EQ(info.thread_id, 0u);
+    EXPECT_FALSE(info.running);
+
+    // written bytes are readable back (no execution side effect)
+    std::vector<uint8_t> out;
+    EXPECT_EQ(deeptrace::memory_dump(info.remote_base, 1, out), deeptrace::Result::Ok);
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0], 0xC3);
+
+    // record visible via status (running=no)
+    std::vector<deeptrace::InjectInfo> list;
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    bool found = false;
+    for (const auto& i : list) {
+        if (i.remote_base == info.remote_base) found = true;
+    }
+    EXPECT_TRUE(found);
+
+    // run: creates one remote thread at addr (ret completes immediately)
+    deeptrace::InjectInfo run_info;
+    EXPECT_EQ(deeptrace::shellcode_run(info.remote_base, run_info), deeptrace::Result::Ok);
+    EXPECT_EQ(run_info.remote_base, info.remote_base);
+    EXPECT_NE(run_info.thread_id, 0u);
+    EXPECT_TRUE(run_info.running);
+
+    // repeatable (re-trigger semantics)
+    deeptrace::InjectInfo run2;
+    EXPECT_EQ(deeptrace::shellcode_run(info.remote_base, run2), deeptrace::Result::Ok);
+    EXPECT_NE(run2.thread_id, 0u);
+
+    // free: memory released + record removed -> later ops NotFound
+    EXPECT_EQ(deeptrace::shellcode_free(info.remote_base), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_run(info.remote_base, run_info),
+              deeptrace::Result::NotFound);
+    EXPECT_EQ(deeptrace::shellcode_free(info.remote_base), deeptrace::Result::NotFound);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    for (const auto& i : list) {
+        EXPECT_NE(i.remote_base, info.remote_base);
+    }
+}
+
+TEST_F(DeeptraceIntegration, ShellcodeAllocEmpty) {
+    deeptrace::InjectInfo info;
+    EXPECT_EQ(deeptrace::shellcode_alloc({}, info), deeptrace::Result::InvalidArg);
+}
+
+TEST_F(DeeptraceIntegration, ShellcodeRunNotFound) {
+    deeptrace::InjectInfo info;
+    EXPECT_EQ(deeptrace::shellcode_run(0x12345678, info), deeptrace::Result::NotFound);
+}
+
+TEST_F(DeeptraceIntegration, ShellcodeFreeNotFound) {
+    EXPECT_EQ(deeptrace::shellcode_free(0x12345678), deeptrace::Result::NotFound);
+}
+
 TEST_F(DeeptraceIntegration, AsmAssemble) {
     std::vector<uint8_t> bytes;
     std::string text;

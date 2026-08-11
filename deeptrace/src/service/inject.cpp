@@ -263,6 +263,94 @@ Result shellcode_inject_at(uintptr_t addr, const std::vector<uint8_t>& bytes,
     return Result::Ok;
 }
 
+Result shellcode_alloc(const std::vector<uint8_t>& bytes, InjectInfo& out) {
+    auto& s = internal::session();
+    if (!s.handle) return Result::NotAttached;
+    if (bytes.empty()) return Result::InvalidArg;
+
+    uintptr_t remote = 0;
+    Result r = internal::RemoteAlloc(s.handle, bytes.size(), PAGE_EXECUTE_READWRITE,
+                                     &remote);
+    if (r != Result::Ok) return r;
+
+    Result err;
+    size_t n = internal::WriteRemoteMemory(s.handle, remote, bytes.data(), bytes.size(),
+                                           &err);
+    if (err != Result::Ok || n != bytes.size()) {
+        internal::RemoteFree(s.handle, remote);
+        return err != Result::Ok ? err : Result::WriteFault;
+    }
+
+    out.kind = "shellcode";
+    out.remote_base = remote;
+    out.thread_id = 0;
+    out.running = false;
+    out.size = bytes.size();
+
+    auto recs = internal::load_injects(s.pid);
+    recs.push_back(internal::InjectRecord{
+        "shellcode", internal::hex_encode(bytes.data(), bytes.size()), remote, 0});
+    internal::save_injects(s.pid, recs);
+    return Result::Ok;
+}
+
+Result shellcode_run(uintptr_t addr, InjectInfo& out) {
+    auto& s = internal::session();
+    if (!s.handle) return Result::NotAttached;
+    if (addr == 0) return Result::InvalidArg;
+
+    auto recs = internal::load_injects(s.pid);
+    internal::InjectRecord* rec = nullptr;
+    for (auto& r : recs) {
+        if (r.kind == "shellcode" && r.address == addr) {
+            rec = &r;
+            break;
+        }
+    }
+    if (!rec) return Result::NotFound;
+
+    uint32_t tid = 0;
+    Result r = internal::CreateRemoteThreadEx(s.handle, addr, 0, &tid);
+    if (r != Result::Ok) return r;
+
+    rec->thread_id = tid;
+    internal::save_injects(s.pid, recs);
+
+    out.kind = "shellcode";
+    out.remote_base = addr;
+    out.thread_id = tid;
+    out.running = true;
+    out.size = rec->path.size() / 2;
+    return Result::Ok;
+}
+
+Result shellcode_free(uintptr_t addr) {
+    auto& s = internal::session();
+    if (!s.handle) return Result::NotAttached;
+    if (addr == 0) return Result::InvalidArg;
+
+    auto recs = internal::load_injects(s.pid);
+    bool found = false;
+    for (const auto& rec : recs) {
+        if (rec.kind == "shellcode" && rec.address == addr) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) return Result::NotFound;
+
+    Result r = internal::RemoteFree(s.handle, addr);
+    if (r != Result::Ok) return r;
+
+    std::vector<internal::InjectRecord> rest;
+    for (const auto& rec : recs) {
+        if (rec.kind == "shellcode" && rec.address == addr) continue;
+        rest.push_back(rec);
+    }
+    internal::save_injects(s.pid, rest);
+    return Result::Ok;
+}
+
 Result shellcode_status(std::vector<InjectInfo>& out) {
     out.clear();
     auto& s = internal::session();
