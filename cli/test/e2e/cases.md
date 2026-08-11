@@ -2,8 +2,8 @@
 
 > 独立 Python 体系(`test_cli_e2e.py`),不参与 CMake。
 > 覆盖无参运行、-h/--help、错误路径、-p <pid> 真实目标进程操作、清理后退出。
-> 修改模式:v2.1.0 debug 收敛为单一入口 `debug run`(删除 15 个 debug 单命令,
-> 负例断言 unknown command + 目标无损);版本号同步 v2.1.0;既有用例全量回归。
+> 修改模式:v2.2.0 新增 asm file / hex2bin / shellcode alloc|run|free|exec|injectfile
+> (汇编代码注入并执行,分阶段操作);版本号同步 v2.2.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -12,7 +12,7 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.1.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.2.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
 | 非法参数 | - | `deeptrace_cli mem read zzz` | Error | 2 |
@@ -65,8 +65,35 @@
 | convert 输出喂给 scan(链式) | `convert dword 287454020` → 取输出 `44 33 22 11` → `resolve scan "44 33 22 11"` | 命中地址含 g_int | 0 |
 | 旧类型语法已移除(回归) | `resolve scan 100 dword` | stderr 含 too many arguments | 2 |
 
+## 4.5 asm file / hex2bin / shellcode 分阶段(v2.2.0,新增)
+
+前置:启动 deeptrace_target.exe,解析 PID。临时 .asm/.bin 文件写入 BIN_DIR
+(Windows 可读路径),测试后清理。
+
+| 用例 | 操作 | 预期输出 | 退出码 |
+|------|------|----------|--------|
+| asm file 汇编+写 bin | 写 `xor eax,eax\nret` 到 .asm,`asm file <path> --out <bin>` | 输出 31C0C3;.bin 文件 3 字节 31 C0 C3 | 0 |
+| asm file 文件不存在 | `asm file no_such.asm` | stderr 含 cannot read file | 2 |
+| hex2bin 写文件 | `hex2bin DEADBEEF out.bin` | stdout 含 wrote;文件 4 字节 | 0 |
+| hex2bin 非法 hex | `hex2bin ABC out.bin` | Error | 2 |
+| alloc 只写入不执行 | `-p <pid> shellcode alloc C3` | 输出地址(running 列 no) | 0 |
+| alloc 非法 source | `-p <pid> shellcode alloc zzzz` | stderr 含 invalid shellcode source | 2 |
+| run 触发一次 | `-p <pid> shellcode run <addr>` | 输出地址/TID | 0 |
+| run 可重复 | 再次 `run <addr>` | 0 |
+| free 释放 | `-p <pid> shellcode free <addr>` | OK | 0 |
+| free 后 run NotFound | `run <addr>` | Error 含 NotFound | 1 |
+| 副作用:分阶段后目标存活 | 上例后 `ps list` | 目标 pid 仍在 | 0 |
+| exec 流水线(.bin) | hex2bin C3 → `exec <bin>` | 输出地址/TID(一次调用完整流程) | 0 |
+| exec 流水线(.asm 内存直转) | 写 `ret` 到 .asm → `exec <asm>` | 输出地址/TID | 0 |
+| exec 非法 source | `exec zzzz` | stderr 含 invalid shellcode source | 2 |
+| injectfile 文件注入 | hex2bin C3 → `injectfile <bin>` | 输出地址/TID(立即执行) | 0 |
+| injectfile 文件不存在 | `injectfile no_such.bin` | stderr 含 cannot read file | 2 |
+
+> exec/injectfile 产生的记录测试后 free 清理;全部 shellcode 用例结束断言目标存活。
+
 ## 5. 既有回归(引用)
 
 - ps/mem/module/thread/debug/disasm/asm/watch/dll 既有用例全量回归
-- 副作用检查:debug run 会话后目标进程仍存活;dll inject/eject 成对完成
+- 副作用检查:debug run 会话后目标进程仍存活;dll inject/eject 成对完成;
+  shellcode alloc/exec/injectfile 记录测试后 free 清理,无残留注入记录
 - 清理:测试结束 taskkill deeptrace_target.exe,无残留进程

@@ -249,7 +249,8 @@ ParseResult parse_args(int argc, char* argv[]) {
             res.req.pid_set = true;
             continue;
         }
-        if (!a.empty() && a[0] == '-' && a.size() > 1 && a != "--hex" && a != "--c-array") {
+        if (!a.empty() && a[0] == '-' && a.size() > 1 && a != "--hex" && a != "--c-array" &&
+            a != "--out") {
             res.ok = false;
             res.exit_code = 2;
             res.error = "unknown option: " + a;

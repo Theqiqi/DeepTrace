@@ -116,7 +116,7 @@ TEST(Parser, MissingSubcommand) {
 TEST(Parser, AllGroupsKnown) {
     const char* groups[] = {"ps", "mem", "module", "thread", "debug",
                             "disasm", "resolve", "watch", "dll", "asm",
-                            "shellcode", "convert"};
+                            "shellcode", "convert", "hex2bin"};
     for (const char* g : groups) {
         EXPECT_TRUE(is_group(g)) << g;
     }
@@ -423,6 +423,112 @@ TEST(Parser, ShellcodeHexBytes) {
     EXPECT_EQ(r.req.args[0], "4831C0C3");
     auto bad = parse({"deeptrace_cli", "shellcode", "inject", "4831C0C"});
     EXPECT_FALSE(bad.ok);
+}
+
+// ---- v2.2.0: asm file / hex2bin / shellcode staged ops ----
+
+TEST(Parser, AsmFileBasic) {
+    auto r = parse({"deeptrace_cli", "asm", "file", "code.asm"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "asm");
+    EXPECT_EQ(r.req.action, "file");
+    EXPECT_EQ(r.req.args[0], "code.asm");
+    EXPECT_EQ(r.req.args[1], "");  // --hex unset
+    EXPECT_EQ(r.req.args[2], "");  // --c-array unset
+    EXPECT_EQ(r.req.args[3], "");  // --out unset
+    EXPECT_EQ(r.req.args[4], "");  // --out value unset
+}
+
+TEST(Parser, AsmFileWithFlags) {
+    auto r = parse({"deeptrace_cli", "asm", "file", "code.asm", "--hex"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[1], "--hex");
+    auto r2 = parse({"deeptrace_cli", "asm", "file", "code.asm", "--c-array"});
+    ASSERT_TRUE(r2.ok);
+    EXPECT_EQ(r2.req.args[2], "--c-array");
+}
+
+TEST(Parser, AsmFileOutFlag) {
+    auto r = parse({"deeptrace_cli", "asm", "file", "code.asm", "--out", "code.bin"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[3], "--out");
+    EXPECT_EQ(r.req.args[4], "code.bin");
+    auto missing = parse({"deeptrace_cli", "asm", "file", "code.asm", "--out"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+    EXPECT_NE(missing.error.find("missing argument for option: --out"),
+              std::string::npos);
+}
+
+TEST(Parser, AsmFileMissingPath) {
+    auto r = parse({"deeptrace_cli", "asm", "file"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("missing argument: path"), std::string::npos);
+}
+
+TEST(Parser, Hex2BinParses) {
+    auto r = parse({"deeptrace_cli", "hex2bin", "DEADBEEF", "out.bin"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "hex2bin");
+    EXPECT_EQ(r.req.action, "");  // standalone command
+    EXPECT_EQ(r.req.args[0], "DEADBEEF");
+    EXPECT_EQ(r.req.args[1], "out.bin");
+    auto bad = parse({"deeptrace_cli", "hex2bin", "ABC", "out.bin"});  // odd
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
+    auto bad2 = parse({"deeptrace_cli", "hex2bin", "DEADGG", "out.bin"});
+    EXPECT_FALSE(bad2.ok);
+    auto missing = parse({"deeptrace_cli", "hex2bin", "DEADBEEF"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+}
+
+TEST(Parser, ShellcodeInjectFile) {
+    auto r = parse({"deeptrace_cli", "shellcode", "injectfile", "code.bin"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[0], "code.bin");
+    auto missing = parse({"deeptrace_cli", "shellcode", "injectfile"});
+    EXPECT_FALSE(missing.ok);
+}
+
+TEST(Parser, ShellcodeAllocRunFreeExec) {
+    auto alloc = parse({"deeptrace_cli", "shellcode", "alloc", "4831C0C3"});
+    ASSERT_TRUE(alloc.ok);
+    EXPECT_EQ(alloc.req.args[0], "4831C0C3");
+    auto run = parse({"deeptrace_cli", "shellcode", "run", "0x1000"});
+    ASSERT_TRUE(run.ok);
+    EXPECT_EQ(run.req.args[0], "0x1000");
+    auto free = parse({"deeptrace_cli", "shellcode", "free", "0x1000"});
+    ASSERT_TRUE(free.ok);
+    auto exec = parse({"deeptrace_cli", "shellcode", "exec", "code.bin"});
+    ASSERT_TRUE(exec.ok);
+    EXPECT_EQ(exec.req.args[0], "code.bin");
+    // address validation: must be a valid address
+    auto bad = parse({"deeptrace_cli", "shellcode", "run", "not_an_addr"});
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
+}
+
+TEST(Parser, ShellcodeSourceNonEmpty) {
+    auto r = parse({"deeptrace_cli", "shellcode", "alloc", ""});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    auto r2 = parse({"deeptrace_cli", "shellcode", "exec"});
+    EXPECT_FALSE(r2.ok);
+    EXPECT_EQ(r2.exit_code, 2);
+}
+
+TEST(Parser, HelpTextListsNewCommands) {
+    std::string help = build_help_text();
+    EXPECT_NE(help.find("asm file"), std::string::npos);
+    EXPECT_NE(help.find("hex2bin"), std::string::npos);
+    EXPECT_NE(help.find("shellcode alloc"), std::string::npos);
+    EXPECT_NE(help.find("shellcode run"), std::string::npos);
+    EXPECT_NE(help.find("shellcode free"), std::string::npos);
+    EXPECT_NE(help.find("shellcode exec"), std::string::npos);
+    EXPECT_NE(help.find("shellcode injectfile"), std::string::npos);
+    EXPECT_NE(help.find("deeptrace_cli v2.2.0"), std::string::npos);
 }
 
 TEST(Parser, WatchAddTypes) {

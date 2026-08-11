@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.1.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.2.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -262,6 +262,92 @@ def main():
         code, out, _ = run_cli(["asm", "assemble", "add rax, 0"])
         check("asm add exit 0", code == 0)
         check("asm add bytes 4883C000", "4883C000" in out, repr(out))
+
+        # ---- v2.2.0: asm file / hex2bin / shellcode staged ops ----
+        asm_path = os.path.join(BIN_DIR, "e2e_code.asm")
+        bin_path = os.path.join(BIN_DIR, "e2e_code.bin")
+        with open(asm_path, "w") as f:
+            f.write("xor eax, eax\nret\n")
+        code, out, _ = run_cli(["asm", "file", win_path(asm_path), "--out",
+                                win_path(bin_path)])
+        check("asm file exit 0", code == 0)
+        check("asm file bytes 31C0C3", "31C0C3" in out, repr(out))
+        with open(bin_path, "rb") as f:
+            data = f.read()
+        check("asm file wrote bin", data == bytes([0x31, 0xC0, 0xC3]), repr(data))
+        os.remove(asm_path)
+        os.remove(bin_path)
+        code, _, err = run_cli(["asm", "file", "no_such.asm"])
+        check("asm file missing exit 2", code == 2)
+        check("asm file missing msg", "cannot read file" in err, repr(err))
+
+        code, out, _ = run_cli(["hex2bin", "DEADBEEF", win_path(bin_path)])
+        check("hex2bin exit 0", code == 0)
+        with open(bin_path, "rb") as f:
+            data = f.read()
+        check("hex2bin bytes", data == bytes([0xDE, 0xAD, 0xBE, 0xEF]), repr(data))
+        code, _, err = run_cli(["hex2bin", "ABC", win_path(bin_path)])
+        check("hex2bin bad hex exit 2", code == 2)
+
+        # shellcode staged ops: alloc (write only) -> run (trigger x2) -> free
+        code, out, _ = run_cli(["-p", str(pid), "shellcode", "alloc", "C3"])
+        check("shellcode alloc exit 0", code == 0)
+        m = re.search(r"0x([0-9A-Fa-f]{16})", out)
+        check("shellcode alloc prints address", bool(m), repr(out))
+        sc_addr = "0x" + m.group(1) if m else "0x1"
+        code, out, _ = run_cli(["-p", str(pid), "shellcode", "status"])
+        check("shellcode status exit 0", code == 0)
+        check("shellcode status lists record", sc_addr.lower() in out.lower(), repr(out))
+        code, _, _ = run_cli(["-p", str(pid), "shellcode", "alloc", "zzzz"])
+        check("shellcode alloc bad source exit 2", code == 2)
+        code, _, _ = run_cli(["-p", str(pid), "shellcode", "run", sc_addr])
+        check("shellcode run exit 0", code == 0)
+        code, _, _ = run_cli(["-p", str(pid), "shellcode", "run", sc_addr])
+        check("shellcode run repeat exit 0", code == 0)
+        code, out, _ = run_cli(["-p", str(pid), "shellcode", "free", sc_addr])
+        check("shellcode free exit 0", code == 0)
+        check("shellcode free OK", "OK" in out, repr(out))
+        code, _, err = run_cli(["-p", str(pid), "shellcode", "run", sc_addr])
+        check("shellcode run after free exit 1", code == 1)
+        check("shellcode run after free NotFound", "NotFound" in err, repr(err))
+        code, out, _ = run_cli(["ps", "list"])
+        check("target alive after staged ops", str(pid) in out, repr(out[:200]))
+
+        # shellcode exec: one invocation = complete flow, from a .bin file
+        code, _, _ = run_cli(["hex2bin", "C3", win_path(bin_path)])
+        code, out, _ = run_cli(["-p", str(pid), "shellcode", "exec", win_path(bin_path)])
+        check("shellcode exec bin exit 0", code == 0)
+        m = re.search(r"0x([0-9A-Fa-f]{16})", out)
+        if m:
+            run_cli(["-p", str(pid), "shellcode", "free", "0x" + m.group(1)])
+        os.remove(bin_path)
+        code, _, err = run_cli(["-p", str(pid), "shellcode", "exec", "zzzz"])
+        check("shellcode exec bad source exit 2", code == 2)
+        check("shellcode exec bad source msg", "invalid shellcode source" in err,
+              repr(err))
+
+        # shellcode exec from an .asm source (assembled in memory)
+        with open(asm_path, "w") as f:
+            f.write("ret\n")
+        code, out, _ = run_cli(["-p", str(pid), "shellcode", "exec", win_path(asm_path)])
+        check("shellcode exec asm exit 0", code == 0)
+        m = re.search(r"0x([0-9A-Fa-f]{16})", out)
+        if m:
+            run_cli(["-p", str(pid), "shellcode", "free", "0x" + m.group(1)])
+        os.remove(asm_path)
+
+        # shellcode injectfile: .bin file -> inject (execute immediately)
+        code, _, _ = run_cli(["hex2bin", "C3", win_path(bin_path)])
+        code, out, _ = run_cli(["-p", str(pid), "shellcode", "injectfile",
+                                win_path(bin_path)])
+        check("shellcode injectfile exit 0", code == 0)
+        m = re.search(r"0x([0-9A-Fa-f]{16})", out)
+        if m:
+            run_cli(["-p", str(pid), "shellcode", "free", "0x" + m.group(1)])
+        os.remove(bin_path)
+        code, _, err = run_cli(["-p", str(pid), "shellcode", "injectfile", "no_such.bin"])
+        check("shellcode injectfile missing exit 2", code == 2)
+        check("shellcode injectfile missing msg", "cannot read file" in err, repr(err))
 
         # ---- watch ----
         run_cli(["-p", str(pid), "watch", "clear"])

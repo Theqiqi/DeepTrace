@@ -457,3 +457,172 @@ TEST(CliChain, ReadFaultExit) {
                        "0x1", "4"}),
               1);
 }
+
+// ---- v2.2.0: asm file / hex2bin / shellcode staged ops ----
+
+// asm file: assemble a source file, optionally write .bin; the produced bytes
+// must match the inline assemble result (xor eax,eax; ret = 31 C0 C3).
+TEST(CliChain, AsmFileAssemblesAndWritesBin) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string asm_path = std::string(tmpname) + ".asm";
+    std::string bin_path = std::string(tmpname) + ".bin";
+    {
+        std::ofstream f(asm_path);
+        f << "xor eax, eax\nret\n";
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "asm", "file", asm_path, "--out", bin_path}), 0);
+    std::ifstream bin(bin_path, std::ios::binary);
+    ASSERT_TRUE(bin.good()) << "bin file not written";
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(bin)),
+                               std::istreambuf_iterator<char>());
+    ASSERT_EQ(bytes.size(), 3u);
+    EXPECT_EQ(bytes[0], 0x31);
+    EXPECT_EQ(bytes[1], 0xC0);
+    EXPECT_EQ(bytes[2], 0xC3);
+    std::remove(asm_path.c_str());
+    std::remove(bin_path.c_str());
+    // error paths
+    EXPECT_EQ(run_cli({"deeptrace_cli", "asm", "file", "no_such_file.asm"}), 2);
+}
+
+// hex2bin: hex -> raw .bin file, readable back as bytes.
+TEST(CliChain, Hex2BinWritesFile) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string bin_path = std::string(tmpname) + ".bin";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "hex2bin", "DEADBEEF", bin_path}), 0);
+    std::ifstream bin(bin_path, std::ios::binary);
+    ASSERT_TRUE(bin.good());
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(bin)),
+                               std::istreambuf_iterator<char>());
+    ASSERT_EQ(bytes.size(), 4u);
+    EXPECT_EQ(bytes[0], 0xDE);
+    EXPECT_EQ(bytes[3], 0xEF);
+    std::remove(bin_path.c_str());
+    // usage errors
+    EXPECT_EQ(run_cli({"deeptrace_cli", "hex2bin", "ABC", bin_path}), 2);
+}
+
+// shellcode staged ops through the full chain: alloc (write only) -> run
+// (trigger, repeatable) -> free (cleanup). The {0xC3} ret shellcode keeps the
+// target safe; the record must exist after alloc and be gone after free.
+TEST(CliChain, ShellcodeAllocRunFreeChain) {
+    std::string pid = std::to_string(g_target.pid);
+    // alloc: no execute, returns address. Verify the bytes landed in the target.
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "alloc", "C3"}), 0);
+    // status lists a shellcode record for this pid
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "status"}), 0);
+    // run on the recorded address: find it via the record file by scanning
+    // the status output is complex here; instead drive the public API to locate
+    // the address we just allocated (the only new one at this point).
+    std::vector<deeptrace::InjectInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    uintptr_t addr = 0;
+    for (const auto& i : list) {
+        if (i.kind == "shellcode" && i.remote_base != 0) addr = i.remote_base;
+    }
+    ASSERT_NE(addr, 0u) << "no shellcode record after alloc";
+
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "run", hex(addr)}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "run", hex(addr)}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free", hex(addr)}), 0);
+    // record gone -> run/free now fail with business error (exit 1)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "run", hex(addr)}), 1);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free", hex(addr)}), 1);
+    // side effect check: target survived the whole staged flow
+    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, g_target.pid);
+    ASSERT_NE(h, nullptr);
+    DWORD code = 0;
+    EXPECT_TRUE(::GetExitCodeProcess(h, &code));
+    EXPECT_EQ(code, STILL_ACTIVE);
+    ::CloseHandle(h);
+}
+
+// shellcode alloc with an invalid source (neither hex nor an existing file)
+// is a usage error (exit 2).
+TEST(CliChain, ShellcodeAllocBadSource) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "shellcode",
+                       "alloc", "zzzz"}),
+              2);
+}
+
+// shellcode exec: one invocation = complete flow (convert -> write -> trigger)
+// using a .bin file produced by hex2bin. Target must survive.
+TEST(CliChain, ShellcodeExecBinFile) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string bin_path = std::string(tmpname) + ".bin";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "hex2bin", "C3", bin_path}), 0);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "exec", bin_path}), 0);
+    std::remove(bin_path.c_str());
+    // exec produced a record; find and free it to avoid cross-test residue.
+    std::vector<deeptrace::InjectInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    for (const auto& i : list) {
+        if (i.kind == "shellcode" && i.remote_base != 0) {
+            EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free",
+                               hex(i.remote_base)}),
+                      0);
+        }
+    }
+    // invalid source is a usage error
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "exec", "zzzz"}), 2);
+}
+
+// shellcode exec with an .asm source: assembled in memory, injected, executed.
+TEST(CliChain, ShellcodeExecAsmSource) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string asm_path = std::string(tmpname) + ".asm";
+    {
+        std::ofstream f(asm_path);
+        f << "ret\n";
+    }
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "exec", asm_path}), 0);
+    std::remove(asm_path.c_str());
+    // cleanup any record created by exec
+    std::vector<deeptrace::InjectInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    for (const auto& i : list) {
+        if (i.kind == "shellcode" && i.remote_base != 0) {
+            EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free",
+                               hex(i.remote_base)}),
+                      0);
+        }
+    }
+}
+
+// shellcode injectfile: .bin file -> inject (execute immediately), then free.
+TEST(CliChain, ShellcodeInjectFile) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string bin_path = std::string(tmpname) + ".bin";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "hex2bin", "C3", bin_path}), 0);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "injectfile", bin_path}), 0);
+    std::remove(bin_path.c_str());
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "injectfile",
+                       "no_such.bin"}),
+              2);
+    // free the injected record
+    std::vector<deeptrace::InjectInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    for (const auto& i : list) {
+        if (i.kind == "shellcode" && i.remote_base != 0) {
+            EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free",
+                               hex(i.remote_base)}),
+                      0);
+        }
+    }
+}
