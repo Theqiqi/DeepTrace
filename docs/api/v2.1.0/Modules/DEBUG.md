@@ -349,7 +349,7 @@ if (deeptrace::debug_continue(5000, info) == deeptrace::Result::Ok) {
 - [deeptrace::breakpoint_set](#deeptracebreakpoint_set)
 - [deeptrace::debug_pause](#deeptracedebug_pause)
 - [deeptrace::debug_resume](#deeptracedebug_resume)
-- [ContinueInfo](../Types/STRUCTS.md#continueinfo--continue-information)
+- [ContinueInfo](../Types/STRUCTS.md#continueinfo--debug-continue-stop-reason)
 
 ---
 
