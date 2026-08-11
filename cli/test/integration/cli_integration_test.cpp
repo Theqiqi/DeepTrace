@@ -287,6 +287,31 @@ TEST(CliChain, ResolveScanFindsKnownPattern) {
               0);
 }
 
+// convert is a pure data conversion: works without -p and without a session.
+TEST(CliChain, ConvertNoProcess) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "dword", "100"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "float", "3.14"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "string", "hello"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "hex", "DEADBEEF"}), 0);
+    // usage errors -> exit 2
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "bogus", "1"}), 2);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "dword", "xyz"}), 2);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "byte", "256"}), 2);
+}
+
+// The convert output format is scan-compatible: the documented pattern for
+// dword 0x11223344 (g_int) is "44 33 22 11" and must be found by resolve scan.
+TEST(CliChain, ConvertOutputFeedsScan) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "dword", "287454020"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "resolve", "scan",
+                       "44 33 22 11"}),
+              0);
+    // the pre-v1.4.0 typed scan syntax is gone: extra arg is a usage error
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "resolve", "scan",
+                       "100", "dword"}),
+              2);
+}
+
 TEST(CliChain, DisasmAt) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "disasm", "at",
                        hex(g_target.g_bytes), "4"}),

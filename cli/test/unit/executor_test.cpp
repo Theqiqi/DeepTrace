@@ -58,6 +58,91 @@ TEST(Internal, ValueTypeId) {
     EXPECT_EQ(internal::value_type_id("double"), 5);
 }
 
+// ---- convert: typed value -> bytes (little-endian) ----
+
+TEST(TypedBytes, IntegerLittleEndian) {
+    std::vector<uint8_t> b;
+    EXPECT_TRUE(internal::typed_bytes("255", "byte", b));
+    ASSERT_EQ(b.size(), 1u);
+    EXPECT_EQ(b[0], 0xFF);
+    EXPECT_TRUE(internal::typed_bytes("0x7F", "byte", b));
+    ASSERT_EQ(b.size(), 1u);
+    EXPECT_EQ(b[0], 0x7F);
+
+    EXPECT_TRUE(internal::typed_bytes("0x0102", "word", b));
+    ASSERT_EQ(b.size(), 2u);
+    EXPECT_EQ(b[0], 0x02);
+    EXPECT_EQ(b[1], 0x01);
+
+    EXPECT_TRUE(internal::typed_bytes("287454020", "dword", b));  // 0x11223344
+    ASSERT_EQ(b.size(), 4u);
+    EXPECT_EQ(b[0], 0x44);
+    EXPECT_EQ(b[1], 0x33);
+    EXPECT_EQ(b[2], 0x22);
+    EXPECT_EQ(b[3], 0x11);
+
+    EXPECT_TRUE(internal::typed_bytes("0x1122334455667788", "qword", b));
+    ASSERT_EQ(b.size(), 8u);
+    EXPECT_EQ(b[0], 0x88);
+    EXPECT_EQ(b[1], 0x77);
+    EXPECT_EQ(b[2], 0x66);
+    EXPECT_EQ(b[3], 0x55);
+    EXPECT_EQ(b[4], 0x44);
+    EXPECT_EQ(b[5], 0x33);
+    EXPECT_EQ(b[6], 0x22);
+    EXPECT_EQ(b[7], 0x11);
+}
+
+TEST(TypedBytes, FloatDoubleIeee754) {
+    std::vector<uint8_t> b;
+    EXPECT_TRUE(internal::typed_bytes("1.0", "float", b));  // 0x3F800000 LE
+    ASSERT_EQ(b.size(), 4u);
+    EXPECT_EQ(b[0], 0x00);
+    EXPECT_EQ(b[1], 0x00);
+    EXPECT_EQ(b[2], 0x80);
+    EXPECT_EQ(b[3], 0x3F);
+
+    EXPECT_TRUE(internal::typed_bytes("1.0", "double", b));  // 0x3FF0000000000000 LE
+    ASSERT_EQ(b.size(), 8u);
+    EXPECT_EQ(b[0], 0x00);
+    EXPECT_EQ(b[1], 0x00);
+    EXPECT_EQ(b[2], 0x00);
+    EXPECT_EQ(b[3], 0x00);
+    EXPECT_EQ(b[4], 0x00);
+    EXPECT_EQ(b[5], 0x00);
+    EXPECT_EQ(b[6], 0xF0);
+    EXPECT_EQ(b[7], 0x3F);
+}
+
+TEST(TypedBytes, StringAscii) {
+    std::vector<uint8_t> b;
+    EXPECT_TRUE(internal::typed_bytes("hi", "string", b));
+    ASSERT_EQ(b.size(), 2u);
+    EXPECT_EQ(b[0], 0x68);
+    EXPECT_EQ(b[1], 0x69);
+}
+
+TEST(TypedBytes, HexPassthrough) {
+    std::vector<uint8_t> b;
+    EXPECT_TRUE(internal::typed_bytes("DEADBEEF", "hex", b));
+    ASSERT_EQ(b.size(), 4u);
+    EXPECT_EQ(b[0], 0xDE);
+    EXPECT_EQ(b[1], 0xAD);
+    EXPECT_EQ(b[2], 0xBE);
+    EXPECT_EQ(b[3], 0xEF);
+    EXPECT_TRUE(internal::typed_bytes("0x4831C0", "hex", b));
+    ASSERT_EQ(b.size(), 3u);
+    EXPECT_EQ(b[0], 0x48);
+    EXPECT_EQ(b[1], 0x31);
+    EXPECT_EQ(b[2], 0xC0);
+}
+
+TEST(TypedBytes, UnknownTypeFails) {
+    std::vector<uint8_t> b;
+    EXPECT_FALSE(internal::typed_bytes("1", "pattern", b));
+    EXPECT_FALSE(internal::typed_bytes("1", "bogus", b));
+}
+
 // ---- no-process error paths (execute without -p / without session) ----
 
 TEST(Executor, MemReadWithoutSession) {
@@ -96,4 +181,14 @@ TEST(Executor, AsmAssemble) {
     auto pr = parse({"deeptrace_cli", "asm", "assemble", "nop; nop; ret"});
     ASSERT_TRUE(pr.ok);
     EXPECT_EQ(execute(pr.req), 0);
+}
+
+TEST(Executor, ConvertNoProcess) {
+    // pure data conversion: no -p, no session, exits 0
+    auto pr = parse({"deeptrace_cli", "convert", "dword", "100"});
+    ASSERT_TRUE(pr.ok);
+    EXPECT_EQ(execute(pr.req), 0);
+    auto bad = parse({"deeptrace_cli", "convert", "dword", "xyz"});
+    ASSERT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
 }

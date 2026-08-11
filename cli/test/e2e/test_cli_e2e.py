@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v1.4.0" in out, repr(out))
+    check("version string", "deeptrace_cli v1.4.1" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -137,6 +137,38 @@ def main():
     # ---- invalid arguments ----
     code, _, err = run_cli(["mem", "read", "zzz"])
     check("invalid address exit 2", code == 2)
+
+    # ---- convert (standalone, no process needed) ----
+    code, out, _ = run_cli(["convert", "byte", "255"])
+    check("convert byte exit 0", code == 0)
+    check("convert byte FF", "FF" in out, repr(out))
+    code, out, _ = run_cli(["convert", "word", "0x0102"])
+    check("convert word LE", "02 01" in out, repr(out))
+    code, out, _ = run_cli(["convert", "dword", "100"])
+    check("convert dword exit 0", code == 0)
+    check("convert dword 64 00 00 00", "64 00 00 00" in out, repr(out))
+    code, out, _ = run_cli(["convert", "qword", "0x1122334455667788"])
+    check("convert qword LE", "88 77 66 55 44 33 22 11" in out, repr(out))
+    code, out, _ = run_cli(["convert", "float", "1.0"])
+    check("convert float IEEE754", "00 00 80 3F" in out, repr(out))
+    code, out, _ = run_cli(["convert", "double", "1.0"])
+    check("convert double IEEE754", "00 00 00 00 00 00 F0 3F" in out, repr(out))
+    code, out, _ = run_cli(["convert", "string", "hi"])
+    check("convert string ascii", "68 69" in out, repr(out))
+    code, out, _ = run_cli(["convert", "hex", "DEADBEEF"])
+    check("convert hex passthrough", "DE AD BE EF" in out, repr(out))
+    code, _, err = run_cli(["convert", "bogus", "1"])
+    check("convert invalid type exit 2", code == 2)
+    check("convert invalid type msg", "invalid type" in err, repr(err))
+    code, _, err = run_cli(["convert", "dword", "xyz"])
+    check("convert invalid value exit 2", code == 2)
+    check("convert invalid value msg", "invalid value for type 'dword'" in err,
+          repr(err))
+    code, _, _ = run_cli(["convert", "byte", "256"])
+    check("convert overflow exit 2", code == 2)
+    code, _, err = run_cli(["convert", "dword"])
+    check("convert missing value exit 2", code == 2)
+    check("convert missing value msg", "missing argument: value" in err, repr(err))
 
     # ---- target ----
     proc, lines = start_target()
@@ -193,30 +225,23 @@ def main():
         check("resolve scan finds g_bytes", any(want == g or want in g for g in got),
               repr(out[:300]))
 
-        # ---- resolve scan by typed value: g_int = dword 0x11223344 (LE bytes 44 33 22 11) ----
-        code, out, _ = run_cli(["-p", str(pid), "resolve", "scan", "287454020", "dword"])
-        check("resolve scan dword value exit 0", code == 0)
+        # ---- convert output feeds resolve scan (v1.4.1 chain) ----
+        # convert dword 0x11223344 -> "44 33 22 11", scan must find g_int
+        code, out, _ = run_cli(["convert", "dword", "287454020"])
+        check("convert g_int bytes exit 0", code == 0)
+        check("convert g_int bytes", "44 33 22 11" in out, repr(out))
+        pattern = out.strip()
+        code, out2, _ = run_cli(["-p", str(pid), "resolve", "scan", pattern])
+        check("convert output scan exit 0", code == 0)
         want_int = g_int.lower().lstrip("0x").lstrip("0").lstrip("x")
-        got_int = [h.lower().lstrip("0x").lstrip("0") for h in out.split()]
-        check("resolve scan dword value finds g_int",
-              any(want_int == g or want_int in g for g in got_int), repr(out[:300]))
+        got_int = [h.lower().lstrip("0x").lstrip("0") for h in out2.split()]
+        check("convert output scan finds g_int",
+              any(want_int == g or want_int in g for g in got_int), repr(out2[:300]))
 
-        # ---- resolve scan by float value: g_float = 3.14159f ----
-        code, out, _ = run_cli(["-p", str(pid), "resolve", "scan", "3.14159", "float"])
-        check("resolve scan float value exit 0", code == 0)
-
-        # ---- resolve scan by string value ----
-        code, out, _ = run_cli(["-p", str(pid), "resolve", "scan", "hi", "string"])
-        check("resolve scan string value exit 0", code == 0)
-
-        # ---- resolve scan invalid type/value -> usage error exit 2 ----
-        code, _, err = run_cli(["-p", str(pid), "resolve", "scan", "100", "bogus"])
-        check("resolve scan invalid type exit 2", code == 2)
-        check("resolve scan invalid type msg", "invalid type" in err, repr(err))
-        code, _, err = run_cli(["-p", str(pid), "resolve", "scan", "xyz", "dword"])
-        check("resolve scan invalid value exit 2", code == 2)
-        check("resolve scan invalid value msg", "invalid value for type 'dword'" in err,
-              repr(err))
+        # ---- resolve scan is pattern-only again (v1.4.0 typed syntax gone) ----
+        code, _, err = run_cli(["-p", str(pid), "resolve", "scan", "100", "dword"])
+        check("resolve scan typed syntax rejected exit 2", code == 2)
+        check("resolve scan typed syntax msg", "too many arguments" in err, repr(err))
 
         # ---- thread ----
         code, out, _ = run_cli(["-p", str(pid), "thread", "list"])

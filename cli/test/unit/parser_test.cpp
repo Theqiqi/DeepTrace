@@ -116,7 +116,7 @@ TEST(Parser, MissingSubcommand) {
 TEST(Parser, AllGroupsKnown) {
     const char* groups[] = {"ps", "mem", "module", "thread", "debug",
                             "disasm", "resolve", "watch", "dll", "asm",
-                            "shellcode"};
+                            "shellcode", "convert"};
     for (const char* g : groups) {
         EXPECT_TRUE(is_group(g)) << g;
     }
@@ -251,6 +251,132 @@ TEST(Parser, PatternValid) {
     EXPECT_FALSE(bad.ok);
     auto empty = parse({"deeptrace_cli", "resolve", "scan", ""});
     EXPECT_FALSE(empty.ok);
+}
+
+// resolve scan is pattern-only again (v1.4.0 typed-value change was reverted).
+TEST(Parser, ScanTypedValueRejected) {
+    auto r = parse({"deeptrace_cli", "resolve", "scan", "100", "dword"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("too many arguments"), std::string::npos);
+}
+
+// ---- convert (standalone command, type first) ----
+
+TEST(Parser, ConvertParsesTypeFirst) {
+    auto r = parse({"deeptrace_cli", "convert", "dword", "100"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "convert");
+    EXPECT_EQ(r.req.action, "");  // standalone command, no sub-action
+    EXPECT_EQ(r.req.args.size(), 2u);
+    EXPECT_EQ(r.req.args[0], "dword");  // type first
+    EXPECT_EQ(r.req.args[1], "100");
+}
+
+TEST(Parser, ConvertAllTypes) {
+    const char* types[] = {"byte", "word", "dword", "qword", "float", "double",
+                           "string", "hex"};
+    for (const char* t : types) {
+        auto r = parse({"deeptrace_cli", "convert", t, "1"});
+        ASSERT_TRUE(r.ok) << t;
+        EXPECT_EQ(r.req.args[0], t) << t;
+    }
+}
+
+TEST(Parser, ConvertInvalidType) {
+    auto r = parse({"deeptrace_cli", "convert", "bogus", "1"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("invalid type"), std::string::npos);
+    auto r2 = parse({"deeptrace_cli", "convert", "pattern", "48 8B"});
+    EXPECT_FALSE(r2.ok);  // AOB wildcards are scan-only, not a convert type
+}
+
+TEST(Parser, ConvertMissingArgs) {
+    auto r = parse({"deeptrace_cli", "convert"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("missing argument: type"), std::string::npos);
+    auto r2 = parse({"deeptrace_cli", "convert", "dword"});
+    EXPECT_FALSE(r2.ok);
+    EXPECT_EQ(r2.exit_code, 2);
+    EXPECT_NE(r2.error.find("missing argument: value"), std::string::npos);
+}
+
+TEST(Parser, ConvertTooManyArgs) {
+    auto r = parse({"deeptrace_cli", "convert", "dword", "1", "extra"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+}
+
+TEST(Parser, ConvertIntRanges) {
+    auto ok = [&](const char* t, const char* v) {
+        auto r = parse({"deeptrace_cli", "convert", t, v});
+        EXPECT_TRUE(r.ok) << t << " " << v;
+    };
+    auto bad = [&](const char* t, const char* v) {
+        auto r = parse({"deeptrace_cli", "convert", t, v});
+        EXPECT_FALSE(r.ok) << t << " " << v;
+        EXPECT_EQ(r.exit_code, 2);
+        EXPECT_NE(r.error.find("invalid value for type"), std::string::npos);
+    };
+    ok("byte", "0");
+    ok("byte", "255");
+    ok("byte", "0xFF");
+    bad("byte", "256");
+    ok("word", "65535");
+    bad("word", "65536");
+    ok("dword", "4294967295");
+    bad("dword", "4294967296");
+    ok("dword", "0x11223344");
+    ok("qword", "18446744073709551615");
+    bad("qword", "18446744073709551616");
+    bad("dword", "xyz");
+    bad("dword", "-1");  // negatives unsupported
+}
+
+TEST(Parser, ConvertNoOctalTrap) {
+    // "08" must parse as decimal 8, not invalid octal
+    auto r = parse({"deeptrace_cli", "convert", "byte", "08"});
+    ASSERT_TRUE(r.ok);
+    auto r2 = parse({"deeptrace_cli", "convert", "byte", "010"});
+    ASSERT_TRUE(r2.ok);  // decimal 10, not octal 8
+}
+
+TEST(Parser, ConvertFloatDouble) {
+    auto r = parse({"deeptrace_cli", "convert", "float", "3.14"});
+    ASSERT_TRUE(r.ok);
+    auto r2 = parse({"deeptrace_cli", "convert", "double", "2.71828"});
+    ASSERT_TRUE(r2.ok);
+    auto bad = parse({"deeptrace_cli", "convert", "float", "0x1p3"});  // hex float
+    EXPECT_FALSE(bad.ok);
+    auto bad2 = parse({"deeptrace_cli", "convert", "float", "nan"});
+    EXPECT_FALSE(bad2.ok);
+    auto bad3 = parse({"deeptrace_cli", "convert", "float", "abc"});
+    EXPECT_FALSE(bad3.ok);
+}
+
+TEST(Parser, ConvertStringAscii) {
+    auto r = parse({"deeptrace_cli", "convert", "string", "hello"});
+    ASSERT_TRUE(r.ok);
+    auto bad = parse({"deeptrace_cli", "convert", "string", ""});
+    EXPECT_FALSE(bad.ok);
+    // non-printable ASCII is rejected
+    std::string s = "a";
+    s += static_cast<char>(1);
+    auto bad2 = parse({"deeptrace_cli", "convert", "string", s.c_str()});
+    EXPECT_FALSE(bad2.ok);
+}
+
+TEST(Parser, ConvertHexBytes) {
+    auto r = parse({"deeptrace_cli", "convert", "hex", "DEADBEEF"});
+    ASSERT_TRUE(r.ok);
+    auto r2 = parse({"deeptrace_cli", "convert", "hex", "0x4831C0"});
+    ASSERT_TRUE(r2.ok);
+    auto bad = parse({"deeptrace_cli", "convert", "hex", "ABC"});  // odd length
+    EXPECT_FALSE(bad.ok);
+    auto bad2 = parse({"deeptrace_cli", "convert", "hex", "DEADGG"});
+    EXPECT_FALSE(bad2.ok);
 }
 
 TEST(Parser, TooManyArguments) {
