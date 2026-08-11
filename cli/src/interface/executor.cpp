@@ -6,7 +6,9 @@
 
 #include "deeptrace.h"
 
+#include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -52,6 +54,57 @@ std::vector<uint8_t> hex_bytes(const std::string& s) {
         out.push_back(static_cast<uint8_t>((hexv(s[i]) << 4) | hexv(s[i + 1])));
     }
     return out;
+}
+
+std::string value_to_pattern(const std::string& value, const std::string& type) {
+    auto to_hex = [](uint8_t b) {
+        static const char* digits = "0123456789ABCDEF";
+        std::string s(2, ' ');
+        s[0] = digits[b >> 4];
+        s[1] = digits[b & 0x0F];
+        return s;
+    };
+    auto join = [&](const std::vector<uint8_t>& bytes) {
+        std::string out;
+        for (size_t i = 0; i < bytes.size(); ++i) {
+            if (i) out += ' ';
+            out += to_hex(bytes[i]);
+        }
+        return out;
+    };
+
+    if (type == "pattern") return value;  // already an AOB pattern
+    if (type == "hex") return join(hex_bytes(value));
+    if (type == "string") {
+        std::vector<uint8_t> bytes(value.begin(), value.end());
+        return join(bytes);
+    }
+    if (type == "byte" || type == "word" || type == "dword" || type == "qword") {
+        // value was validated as an unsigned integer (dec or 0x-prefixed hex)
+        unsigned long long v = std::strtoull(value.c_str(), nullptr, 0);
+        size_t width = type == "byte" ? 1 : type == "word" ? 2
+                     : type == "dword" ? 4 : 8;
+        std::vector<uint8_t> bytes;
+        for (size_t i = 0; i < width; ++i) {
+            bytes.push_back(static_cast<uint8_t>((v >> (8 * i)) & 0xFF));
+        }
+        return join(bytes);
+    }
+    if (type == "float") {
+        float f = std::strtof(value.c_str(), nullptr);
+        uint32_t bits = 0;
+        std::memcpy(&bits, &f, sizeof(bits));
+        std::vector<uint8_t> bytes;
+        for (int i = 0; i < 4; ++i) bytes.push_back(static_cast<uint8_t>((bits >> (8 * i)) & 0xFF));
+        return join(bytes);
+    }
+    // double
+    double d = std::strtod(value.c_str(), nullptr);
+    uint64_t bits = 0;
+    std::memcpy(&bits, &d, sizeof(bits));
+    std::vector<uint8_t> bytes;
+    for (int i = 0; i < 8; ++i) bytes.push_back(static_cast<uint8_t>((bits >> (8 * i)) & 0xFF));
+    return join(bytes);
 }
 
 int value_type_id(const std::string& s) {

@@ -121,8 +121,10 @@ const std::vector<CommandSpec>& command_table() {
         // ---- resolve ----
         cmd("resolve", "base", "resolve base <module>", "Get base address of module",
             {req("module", "string")}),
-        cmd("resolve", "scan", "resolve scan <pattern>",
-            "Pattern scan (AOB, e.g. \"48 8B ?? ?? 00\")", {req("pattern", "pattern")}),
+        cmd("resolve", "scan", "resolve scan <value> [type]",
+            "Scan for a value or AOB pattern "
+            "(type: byte|word|dword|qword|float|double|string|hex|pattern)",
+            {req("value", "scan-value"), opt("type", "scan-type", "pattern")}),
 
         // ---- watch ----
         cmd("watch", "list", "watch list", "List all watch entries", {}),
@@ -178,7 +180,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v1.3.0\n";
+    os << "deeptrace_cli v1.4.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

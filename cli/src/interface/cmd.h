@@ -38,6 +38,12 @@ int to_int(const std::string& s);
 uintptr_t to_addr(const std::string& s);
 std::vector<uint8_t> hex_bytes(const std::string& s);
 
+// Convert an already-validated typed value (scan-value + scan-type) to the
+// space-separated uppercase hex pattern string accepted by pattern_scan.
+// type: byte|word|dword|qword|float|double|string|hex|pattern.
+// pattern is passed through unchanged; numeric types use little-endian bytes.
+std::string value_to_pattern(const std::string& value, const std::string& type);
+
 // Value type name -> deeptrace::ValueType (already validated by the parser).
 int value_type_id(const std::string& s);
 

@@ -3,7 +3,9 @@
 #include "command/commands.h"
 
 #include <cctype>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 namespace deeptrace_cli {
@@ -129,6 +131,51 @@ bool valid_pattern(const std::string& s) {
     return count >= 1 && count <= 64;
 }
 
+bool valid_scan_type(const std::string& s) {
+    return s == "byte" || s == "word" || s == "dword" || s == "qword" ||
+           s == "float" || s == "double" || s == "string" || s == "hex" ||
+           s == "pattern";
+}
+
+// Value validity depends on its type; used as a cross-field check after all
+// params of `resolve scan` are collected.
+bool valid_scan_value(const std::string& v, const std::string& type) {
+    if (v.empty()) return false;
+    if (type == "pattern") return valid_pattern(v);
+    if (type == "hex") return valid_hex_bytes(v);
+    if (type == "string") {
+        for (unsigned char c : v) {
+            if (c < 0x20 || c > 0x7E) return false;  // printable ASCII only
+        }
+        return true;
+    }
+    if (type == "byte" || type == "word" || type == "dword" || type == "qword") {
+        uint64_t val = 0;
+        if (!parse_uint(v, val)) return false;
+        uint64_t maxv = 0;
+        if (type == "byte") maxv = 0xFFULL;
+        else if (type == "word") maxv = 0xFFFFULL;
+        else if (type == "dword") maxv = 0xFFFFFFFFULL;
+        else maxv = UINT64_MAX;
+        return val <= maxv;
+    }
+    if (type == "float") {
+        const char* p = v.c_str();
+        char* end = nullptr;
+        float f = std::strtof(p, &end);
+        if (end == p || *end != '\0') return false;
+        return std::isfinite(f);
+    }
+    if (type == "double") {
+        const char* p = v.c_str();
+        char* end = nullptr;
+        double d = std::strtod(p, &end);
+        if (end == p || *end != '\0') return false;
+        return std::isfinite(d);
+    }
+    return false;
+}
+
 // Hex byte string: optional 0x prefix, even number of hex digits.
 bool valid_hex_bytes(const std::string& s) {
     size_t start = 0;
@@ -156,6 +203,8 @@ bool valid_param(const ParamSpec& p, const std::string& v) {
     if (t == "hw-type") return valid_hw_type(v);
     if (t == "pattern") return valid_pattern(v);
     if (t == "hex-bytes") return valid_hex_bytes(v);
+    if (t == "scan-type") return valid_scan_type(v);
+    if (t == "scan-value") return !v.empty();  // full check depends on type
     if (t == "exit-code") return valid_exit_code(v);
     if (t == "index") return valid_index(v);
     if (t == "flag") return v == p.name;
@@ -276,6 +325,18 @@ ParseResult parse_args(int argc, char* argv[]) {
         res.exit_code = 2;
         res.error = "too many arguments: '" + args[ai] + "'";
         return res;
+    }
+
+    // Cross-field check: for `resolve scan`, value validity depends on type.
+    if (res.req.group == "resolve" && res.req.action == "scan") {
+        const std::string& value = res.req.args[0];
+        const std::string& type = res.req.args[1];
+        if (!valid_scan_value(value, type)) {
+            res.ok = false;
+            res.exit_code = 2;
+            res.error = "invalid value for type '" + type + "': '" + value + "'";
+            return res;
+        }
     }
 
     return res;
