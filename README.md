@@ -2,8 +2,8 @@
   <img src="https://img.shields.io/badge/platform-Windows%20x64-blue" alt="Platform: Windows x64"/>
   <img src="https://img.shields.io/badge/language-C%2B%2B20-yellowgreen" alt="C++20"/>
   <img src="https://img.shields.io/badge/build-CMake%20%2B%20Ninja%20%2B%20MSVC-informational" alt="CMake + Ninja + MSVC"/>
-  <img src="https://img.shields.io/badge/version-v1.3.0-blueviolet" alt="v1.3.0"/>
-  <img src="https://img.shields.io/badge/API-55%20functions-green" alt="55 API functions"/>
+  <img src="https://img.shields.io/badge/version-v2.1.0-blueviolet" alt="v2.1.0"/>
+  <img src="https://img.shields.io/badge/API-56%20functions-green" alt="56 API functions"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License"/>
 </p>
 
@@ -22,7 +22,7 @@ deeptrace_cli -p 1234 mem read 0x14000D000 4 hex
 
 ## Features
 
-**`deeptrace` — static library (C++20, 55 public APIs)**
+**`deeptrace` — static library (C++20, 56 public APIs)**
 
 - **Process** — enumerate / attach / detach / suspend / resume / terminate
 - **Memory** — read / write / dump / regions / typed value reads (byte…double)
@@ -35,10 +35,10 @@ deeptrace_cli -p 1234 mem read 0x14000D000 4 hex
 - **Injection** — DLL and shellcode injection with status tracking
 - **State persistence** — breakpoints / watches / injections survive across CLI invocations (`%TEMP%\deeptrace_<pid>\`)
 
-**`deeptrace_cli` — command-line tool (53 commands, pure ASCII output)**
+**`deeptrace_cli` — command-line tool (40 commands across 12 groups, pure ASCII output)**
 
 ```
-ps, mem, module, thread, debug, disasm, resolve, watch, dll, asm, shellcode
+ps, mem, module, thread, debug, disasm, resolve, convert, watch, dll, asm, shellcode
 ```
 
 - One-shot commands with stable exit codes (`0` success / `1` failure / `2` usage error)
@@ -92,7 +92,7 @@ deeptrace\script\build_release.bat
 cli\script\build_release.bat
 
 :: package a zip into cli\out\dist\
-cli\script\package.bat v1.3.0
+cli\script\package.bat v2.1.0
 ```
 
 On WSL use the matching `*_wsl.sh` scripts (they bridge to `cmd.exe`).
@@ -104,7 +104,7 @@ deeptrace\out\bin\Debug\deeptrace_unit_test.exe          :: 96 unit tests (hex/s
 deeptrace\out\bin\Debug\deeptrace_integration_test.exe   :: real-target integration
 cli\out\bin\Debug\deeptrace_cli_unit_test.exe            :: parser/printer/executor
 cli\out\bin\Debug\deeptrace_cli_integration_test.exe     :: full CLI pipeline
-python3 cli/test/e2e/test_cli_e2e.py                     :: 47 end-to-end checks
+python3 cli/test/e2e/test_cli_e2e.py                     :: 104 end-to-end checks
 ```
 
 ## Repository Layout
@@ -112,9 +112,9 @@ python3 cli/test/e2e/test_cli_e2e.py                     :: 47 end-to-end checks
 ```
 deeptrace/   static library (domain / algorithm / infrastructure / service) + include/deeptrace.h
 cli/         command-line tool (command / interface / printing layers)
-design/      design documents (v1.0.0 / v1.1.0 / v1.2.0)
-docs/        api reference, developer docs, user manual (v1.3.0)
-agents/      agent-facing install & usage prompts (for AI / LLM tools)
+design/      design documents (v1.0.0 … v2.1.0)
+docs/        api reference, developer docs, user manual (v2.1.0)
+agents/      AI-agent docs (agents/README.md) + deeptrace-cli skill (agents/skills/deeptrace-cli/)
 sandbox/     experiments (not part of the deliverable)
 ```
 
@@ -122,26 +122,23 @@ sandbox/     experiments (not part of the deliverable)
 
 | Doc | Audience | Content |
 |-----|----------|---------|
-| [API Reference](docs/api/v1.3.0/README.md) | Developers integrating the library | All 55 functions, types, error codes |
-| [Developer Docs](docs/developers/v1.3.0/README.md) | Contributors / maintainers | Architecture, building, testing, extending, ADRs |
-| [User Manual](docs/users/v1.3.0/README.md) | End users | Getting started, command reference, FAQ, troubleshooting |
+| [API Reference](docs/api/v2.1.0/README.md) | Developers integrating the library | All 56 functions, types, error codes |
+| [Developer Docs](docs/developers/v2.1.0/README.md) | Contributors / maintainers | Architecture, building, testing, extending, ADRs |
+| [User Manual](docs/users/v2.1.0/README.md) | End users | Getting started, command reference, FAQ, troubleshooting |
 
 ## AI / Agent Usage Guide
 
-> **This section is an index for AI and AI agents** (Claude Code, Codex, Cursor, custom agents, LLM tools, etc.). If you are an AI reading this README, follow the steps below: **1) install the software, 2) install the prompts, 3) use the prompts to call the tool.**
+> **This section is an index for AI and AI agents** (Claude Code, Codex, Cursor, custom agents, LLM tools, etc.). If you are an AI reading this README, follow the steps below: **1) read the agent docs, 2) load the skill, 3) install the tool (prefer the release download), 4) use the skill to call the tool.**
 
-**Step 1 — Install the software.** This repo is a Windows x64 C++20 process-memory tool. `deeptrace_cli` must be built (or unpacked from a release zip) before it can be used. See the [install prompt](agents/deeptrace-cli-install.md) for agent-facing install/verify instructions (build order: `deeptrace` library first, then `deeptrace_cli`).
+**Step 1 — Read the agent docs.** [agents/README.md](agents/README.md) is the document for AI agents: project overview (deeptrace 2.0.0 library, 56 public APIs; deeptrace_cli 2.1.0), install guidance, key facts, command groups, and the doc map.
 
-**Step 2 — Install the prompts.** This repo ships two agent prompts in standard SKILL format (YAML frontmatter + instructions). Load them into your agent so it knows when and how to use this tool:
+**Step 2 — Load the skill.** This repo ships one agent skill in standard SKILL format (YAML frontmatter `name`/`description` + Markdown instructions): [agents/skills/deeptrace-cli/SKILL.md](agents/skills/deeptrace-cli/SKILL.md). Load it into your agent so it knows when and how to install and use this tool.
 
-| Prompt | Purpose | File |
-|--------|---------|------|
-| **Install prompt** | Guides the agent to build/verify `deeptrace_cli` before use | [agents/deeptrace-cli-install.md](agents/deeptrace-cli-install.md) |
-| **Usage prompt** | Commands & workflows for calling `deeptrace_cli` (process memory, debug, disasm/asm, inject, etc.) | [agents/deeptrace-cli-usage.md](agents/deeptrace-cli-usage.md) |
+**Step 3 — Install the software (prefer the release download).** This repo is a Windows x64 C++20 process-memory tool. `deeptrace_cli` must be available before use. **Prefer downloading the official release zip** from [GitHub Releases](https://github.com/Theqiqi/DeepTrace/releases) (`deeptrace_cli-v2.1.0-win64.zip`, single exe, no dependencies); build from source only when no release is available (build order: `deeptrace` library first, then `deeptrace_cli`). See [agents/README.md](agents/README.md) or the skill's [INSTALL.md](agents/skills/deeptrace-cli/references/INSTALL.md).
 
-**Step 3 — Use the prompts to call the tool.** With the usage prompt loaded, the agent can run commands such as `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex`. Key facts: exit codes `0`/`1`/`2` (success / failure / usage error); addresses are `0x`-prefixed hex; state (breakpoints/watches/injections) persists in `%TEMP%\deeptrace_<pid>\`; test target `deeptrace_target.exe` has ASLR disabled with known values at fixed addresses (e.g. `0x14000D000` = `0x11223344`).
+**Step 4 — Use the skill to call the tool.** The agent can run commands such as `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex`. Key facts: exit codes `0`/`1`/`2` (success / failure / usage error); addresses are `0x`-prefixed hex; state (watches/injections) persists in `%TEMP%\deeptrace_<pid>\`; debug is scripted via the single entry `debug run <script.json>` (v2.1.0); test target `deeptrace_target.exe` has ASLR disabled with known values at fixed addresses (e.g. `0x14000D000` = `0x11223344`).
 
-Additional references: [User Manual](docs/users/v1.3.0/USER_MANUAL.md) (full command reference), [API Reference](docs/api/v1.3.0/README.md) (library API for code integration).
+Additional references: [User Manual](docs/users/v2.1.0/USER_MANUAL.md) (full command reference), [API Reference](docs/api/v2.1.0/README.md) (library API for code integration).
 
 ## License
 
