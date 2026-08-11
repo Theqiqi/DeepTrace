@@ -160,6 +160,10 @@ bool valid_scan_value(const std::string& v, const std::string& type) {
         return val <= maxv;
     }
     if (type == "float") {
+        // decimal float only: reject hex float literals such as "0x10" or "0x1p3"
+        for (char c : v) {
+            if (c == 'x' || c == 'X' || c == 'p' || c == 'P') return false;
+        }
         const char* p = v.c_str();
         char* end = nullptr;
         float f = std::strtof(p, &end);
@@ -167,6 +171,9 @@ bool valid_scan_value(const std::string& v, const std::string& type) {
         return std::isfinite(f);
     }
     if (type == "double") {
+        for (char c : v) {
+            if (c == 'x' || c == 'X' || c == 'p' || c == 'P') return false;
+        }
         const char* p = v.c_str();
         char* end = nullptr;
         double d = std::strtod(p, &end);

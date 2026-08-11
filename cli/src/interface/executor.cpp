@@ -81,7 +81,12 @@ std::string value_to_pattern(const std::string& value, const std::string& type) 
     }
     if (type == "byte" || type == "word" || type == "dword" || type == "qword") {
         // value was validated as an unsigned integer (dec or 0x-prefixed hex)
-        unsigned long long v = std::strtoull(value.c_str(), nullptr, 0);
+        // parse_uint uses base 10 unless the string has a 0x prefix; strtoull
+        // with base 0 would treat "08" as invalid octal, so match the parser.
+        bool hex_pref = value.size() >= 2 && value[0] == '0' &&
+                        (value[1] == 'x' || value[1] == 'X');
+        unsigned long long v = std::strtoull(value.c_str() + (hex_pref ? 2 : 0),
+                                             nullptr, hex_pref ? 16 : 10);
         size_t width = type == "byte" ? 1 : type == "word" ? 2
                      : type == "dword" ? 4 : 8;
         std::vector<uint8_t> bytes;

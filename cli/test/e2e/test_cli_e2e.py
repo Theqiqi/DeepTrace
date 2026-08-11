@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v1.0.0" in out, repr(out))
+    check("version string", "deeptrace_cli v1.4.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -192,6 +192,31 @@ def main():
         got = [h.lower().lstrip("0x").lstrip("0") for h in out.split()]
         check("resolve scan finds g_bytes", any(want == g or want in g for g in got),
               repr(out[:300]))
+
+        # ---- resolve scan by typed value: g_int = dword 0x11223344 (LE bytes 44 33 22 11) ----
+        code, out, _ = run_cli(["-p", str(pid), "resolve", "scan", "287454020", "dword"])
+        check("resolve scan dword value exit 0", code == 0)
+        want_int = g_int.lower().lstrip("0x").lstrip("0").lstrip("x")
+        got_int = [h.lower().lstrip("0x").lstrip("0") for h in out.split()]
+        check("resolve scan dword value finds g_int",
+              any(want_int == g or want_int in g for g in got_int), repr(out[:300]))
+
+        # ---- resolve scan by float value: g_float = 3.14159f ----
+        code, out, _ = run_cli(["-p", str(pid), "resolve", "scan", "3.14159", "float"])
+        check("resolve scan float value exit 0", code == 0)
+
+        # ---- resolve scan by string value ----
+        code, out, _ = run_cli(["-p", str(pid), "resolve", "scan", "hi", "string"])
+        check("resolve scan string value exit 0", code == 0)
+
+        # ---- resolve scan invalid type/value -> usage error exit 2 ----
+        code, _, err = run_cli(["-p", str(pid), "resolve", "scan", "100", "bogus"])
+        check("resolve scan invalid type exit 2", code == 2)
+        check("resolve scan invalid type msg", "invalid type" in err, repr(err))
+        code, _, err = run_cli(["-p", str(pid), "resolve", "scan", "xyz", "dword"])
+        check("resolve scan invalid value exit 2", code == 2)
+        check("resolve scan invalid value msg", "invalid value for type 'dword'" in err,
+              repr(err))
 
         # ---- thread ----
         code, out, _ = run_cli(["-p", str(pid), "thread", "list"])

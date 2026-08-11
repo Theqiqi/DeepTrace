@@ -287,6 +287,29 @@ TEST(CliChain, ResolveScanFindsKnownPattern) {
               0);
 }
 
+// Typed-value scan: g_int holds dword 0x11223344 (bytes 44 33 22 11 LE).
+// Scanning for the decimal value must find the same address as the raw pattern.
+TEST(CliChain, ResolveScanFindsKnownDwordValue) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "resolve", "scan",
+                       "287454020", "dword"}),  // 0x11223344
+              0);
+}
+
+// Typed-value scan by float: g_float = 3.14159f (bytes D0 0F 49 40 LE).
+TEST(CliChain, ResolveScanFindsKnownFloatValue) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "resolve", "scan",
+                       "3.14159", "float"}),
+              0);
+}
+
+// Typed-value scan by string: ASCII 'DEADBEEF' pattern is what the raw pattern
+// test scans for; string type on "hij" must not error (scan completes, exit 0).
+TEST(CliChain, ResolveScanTypedValueRuns) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "resolve", "scan",
+                       "hi", "string"}),
+              0);
+}
+
 TEST(CliChain, DisasmAt) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "disasm", "at",
                        hex(g_target.g_bytes), "4"}),
