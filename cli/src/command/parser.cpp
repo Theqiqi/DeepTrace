@@ -137,6 +137,41 @@ bool valid_scan_type(const std::string& s) {
            s == "pattern";
 }
 
+// Hex byte string: optional 0x prefix, even number of hex digits.
+bool valid_hex_bytes(const std::string& s) {
+    size_t start = 0;
+    if (s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) start = 2;
+    size_t n = s.size() - start;
+    if (n == 0 || (n % 2) != 0) return false;
+    for (size_t i = start; i < s.size(); ++i) {
+        char c = s[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+              (c >= 'A' && c <= 'F')))
+            return false;
+    }
+    return true;
+}
+
+bool valid_param(const ParamSpec& p, const std::string& v) {
+    const std::string& t = p.type;
+    if (t == "address") return valid_address(v);
+    if (t == "number") return valid_number(v);
+    if (t == "pid" || t == "tid") return valid_pid_tid(v);
+    if (t == "string") return valid_string(v);
+    if (t == "format") return valid_format(v);
+    if (t == "format-rw") return valid_format_rw(v);
+    if (t == "value-type") return valid_value_type(v);
+    if (t == "hw-type") return valid_hw_type(v);
+    if (t == "pattern") return valid_pattern(v);
+    if (t == "hex-bytes") return valid_hex_bytes(v);
+    if (t == "scan-type") return valid_scan_type(v);
+    if (t == "scan-value") return !v.empty();  // full check depends on type
+    if (t == "exit-code") return valid_exit_code(v);
+    if (t == "index") return valid_index(v);
+    if (t == "flag") return v == p.name;
+    return true;
+}
+
 // Value validity depends on its type; used as a cross-field check after all
 // params of `resolve scan` are collected.
 bool valid_scan_value(const std::string& v, const std::string& type) {
@@ -181,41 +216,6 @@ bool valid_scan_value(const std::string& v, const std::string& type) {
         return std::isfinite(d);
     }
     return false;
-}
-
-// Hex byte string: optional 0x prefix, even number of hex digits.
-bool valid_hex_bytes(const std::string& s) {
-    size_t start = 0;
-    if (s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) start = 2;
-    size_t n = s.size() - start;
-    if (n == 0 || (n % 2) != 0) return false;
-    for (size_t i = start; i < s.size(); ++i) {
-        char c = s[i];
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
-              (c >= 'A' && c <= 'F')))
-            return false;
-    }
-    return true;
-}
-
-bool valid_param(const ParamSpec& p, const std::string& v) {
-    const std::string& t = p.type;
-    if (t == "address") return valid_address(v);
-    if (t == "number") return valid_number(v);
-    if (t == "pid" || t == "tid") return valid_pid_tid(v);
-    if (t == "string") return valid_string(v);
-    if (t == "format") return valid_format(v);
-    if (t == "format-rw") return valid_format_rw(v);
-    if (t == "value-type") return valid_value_type(v);
-    if (t == "hw-type") return valid_hw_type(v);
-    if (t == "pattern") return valid_pattern(v);
-    if (t == "hex-bytes") return valid_hex_bytes(v);
-    if (t == "scan-type") return valid_scan_type(v);
-    if (t == "scan-value") return !v.empty();  // full check depends on type
-    if (t == "exit-code") return valid_exit_code(v);
-    if (t == "index") return valid_index(v);
-    if (t == "flag") return v == p.name;
-    return true;
 }
 
 }  // namespace

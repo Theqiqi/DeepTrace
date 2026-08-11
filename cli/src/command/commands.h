@@ -10,7 +10,8 @@ namespace deeptrace_cli {
 struct ParamSpec {
     std::string name;    // e.g. "address"
     std::string type;    // address|number|pid|tid|string|format|format-rw|
-                         // value-type|hw-type|pattern|hex-bytes|exit-code|index|flag
+                         // value-type|hw-type|pattern|hex-bytes|exit-code|index|flag|
+                         // scan-type|scan-value
     bool required = false;
     std::string def;     // default value text (empty if none)
 };
