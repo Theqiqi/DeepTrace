@@ -1,8 +1,8 @@
 # Architecture Overview (ARCHITECTURE)
 
 > Audience: developers new to the project, maintainers.
-> Design basis: design/v1.0.0, v1.1.0, v1.2.0 (the code is the source of truth).
-> For function-level API details see the [API Documentation](../../api/v1.3.0/README.md).
+> Design basis: design/v1.0.0 … v2.1.0 (the code is the source of truth).
+> For function-level API details see the [API Documentation](../../api/v2.1.0/README.md).
 
 ## 1. Overview
 
@@ -34,7 +34,7 @@
 
 ### 2.1 Data Layer domain/ `deeptrace` namespace
 
-- **Responsibility**: define all public data structures and enums (`Result`/`ValueType`/`BreakpointType` + `ProcessInfo`/`MemoryRegion`/`ModuleInfo`/`ThreadInfo`/`RegisterInfo`/`BreakpointInfo`/`WatchEntry`/`Instruction`/`DebugStatus`/`InjectInfo` etc.).
+- **Responsibility**: define all public data structures and enums (`Result`/`ValueType`/`BreakpointType` + `ProcessInfo`/`MemoryRegion`/`ModuleInfo`/`ThreadInfo`/`RegisterInfo`/`BreakpointInfo`/`WatchEntry`/`Instruction`/`DebugStatus`/`ContinueInfo`/`InjectInfo` etc.).
 - **Forbidden**: any logic, any I/O.
 - The public header `deeptrace/include/domain/types.h` and `src/domain/types.h` have identical content and must be kept in sync.
 
@@ -78,7 +78,7 @@ infrastructure/
 | store.{h,cpp} | state file read/write (breakpoints/watch/inject records) |
 | process/memory/module/thread/debug/disasm/resolve/watch/inject/asm | implementations of each public API |
 
-- **Responsibility**: compose domain + algorithm + infrastructure to implement the 55 public APIs; session management; breakpoint/watch/inject state persistence; `result_message` error semantics.
+- **Responsibility**: compose domain + algorithm + infrastructure to implement the 56 public APIs; session management; breakpoint/watch/inject state persistence; `result_message` error semantics. Since v2.0.0 the debug service also implements `debug_continue` (run to breakpoint/exit/timeout).
 - **Forbidden**: calling WinAPI directly (must go through infrastructure), inlining algorithms.
 - service public functions live in the `deeptrace` namespace (internal helpers session/store live in `deeptrace::internal`).
 
@@ -119,6 +119,9 @@ domain → none
 | executor.{h,cpp} | dispatches commands to their executor functions |
 | cmd.h | internal declarations (`deeptrace_cli::internal`) |
 | cmd_*.cpp | split by command group (process/memory/module/thread/debug/disasm/resolve/watch/inject/asm/shellcode) |
+| script.{h,cpp} | debug-script layer: JSON-subset parser + step validation (op table covering every debug capability) |
+| cmd_debug_run.cpp | debug-script session executor: one invocation = one session (attach → debug_attach → steps → cleanup → detach) |
+| cmd_debug.cpp | debug group dispatcher — since v2.1.0 forwards **only** `run`; other debug actions are rejected at parse time (`unknown command`) |
 
 - **Responsibility**: call deeptrace public APIs based on the CommandRequest and hand result structures to the printing layer.
 - **Forbidden**: direct WinAPI, reimplementing capabilities deeptrace already provides, formatting output.
@@ -149,6 +152,8 @@ argv → parser parses (global options + command routing + parameter validation)
 ```
 
 Session convention: after main parses the pid it calls `deeptrace::attach(pid)` first, then `deeptrace::detach()` after the command finishes; breakpoint/watch/inject state is persisted via state files and survives across CLI invocations.
+
+**Debug exception**: the debug group has a single entry `debug run <script.json>` since v2.1.0. It does **not** follow the single-command convention — one invocation runs a complete scripted debug session (attach → `debug_attach` → steps → cleanup → `debug_detach` → detach) with all session state kept in memory only; the debuggee always survives (breakpoints/guards are cleaned up before detaching). Standalone debug commands (step/break/registers/…) were removed because, without a session, their semantics are wrong (fake single-step, residual 0xCC, misleading register/status reads).
 
 ## 5. Cross-Project Dependencies
 
@@ -181,6 +186,7 @@ cli (independent CMake project)
 | Concept | Description |
 |---------|-------------|
 | Session | holds the target process handle after `attach(pid)`; released by `detach()`; `debug_attach()` enters debug mode, `debug_detach()` exits debug but stays attached |
+| Scripted debug session | `debug run <script.json>` — one invocation = one debug session; a JSON array of steps (break/clear/hbreak/hclear/guard/unguard/pause/resume/step/next/continue/status/registers/register/read/write/disasm/watch_*) executed in order; first failure stops the session; all session state exists only in memory for that call |
 | Breakpoint | software breakpoint (writes 0xCC, saves original bytes) / hardware breakpoint (DR0-DR3) / page guard |
 | Watch | description + address + type; `watch_refresh`/`watch_list` read target memory and show live values |
 | Injection | DLL (LoadLibrary path + remote thread) / shellcode (VirtualAllocEx + remote thread); `dll_list`/`shellcode_status` query runtime status |

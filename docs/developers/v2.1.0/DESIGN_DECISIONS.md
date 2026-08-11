@@ -75,9 +75,23 @@
 - **Option comparison**: a single global file (multi-process conflicts) vs per-pid subdirectories (`%TEMP%/deeptrace_<pid>/`, naturally isolated, directory name contains the pid for traceability).
 - **Choice**: `%TEMP%/deeptrace_<pid>/` (implemented by `state_dir()` in session.cpp).
 
+## ADR-11 Why the CLI exposes a single `debug run` entry (one invocation = one debug session)
+
+- **Background**: dynamic debugging is stateful — it depends on an active debug session (attached debuggee, armed breakpoints, paused threads). The CLI is a stateless, non-interactive, one-shot command tool. Exposing debug primitives as standalone commands (v1.3.0/v2.0.0 style `debug step`/`debug break`/`debug registers`) lets each invocation auto-attach/detach around a single operation, which produces wrong semantics.
+- **Observed problems (measured on the real target)**: `debug step` run twice returned the identical RIP (a fake step — no session, no real execution); `debug break` left a residual `0xCC` in target memory with no cleanup (pollution that can crash the debuggee when the INT3 is hit without a debugger); `debug registers`/`debug status` read a non-paused context / handle-only state (misleading); `debug attach` attached and detached with nothing in between (meaningless).
+- **Option comparison**: (a) keep standalone commands and accept broken semantics; (b) keep the commands but make each one hold a session across calls (state persists outside the call — contradicts the stateless model); (c) converge to a single scripted entry where one call = one complete session with cleanup guaranteed.
+- **Choice**: (c) — since v2.1.0 the debug group is a single `debug run <script.json>` entry; the 15 standalone debug commands were removed (parse-time rejection, exit code 2). The library keeps all debug APIs (they power `debug run` and external callers).
+
+## ADR-12 Why debug sessions are scripted (JSON step files) instead of interactive
+
+- **Background**: a real debugging session needs a sequence of operations (set breakpoints → run → inspect registers → step → read/write memory → clear breakpoints). Neither a one-shot CLI flag nor an interactive REPL fits the stateless batch model of deeptrace_cli.
+- **Option comparison**: (a) interactive REPL (adds a TUI/state machine to a batch tool); (b) a single `debug run` flag per operation (can't express a multi-step session); (c) a script file: a JSON array of steps executed in one call, session state kept in memory, cleaned up on failure or success.
+- **Choice**: (c) — `debug run <script.json>` (v2.0.0). The step table in `cli/src/interface/script.cpp` fully covers the library's debug capabilities (break/clear/hbreak/hclear/guard/unguard/pause/resume/step/next/continue/status/registers/register + read/write/disasm/watch_*); unknown ops/fields/values are rejected at validation time (exit code 2). No control flow (conditions/loops/variables), no cross-call session persistence, and no breakpoint-hit callbacks are supported by design.
+
 ## Known Limitations and Trade-offs
 
 - Windows x64 only; no cross-platform plans (the public header already uses standard types, preserving theoretical portability).
 - Breakpoint state files remain in %TEMP% after the target process exits (harmless, but needs manual cleanup).
 - Some debug operations (hardware breakpoints/page guards) depend on x64 architecture capabilities; non-x64 targets are unsupported.
 - e2e requires a Debug build + testdll.dll; Release packaging contains only deeptrace_cli.exe (no test artifacts).
+- Debug scripts intentionally support no control flow (no conditionals/loops/variables) and no breakpoint-hit callbacks; complex debugging scenarios are scripted by the caller (e.g. an AI tool generating the JSON).

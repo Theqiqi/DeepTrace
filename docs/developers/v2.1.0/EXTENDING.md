@@ -1,7 +1,7 @@
 # Extension Guide (EXTENDING)
 
 > Audience: contributors. Explains the extension points and provides complete examples (code + expected output).
-> For function-level API details see the [API Documentation](../../api/v1.3.0/README.md); architecture conventions in [ARCHITECTURE.md](ARCHITECTURE.md); testing requirements in [TESTING.md](TESTING.md).
+> For function-level API details see the [API Documentation](../../api/v2.1.0/README.md); architecture conventions in [ARCHITECTURE.md](ARCHITECTURE.md); testing requirements in [TESTING.md](TESTING.md).
 
 ## 1. Extension Point Overview
 
@@ -12,7 +12,7 @@
 | New algorithm | `deeptrace/src/algorithm/` | pure-computation module + unit tests |
 | Engine replacement (assembly/disassembly) | `deeptrace/src/infrastructure/assembly|disassembly/` | infrastructure internal only, zero changes above |
 
-All extensions must ship with tests (see [TESTING.md](TESTING.md)) and update the API documentation (`docs/api/v1.3.0/`) in sync.
+All extensions must ship with tests (see [TESTING.md](TESTING.md)) and update the API documentation (`docs/api/v2.1.0/`) in sync.
 
 ---
 
@@ -60,6 +60,23 @@ cli\out\bin\Debug\deeptrace_cli.exe ps list2
 - Errors go through `internal::report_error(r, arg)` uniformly; success is printed via `printer::print_*`; direct printf of business results is forbidden.
 - Exit codes: 0 success / 1 execution failure / 2 usage error.
 - e2e assertions are mandatory (`check(...)` in `cli/test/e2e/test_cli_e2e.py`).
+
+### 2.5 Debug Scripts: Adding a Script Step
+
+Debug capabilities are not exposed as standalone commands anymore (see [ADR-11](DESIGN_DECISIONS.md#adr-11-why-the-cli-exposes-a-single-debug-run-entry-one-invocation--one-debug-session)); adding a debug capability means **adding a step to the script engine**:
+
+1. **Step table** (`cli/src/interface/script.cpp`): declare the op name and its parameters (name / type / required / default) in the ops table, e.g.
+
+   ```cpp
+   {"my_op", {{"addr", "address", true, nullptr},
+              {"size", "number-pos", false, "8"}}},
+   ```
+
+   Parameter types (`address`/`number`/`number-pos`/`hex-bytes`/`value-type`/`hw-type`/`hw-length`/`ascii`/`tid`/`index`/`format`) are validated by the same validator used for CLI parameters; unknown ops/fields/values are rejected at validation time (exit code 2).
+
+2. **Executor** (`cli/src/interface/cmd_debug_run.cpp`): add a branch in the per-step dispatcher that calls the corresponding deeptrace public API and prints the step result (`[N] op ...` + result). All session-level resources (breakpoints/guards) must be tracked so the session cleanup path restores them before detach.
+
+3. **Fixture + tests**: add a script fixture under `cli/test/scripts/` (POST_BUILD deploys it next to the test exe), then integration (`DebugRun*`) + e2e (`check(...)`) assertions; a negative fixture proves unknown ops are rejected.
 
 ---
 

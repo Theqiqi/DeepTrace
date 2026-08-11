@@ -1,4 +1,4 @@
-# Developer Documentation — Analysis Phase (v1.3.0)
+# Developer Documentation — Analysis Phase (v2.1.0)
 
 > This file is the output of stage 1 of `.flow/developer_docs_development_process.md`:
 > 1.1 Code analysis (code structure analysis + architecture highlights)
@@ -47,7 +47,7 @@ deeptrace/src/
 ```
 
 - **Namespaces**: public APIs live in the `deeptrace` namespace; internal implementations (algorithm/infrastructure/session/store) live in `deeptrace::internal`.
-- **Public header**: `deeptrace/include/deeptrace.h` is the only header consumers may include (55 public APIs); public types are in `deeptrace/include/domain/types.h`. The public header must not expose windows.h types; it uses standard C++ types only.
+- **Public header**: `deeptrace/include/deeptrace.h` is the only header consumers may include (56 public APIs); public types are in `deeptrace/include/domain/types.h`. The public header must not expose windows.h types; it uses standard C++ types only.
 - **Dependency direction** (no cross-layer calls):
   ```
   service → algorithm + infrastructure + domain
@@ -156,4 +156,4 @@ The audience is **developers**, not end users. End-user documentation (if any) i
 | DESIGN_DECISIONS.md | maintainers | technical decision records (layering, engine selection, runtime, state persistence, etc.) |
 | CHANGELOG.md | maintainers | documentation version change history |
 
-All function-level explanations **link to the API documentation** (`docs/api/v1.3.0/`) instead of being duplicated here.
+All function-level explanations **link to the API documentation** (`docs/api/v2.1.0/`) instead of being duplicated here.

@@ -1,21 +1,21 @@
 # DeepTrace Developer Documentation
 
 > Audience: every developer who joins the project (newcomers / contributors / maintainers).
-> For function-level API details see the [API Documentation](../../api/v1.3.0/README.md); not repeated here.
+> For function-level API details see the [API Documentation](../../api/v2.1.0/README.md); not repeated here.
 
 ## Project Overview
 
 This repository contains two independent Windows x64 C++20 projects:
 
-- **deeptrace** (`deeptrace/`) — a process memory operation **static library**: process/memory/module/thread/debug/disassembly/assembly/resolve/watch/inject, 55 public APIs.
-- **deeptrace_cli** (`cli/`) — a **command-line program**: wraps the library capabilities as commands (ps/mem/module/thread/debug/disasm/asm/resolve/watch/dll/shellcode), pure ASCII output.
+- **deeptrace** (`deeptrace/`) — a process memory operation **static library**: process/memory/module/thread/debug/disassembly/assembly/resolve/watch/inject, 56 public APIs.
+- **deeptrace_cli** (`cli/`) — a **command-line program**: wraps the library capabilities as commands (ps/mem/module/thread/debug/disasm/asm/resolve/watch/dll/shellcode), pure ASCII output. Since v2.1.0 the debug group exposes a **single entry `debug run <script.json>`** — one invocation is one complete debug session driven by a JSON script.
 
 ## Directory Overview
 
 ```
 deeptrace/   static library (four src layers: domain/algorithm/infrastructure/service + include/deeptrace.h)
 cli/         command-line program (three src layers: command/interface/printing + main.cpp)
-design/      design documents (v1.0.0 / v1.1.0 / v1.2.0)
+design/      design documents (v1.0.0 … v2.1.0)
 docs/api/    public API reference documentation
 docs/developers/  developer documentation (this doc set)
 agents/      agent-facing install & usage prompts (for AI / LLM tools)

@@ -1,7 +1,7 @@
 # Build Guide (BUILDING)
 
 > Audience: developers new to the project. This document explains from scratch how to build both projects.
-> For function-level API details see the [API Documentation](../../api/v1.3.0/README.md).
+> For function-level API details see the [API Documentation](../../api/v2.1.0/README.md).
 
 ## 1. Environment Requirements
 
@@ -50,7 +50,7 @@ Verify the build:
 
 ```bat
 cli\out\bin\Debug\deeptrace_cli.exe -v
-:: deeptrace_cli v1.3.0
+:: deeptrace_cli v2.1.0
 ```
 
 ## 3. Release Build
@@ -68,7 +68,7 @@ cli\script\build_release.bat
 ## 4. Packaging (zip Archive)
 
 ```bat
-cli\script\package.bat          :: default version v1.3.0
+cli\script\package.bat          :: default version v2.1.0
 cli\script\package.bat v1.4     :: specify a version
 ```
 
