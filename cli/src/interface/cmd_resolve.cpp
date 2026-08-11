@@ -20,8 +20,7 @@ int cmd_resolve(const CommandRequest& req) {
     }
     if (req.action == "scan") {
         std::vector<uintptr_t> hits;
-        std::string pattern = internal::value_to_pattern(req.args[0], req.args[1]);
-        Result r = deeptrace::pattern_scan(pattern, hits);
+        Result r = deeptrace::pattern_scan(req.args[0], hits);
         if (r != Result::Ok) return internal::report_error(r, req.args[0]);
         if (hits.empty()) {
             printer::print_message("No match found");

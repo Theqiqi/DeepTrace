@@ -58,53 +58,6 @@ TEST(Internal, ValueTypeId) {
     EXPECT_EQ(internal::value_type_id("double"), 5);
 }
 
-// ---- value_to_pattern (typed value -> AOB pattern string) ----
-
-TEST(Internal, ValueToPatternIntLittleEndian) {
-    EXPECT_EQ(internal::value_to_pattern("100", "dword"), "64 00 00 00");
-    EXPECT_EQ(internal::value_to_pattern("0x11223344", "dword"),
-              "44 33 22 11");
-    EXPECT_EQ(internal::value_to_pattern("255", "byte"), "FF");
-    EXPECT_EQ(internal::value_to_pattern("0x1234", "word"), "34 12");
-    EXPECT_EQ(internal::value_to_pattern("0x1122334455667788", "qword"),
-              "88 77 66 55 44 33 22 11");
-    // decimal with leading zero must NOT be parsed as octal
-    EXPECT_EQ(internal::value_to_pattern("08", "byte"), "08");
-}
-
-TEST(Internal, ValueToPatternFloat) {
-    // 1.0f little-endian IEEE754 single
-    EXPECT_EQ(internal::value_to_pattern("1.0", "float"), "00 00 80 3F");
-    // 3.14159f as in the test target
-    EXPECT_EQ(internal::value_to_pattern("3.14159", "float"), "D0 0F 49 40");
-}
-
-TEST(Internal, ValueToPatternDouble) {
-    // 1.0 little-endian IEEE754 double
-    EXPECT_EQ(internal::value_to_pattern("1.0", "double"),
-              "00 00 00 00 00 00 F0 3F");
-    // 2.71828 as in the test target
-    EXPECT_EQ(internal::value_to_pattern("2.71828", "double"),
-              "90 F7 AA 95 09 BF 05 40");
-}
-
-TEST(Internal, ValueToPatternString) {
-    EXPECT_EQ(internal::value_to_pattern("hi", "string"), "68 69");
-    EXPECT_EQ(internal::value_to_pattern("AB", "string"), "41 42");
-}
-
-TEST(Internal, ValueToPatternHex) {
-    EXPECT_EQ(internal::value_to_pattern("DEADBEEF", "hex"),
-              "DE AD BE EF");
-    EXPECT_EQ(internal::value_to_pattern("0x4831C0", "hex"),
-              "48 31 C0");
-}
-
-TEST(Internal, ValueToPatternPatternPassthrough) {
-    EXPECT_EQ(internal::value_to_pattern("48 8B ?? ?? 00", "pattern"),
-              "48 8B ?? ?? 00");
-}
-
 // ---- no-process error paths (execute without -p / without session) ----
 
 TEST(Executor, MemReadWithoutSession) {

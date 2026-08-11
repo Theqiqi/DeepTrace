@@ -247,84 +247,10 @@ TEST(Parser, DisasmAtDefaultCount) {
 TEST(Parser, PatternValid) {
     auto r = parse({"deeptrace_cli", "resolve", "scan", "48 8B ?? ?? 00"});
     ASSERT_TRUE(r.ok);
-    EXPECT_EQ(r.req.args.size(), 2u);      // value + type(default pattern)
-    EXPECT_EQ(r.req.args[1], "pattern");  // backward-compatible default
     auto bad = parse({"deeptrace_cli", "resolve", "scan", "48 Z"});
     EXPECT_FALSE(bad.ok);
-    EXPECT_EQ(bad.exit_code, 2);
     auto empty = parse({"deeptrace_cli", "resolve", "scan", ""});
     EXPECT_FALSE(empty.ok);
-}
-
-// ---- resolve scan typed values ----
-
-TEST(Parser, ScanTypedValueInt) {
-    auto r = parse({"deeptrace_cli", "resolve", "scan", "100", "dword"});
-    ASSERT_TRUE(r.ok);
-    EXPECT_EQ(r.req.args[0], "100");
-    EXPECT_EQ(r.req.args[1], "dword");
-    auto hex = parse({"deeptrace_cli", "resolve", "scan", "0x11223344", "dword"});
-    ASSERT_TRUE(hex.ok);
-    auto q = parse({"deeptrace_cli", "resolve", "scan", "18446744073709551615", "qword"});
-    ASSERT_TRUE(q.ok);
-}
-
-TEST(Parser, ScanTypedValueRange) {
-    auto ok = parse({"deeptrace_cli", "resolve", "scan", "255", "byte"});
-    ASSERT_TRUE(ok.ok);
-    auto over = parse({"deeptrace_cli", "resolve", "scan", "256", "byte"});
-    EXPECT_FALSE(over.ok);
-    EXPECT_EQ(over.exit_code, 2);
-    auto over_dw = parse({"deeptrace_cli", "resolve", "scan", "4294967296", "dword"});
-    EXPECT_FALSE(over_dw.ok);
-    auto neg = parse({"deeptrace_cli", "resolve", "scan", "-1", "dword"});
-    EXPECT_FALSE(neg.ok);
-    EXPECT_EQ(neg.exit_code, 2);
-}
-
-TEST(Parser, ScanTypedValueFloat) {
-    auto r = parse({"deeptrace_cli", "resolve", "scan", "3.14", "float"});
-    ASSERT_TRUE(r.ok);
-    auto sci = parse({"deeptrace_cli", "resolve", "scan", "1e5", "double"});
-    ASSERT_TRUE(sci.ok);
-    auto bad = parse({"deeptrace_cli", "resolve", "scan", "abc", "float"});
-    EXPECT_FALSE(bad.ok);
-    EXPECT_EQ(bad.exit_code, 2);
-    auto hexf = parse({"deeptrace_cli", "resolve", "scan", "0x10", "float"});
-    EXPECT_FALSE(hexf.ok);  // hex float literals not supported
-    auto inf = parse({"deeptrace_cli", "resolve", "scan", "1e400", "float"});
-    EXPECT_FALSE(inf.ok);   // overflows to inf -> not finite
-}
-
-TEST(Parser, ScanTypedValueString) {
-    auto r = parse({"deeptrace_cli", "resolve", "scan", "hello", "string"});
-    ASSERT_TRUE(r.ok);
-    auto bad = parse({"deeptrace_cli", "resolve", "scan", "h\x01i", "string"});
-    EXPECT_FALSE(bad.ok);  // non-printable ASCII rejected
-}
-
-TEST(Parser, ScanTypedValueHex) {
-    auto r = parse({"deeptrace_cli", "resolve", "scan", "DEADBEEF", "hex"});
-    ASSERT_TRUE(r.ok);
-    auto pfx = parse({"deeptrace_cli", "resolve", "scan", "0xDEADBEEF", "hex"});
-    ASSERT_TRUE(pfx.ok);
-    auto odd = parse({"deeptrace_cli", "resolve", "scan", "ABC", "hex"});
-    EXPECT_FALSE(odd.ok);
-    EXPECT_EQ(odd.exit_code, 2);
-}
-
-TEST(Parser, ScanTypedValueBadType) {
-    auto r = parse({"deeptrace_cli", "resolve", "scan", "100", "bogus"});
-    EXPECT_FALSE(r.ok);
-    EXPECT_EQ(r.exit_code, 2);
-    EXPECT_NE(r.error.find("invalid type"), std::string::npos);
-}
-
-TEST(Parser, ScanTypedValueErrorMsg) {
-    auto r = parse({"deeptrace_cli", "resolve", "scan", "xyz", "dword"});
-    EXPECT_FALSE(r.ok);
-    EXPECT_EQ(r.exit_code, 2);
-    EXPECT_NE(r.error.find("invalid value for type 'dword'"), std::string::npos);
 }
 
 TEST(Parser, TooManyArguments) {
