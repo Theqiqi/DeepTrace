@@ -115,7 +115,7 @@ deeptrace/   static library (domain / algorithm / infrastructure / service) + in
 cli/         command-line tool (command / interface / printing layers)
 design/      design documents (v1.0.0 … v2.1.0)
 docs/        api reference, developer docs, user manual (v2.1.0)
-agents/      AI-agent docs (agents/README.md) + deeptrace-cli skill (agents/skills/deeptrace-cli/)
+agents/      AI-agent setup guide (agents/README.md) + two skills (agents/deeptrace-cli-install.md, agents/deeptrace-cli-usage.md)
 sandbox/     experiments (not part of the deliverable)
 ```
 
@@ -129,13 +129,13 @@ sandbox/     experiments (not part of the deliverable)
 
 ## AI / Agent Usage Guide
 
-> **This section is an index for AI and AI agents** (Claude Code, Codex, Cursor, custom agents, LLM tools, etc.). If you are an AI reading this README, follow the steps below: **1) read the agent docs, 2) load the skill, 3) install the tool (prefer the release download), 4) use the skill to call the tool.**
+> **This section is an index for AI and AI agents** (custom agents, LLM tooling, etc.). If you are an AI reading this README, follow the steps below: **1) read the agent doc, 2) install the tool into your working directory, 3) download the skill into `.agents/`, 4) use the skill to call the tool.**
 
-**Step 1 — Read the agent docs.** [agents/README.md](agents/README.md) is the document for AI agents (written in English): project overview (deeptrace 2.0.0 library, 56 public APIs; deeptrace_cli 2.1.0), install guidance, key facts, command groups, and the doc map.
+**Step 1 — Read the agent doc.** [agents/README.md](agents/README.md) is the setup guide for AI agents (written in English): project overview, key facts, and the two setup actions — install `deeptrace_cli` into your working directory and download the skill into `.agents/`.
 
-**Step 2 — Load the skill.** This repo ships one agent skill in standard SKILL format (YAML frontmatter `name`/`description` + Markdown instructions, written in Chinese): [agents/skills/deeptrace-cli/SKILL.md](agents/skills/deeptrace-cli/SKILL.md). Load it into your agent so it knows when and how to install and use this tool.
+**Step 2 — Install the tool into your working directory (prefer the release download).** This repo is a Windows x64 C++20 process-memory tool. Download `deeptrace_cli-v2.1.0-win64.zip` from the [v2.0.0 release](https://github.com/Theqiqi/DeepTrace/releases/tag/v2.0.0) (single exe, no dependencies) and extract it into the **current directory** so `deeptrace_cli.exe` is available; build from source only when no release is available (build order: `deeptrace` library first, then `deeptrace_cli`). Details: [agents/README.md](agents/README.md) or the install skill [deeptrace-cli-install.md](agents/deeptrace-cli-install.md).
 
-**Step 3 — Install the software (prefer the release download).** This repo is a Windows x64 C++20 process-memory tool. `deeptrace_cli` must be available before use. **Prefer downloading the official release zip** from [GitHub Releases](https://github.com/Theqiqi/DeepTrace/releases) (`deeptrace_cli-v2.1.0-win64.zip`, single exe, no dependencies); build from source only when no release is available (build order: `deeptrace` library first, then `deeptrace_cli`). See [agents/README.md](agents/README.md) or the skill's [INSTALL.md](agents/skills/deeptrace-cli/references/INSTALL.md).
+**Step 3 — Download the skills into `.agents/`.** Copy the two skills into `.agents/` in your current directory: `agents/deeptrace-cli-install.md` (install/build) and `agents/deeptrace-cli-usage.md` (usage), both written in Chinese.
 
 **Step 4 — Use the skill to call the tool.** The agent can run commands such as `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex`. Key facts: exit codes `0`/`1`/`2` (success / failure / usage error); addresses are `0x`-prefixed hex; state (watches/injections) persists in `%TEMP%\deeptrace_<pid>\`; debug is scripted via the single entry `debug run <script.json>` (v2.1.0); test target `deeptrace_target.exe` has ASLR disabled with known values at fixed addresses (e.g. `0x14000D000` = `0x11223344`).
 

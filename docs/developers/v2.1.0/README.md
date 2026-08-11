@@ -18,7 +18,7 @@ cli/         command-line program (three src layers: command/interface/printing 
 design/      design documents (v1.0.0 … v2.1.0)
 docs/api/    public API reference documentation
 docs/developers/  developer documentation (this doc set)
-agents/      AI-agent docs (agents/README.md) + deeptrace-cli skill (agents/skills/deeptrace-cli/)
+agents/      AI-agent setup guide (agents/README.md) + two skills (agents/deeptrace-cli-install.md, agents/deeptrace-cli-usage.md)
 sandbox/     experimental verification project (not part of the deliverable)
 ```
 

@@ -115,7 +115,7 @@ deeptrace/   静态库(domain / algorithm / infrastructure / service)+ include/d
 cli/         命令行工具(command / interface / printing 三层)
 design/      设计文档(v1.0.0 … v2.1.0)
 docs/        API 参考、开发者文档、用户手册(v2.1.0)
-agents/      AI agent 文档(agents/README.md)+ deeptrace-cli 技能(agents/skills/deeptrace-cli/)
+agents/      AI agent 设置指南(agents/README.md)+ 两个技能(agents/deeptrace-cli-install.md、agents/deeptrace-cli-usage.md)
 sandbox/     实验验证项目(不参与交付)
 ```
 
@@ -129,15 +129,15 @@ sandbox/     实验验证项目(不参与交付)
 
 ## AI / Agent 使用说明
 
-> **本节是给 AI 与 AI agent 看的索引**(Claude Code、Codex、Cursor、自定义 agent、LLM 工具等)。如果你是一个正在阅读本 README 的 AI,请按以下步骤执行:**① 读 agent 文档 → ② 加载技能 → ③ 安装软件(优先下载发布版)→ ④ 用技能调用软件**。
+> **本节是给 AI 与 AI agent 看的索引**(自定义 agent、LLM 工具等)。如果你是一个正在阅读本 README 的 AI,请按以下步骤执行:**① 读 agent 文档 → ② 安装工具到当前工作目录 → ③ 把技能下载到 .agents/ → ④ 用技能调用软件**。
 
-**第 ① 步 — 读 agent 文档。** [agents/README.md](agents/README.md) 是给 AI agent 看的文档(文档为英文):项目概览(deeptrace 2.0.0 库,56 个公共 API;deeptrace_cli 2.1.0)、安装指引、关键事实、命令组与文档地图。
+**第 ① 步 — 读 agent 文档。** [agents/README.md](agents/README.md) 是给 AI agent 看的设置指南(文档为英文):项目概览、关键事实,以及两个设置动作——把 `deeptrace_cli` 安装到当前工作目录、把技能下载到 `.agents/`。
 
-**第 ② 步 — 加载技能。** 本仓库提供一个标准 SKILL 格式(YAML frontmatter `name`/`description` + Markdown 指令,技能指令为中文)的 agent 技能:[agents/skills/deeptrace-cli/SKILL.md](agents/skills/deeptrace-cli/SKILL.md)。加载到你的 agent 中,使其知道何时以及如何安装与使用本工具。
+**第 ② 步 — 安装工具到当前工作目录(优先下载发布版)。** 本仓库是 Windows x64 C++20 进程内存工具。从 [v2.0.0 Release](https://github.com/Theqiqi/DeepTrace/releases/tag/v2.0.0) 下载 `deeptrace_cli-v2.1.0-win64.zip`(单个 exe,免依赖)并**解压到当前目录**,使 `deeptrace_cli.exe` 可用;仅当没有发布版时才从源码构建(构建顺序:先 `deeptrace` 库,后 `deeptrace_cli`)。见 [agents/README.md](agents/README.md) 或安装技能 [deeptrace-cli-install.md](agents/deeptrace-cli-install.md)。
 
-**第 ③ 步 — 安装软件(优先下载发布版)。** 本仓库是 Windows x64 C++20 进程内存工具。使用前需先获得 `deeptrace_cli`:**优先从 [GitHub Releases](https://github.com/Theqiqi/DeepTrace/releases) 下载官方发行 zip**(`deeptrace_cli-v2.1.0-win64.zip`,单个 exe,免依赖);仅当没有发布版时才从源码构建(构建顺序:先 `deeptrace` 库,后 `deeptrace_cli`)。见 [agents/README.md](agents/README.md) 或技能的 [INSTALL.md](agents/skills/deeptrace-cli/references/INSTALL.md)。
+**第 ③ 步 — 把技能下载到 .agents/。** 把两个技能复制到当前目录的 `.agents/` 中:`agents/deeptrace-cli-install.md`(安装/编译)与 `agents/deeptrace-cli-usage.md`(用法),均为中文。
 
-**第 ④ 步 — 用技能调用软件。** 加载技能后,agent 即可执行如 `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex` 的命令。关键事实:退出码 `0`/`1`/`2`(成功/执行失败/用法错误);地址为 `0x` 前缀十六进制;watch/注入状态存于 `%TEMP%\deeptrace_<pid>\`;调试为脚本化会话,唯一入口 `debug run <script.json>`(v2.1.0);测试目标 `deeptrace_target.exe` 关闭 ASLR,固定地址存已知值(如 `0x14000D000` = `0x11223344`)。
+**第 ④ 步 — 用技能调用软件。** 复制完成后,agent 即可执行如 `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex` 的命令。关键事实:退出码 `0`/`1`/`2`(成功/执行失败/用法错误);地址为 `0x` 前缀十六进制;watch/注入状态存于 `%TEMP%\deeptrace_<pid>\`;调试为脚本化会话,唯一入口 `debug run <script.json>`(v2.1.0);测试目标 `deeptrace_target.exe` 关闭 ASLR,固定地址存已知值(如 `0x14000D000` = `0x11223344`)。
 
 其他参考:[用户手册](docs/users/v2.1.0/USER_MANUAL.md)(完整命令参考)、[API 参考](docs/api/v2.1.0/README.md)(库 API,用于代码集成)。
 
