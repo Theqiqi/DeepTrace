@@ -135,7 +135,7 @@ struct ContinueInfo {
 | `rip` | stopped-thread RIP; for a self-set software breakpoint this is the **post-instruction** RIP (the breakpoint instruction has been executed); for other exceptions it is the faulting instruction address |
 | `tid` | stopped-thread ID; valid when `hit` |
 
-`hit` and `exited` are mutually exclusive; when both are `false` the call returned on timeout (see [debug_continue](../Modules/DEBUG.md#deeptracedebug_continue)).
+`hit` and `exited` are mutually exclusive; when both are `false` the call returned `Result::Timeout` and the debuggee keeps running (see [debug_continue](../Modules/DEBUG.md#deeptracedebug_continue)).
 
 ## InjectInfo — Injection Information
 

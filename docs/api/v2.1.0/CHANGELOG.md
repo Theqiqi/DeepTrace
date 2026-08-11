@@ -6,12 +6,12 @@ Incremental update matching code tags `v2.0.0` (deeptrace library) / `v2.1.0` (d
 
 **Added**
 - New public API `deeptrace::debug_continue` (run the debuggee until a software breakpoint, another exception, process exit, or timeout) — documented in [Modules/DEBUG.md](Modules/DEBUG.md#deeptracedebug_continue).
-- New public struct `ContinueInfo` (stop-reason output of `debug_continue`) — documented in [Types/STRUCTS.md](Types/STRUCTS.md#continueinfo--continue-information).
+- New public struct `ContinueInfo` (stop-reason output of `debug_continue`) — documented in [Types/STRUCTS.md](Types/STRUCTS.md#continueinfo-debug-continue-stop-reason).
 - API inventory now **56 public functions**, **3 enums**, **12 structs** (55 + 1 function, 11 + 1 struct vs v1.3.0).
 
 **Changed**
 - `ContinueInfo.exception` field carries the exception code (final field name `exception`; an intermediate design name `exception_code` was dropped because it collides with the Windows SDK `excpt.h` macro).
-- `debug_continue` behavior notes: system-loader breakpoint events are skipped internally, detach events are drained, and RIP rollback (to the instruction before the breakpoint) applies only to self-set software breakpoints — documented in [Modules/DEBUG.md](Modules/DEBUG.md#deeptracedebug_continue).
+- `debug_continue` behavior notes: the system-loader breakpoint (raised at attach inside ntdll) is skipped internally and detach events are drained, so a fresh `debug_continue` reliably waits for a user-set breakpoint; for a self-set software breakpoint the reported RIP is the **post-instruction** RIP (the breakpoint instruction has been executed) — documented in [Modules/DEBUG.md](Modules/DEBUG.md#deeptracedebug_continue).
 - README overview updated: 55 → 56 public APIs; session-lifecycle diagram gains the `debug_continue` branch.
 
 **Unchanged**

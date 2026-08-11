@@ -61,7 +61,7 @@ enumerate_processes / process_info (query by pid)   ← no session needed
 - Every API that needs a target process requires `attach(pid)` first; otherwise it returns `Result::NotAttached`.
 - Exceptions (operate by pid, no session needed): `enumerate_processes`, `process_info`, `suspend_process`, `resume_process`, `terminate_process`, `asm_assemble`, `result_message`.
 - The debug session nests on top of the process session: `debug_attach()` requires a prior `attach()`.
-- `debug_continue` resumes the debuggee in debug mode and returns on software-breakpoint hit / other exception / process exit / timeout; stop reason is reported in `ContinueInfo` (see [DEBUG.md](Modules/DEBUG.md#deeptracedebug_continue)).
+- `debug_continue` resumes the debuggee in debug mode and returns `Ok` on software-breakpoint hit / other exception / process exit (stop reason in `ContinueInfo`), or `Result::Timeout` when no event arrives within the wait budget (see [DEBUG.md](Modules/DEBUG.md#deeptracedebug_continue)).
 - `debug_step` / `debug_step_over` support a one-shot **attach → single-step → detach** flow without a debug session (the CLI's non-interactive usage).
 
 ### 3.2 Privilege Requirements
