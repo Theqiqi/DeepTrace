@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.0.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.1.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -247,11 +247,6 @@ def main():
         code, out, _ = run_cli(["-p", str(pid), "thread", "list"])
         check("thread list exit 0", code == 0)
 
-        # ---- registers ----
-        code, out, _ = run_cli(["-p", str(pid), "debug", "registers"])
-        check("registers exit 0", code == 0)
-        check("registers have rip", re.search(r"rip\s", out) is not None,
-              repr(out[:200]))
 
         # ---- disasm ----
         if g_bytes:
@@ -283,19 +278,17 @@ def main():
         check("watch list shows value", "0x11223344" in out, repr(out))
         run_cli(["-p", str(pid), "watch", "remove", "0"])
 
-        # ---- debug break / status ----
-        code, out, _ = run_cli(["-p", str(pid), "debug", "status"])
-        check("debug status exit 0", code == 0)
-        code, _, _ = run_cli(["-p", str(pid), "debug", "break", g_int])
-        check("debug break exit 0", code == 0)
-        run_cli(["-p", str(pid), "debug", "clear", g_int])
-        check("debug clear exit 0", code == 0)
-
-        # ---- debug attach must not kill the target ----
-        code, _, _ = run_cli(["-p", str(pid), "debug", "attach"])
-        check("debug attach exit 0", code == 0)
-        code, out, _ = run_cli(["ps", "list"])
-        check("target alive after debug attach", str(pid) in out, repr(out[:200]))
+        # ---- v2.1.0: standalone debug commands are removed (single entry: debug run) ----
+        for action in ["step", "break", "registers", "attach", "status", "pause",
+                       "resume", "next", "register", "guard", "hbreak", "hclear",
+                       "clear", "detach", "unguard"]:
+            code, _, err = run_cli(["-p", str(pid), "debug", action])
+            check(f"debug {action} rejected exit 2", code == 2)
+            check(f"debug {action} unknown command msg", "unknown command" in err,
+                  repr(err))
+        # the target must be intact (no 0xCC pollution from rejected commands)
+        code, out, _ = run_cli(["-p", str(pid), "mem", "read", g_int, "1", "hex"])
+        check("target intact after rejected debug cmds", "44" in out, repr(out))
 
         # ---- debug run: scripted session (one invocation = one session) ----
         # Scripts are real fixtures under cli/test/scripts/; tests substitute

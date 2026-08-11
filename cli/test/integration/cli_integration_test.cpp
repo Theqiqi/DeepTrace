@@ -211,31 +211,26 @@ TEST(CliChain, ThreadList) {
               0);
 }
 
-TEST(CliChain, Registers) {
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug",
-                       "registers"}),
-              0);
-}
-
-TEST(CliChain, DebugStatus) {
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "status"}),
-              0);
-}
-
-// Regression: `debug attach` used to kill the target because the executor
-// auto-detached without DebugActiveProcessStop (debugger exit terminates the
-// debuggee on Windows). The target must still be running afterwards.
-TEST(CliChain, DebugAttachTargetSurvives) {
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug",
-                       "attach"}),
-              0);
-    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
-                             g_target.pid);
-    ASSERT_NE(h, nullptr);
-    DWORD code = 0;
-    EXPECT_TRUE(::GetExitCodeProcess(h, &code));
-    EXPECT_EQ(code, STILL_ACTIVE);
-    ::CloseHandle(h);
+// v2.1.0: standalone debug commands were removed (single entry = debug run).
+// Calling them is a usage error (exit 2) and must not touch the target.
+TEST(CliChain, DebugSingleCommandsRejected) {
+    const char* removed[] = {"attach", "detach", "pause", "resume", "step",
+                             "next", "break", "clear", "hbreak", "hclear",
+                             "guard", "unguard", "status", "registers",
+                             "register"};
+    for (const char* a : removed) {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid),
+                           "debug", a}),
+                  2) << a;
+    }
+    // no residual breakpoint bytes: the target must still be intact
+    std::vector<uint8_t> buf(4);
+    size_t n = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(g_target.g_int, buf.data(), 4, &n),
+              deeptrace::Result::Ok);
+    EXPECT_EQ(buf[0], 0x44);  // g_int unchanged (no 0xCC pollution)
+    deeptrace::detach();
 }
 
 // The CLI `watch list` must display live values (list reads target memory).
@@ -335,31 +330,6 @@ TEST(CliChain, WatchRoundTrip) {
               0);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "watch", "remove",
                        "0"}),
-              0);
-}
-
-TEST(CliChain, DebugBreakRoundTrip) {
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "break",
-                       hex(g_target.g_int)}),
-              0);
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "clear",
-                       hex(g_target.g_int)}),
-              0);
-}
-
-TEST(CliChain, BreakpointAffectsDeeptraceState) {
-    // break through CLI, then verify the byte is 0xCC via deeptrace directly
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "break",
-                       hex(g_target.g_int)}),
-              0);
-    uint8_t b = 0;
-    size_t n = 0;
-    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
-    EXPECT_EQ(deeptrace::memory_read(g_target.g_int, &b, 1, &n), deeptrace::Result::Ok);
-    EXPECT_EQ(b, 0xCC);
-    deeptrace::detach();
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "clear",
-                       hex(g_target.g_int)}),
               0);
 }
 

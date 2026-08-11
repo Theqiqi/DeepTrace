@@ -226,29 +226,20 @@ TEST(Parser, DebugRunScriptPath) {
     EXPECT_NE(missing.error.find("missing argument: script"), std::string::npos);
 }
 
-TEST(Parser, DebugStepDefaultTid) {
-    auto r = parse({"deeptrace_cli", "debug", "step"});
-    ASSERT_TRUE(r.ok);
-    EXPECT_EQ(r.req.args.size(), 1u);
-    EXPECT_EQ(r.req.args[0], "0");
-    auto r2 = parse({"deeptrace_cli", "debug", "step", "77"});
-    ASSERT_TRUE(r2.ok);
-    EXPECT_EQ(r2.req.args[0], "77");
-}
-
-TEST(Parser, DebugHbreakDefaults) {
-    auto r = parse({"deeptrace_cli", "debug", "hbreak", "0x1000"});
-    ASSERT_TRUE(r.ok);
-    EXPECT_EQ(r.req.args.size(), 3u);
-    EXPECT_EQ(r.req.args[1], "0");
-    EXPECT_EQ(r.req.args[2], "1");
-}
-
-TEST(Parser, HwTypeValid) {
-    auto r = parse({"deeptrace_cli", "debug", "hbreak", "0x1000", "2", "8"});
-    ASSERT_TRUE(r.ok);
-    auto bad = parse({"deeptrace_cli", "debug", "hbreak", "0x1000", "9", "1"});
-    EXPECT_FALSE(bad.ok);
+// v2.1.0: debug group has a single entry `debug run`; all standalone debug
+// commands (step/break/registers/attach/...) were removed and must be rejected
+// with exit 2. Their capabilities live in script steps only.
+TEST(Parser, DebugSingleCommandsRejected) {
+    const char* removed[] = {"attach", "detach", "pause", "resume", "step",
+                             "next", "break", "clear", "hbreak", "hclear",
+                             "guard", "unguard", "status", "registers",
+                             "register"};
+    for (const char* a : removed) {
+        auto r = parse({"deeptrace_cli", "debug", a});
+        EXPECT_FALSE(r.ok) << a;
+        EXPECT_EQ(r.exit_code, 2) << a;
+        EXPECT_NE(r.error.find("unknown command"), std::string::npos) << a;
+    }
 }
 
 TEST(Parser, DisasmAtDefaultCount) {

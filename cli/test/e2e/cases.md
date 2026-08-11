@@ -2,8 +2,8 @@
 
 > 独立 Python 体系(`test_cli_e2e.py`),不参与 CMake。
 > 覆盖无参运行、-h/--help、错误路径、-p <pid> 真实目标进程操作、清理后退出。
-> 修改模式:v2.0.0 新增 `debug run` 脚本化调试会话用例(一次调用 = 一次会话),
-> 版本号同步 v2.0.0;既有用例全量回归。
+> 修改模式:v2.1.0 debug 收敛为单一入口 `debug run`(删除 15 个 debug 单命令,
+> 负例断言 unknown command + 目标无损);版本号同步 v2.1.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -12,7 +12,7 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.0.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.1.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
 | 非法参数 | - | `deeptrace_cli mem read zzz` | Error | 2 |
@@ -48,6 +48,13 @@
 | 脚本文件不存在 | `debug run no_such.json` | stderr 含 cannot open script file | 2 |
 | 脚本 op 未知 | 用 `debug_bad.json`(op frobnicate) | stderr 含 unknown op | 2 |
 
+## 3.1 debug 单命令已删除(v2.1.0,负例)
+
+| 用例 | 操作 | 预期输出 | 退出码 |
+|------|------|----------|--------|
+| debug 单命令全部拒绝 | `-p <pid> debug step` / `break` / `registers` / `attach` / `status` 等 15 个动作 | stderr 含 unknown command | 2 |
+| 拒绝后目标无损 | 上例后 `mem read g_int` | 仍为 44(无 0xCC 残留) | 0 |
+
 ## 4. resolve scan(恢复 pattern-only)
 
 前置:启动 deeptrace_target.exe,解析 PID / g_int / g_bytes 地址。
@@ -61,5 +68,5 @@
 ## 5. 既有回归(引用)
 
 - ps/mem/module/thread/debug/disasm/asm/watch/dll 既有用例全量回归
-- 副作用检查:debug attach 后目标进程仍存活;dll inject/eject 成对完成
+- 副作用检查:debug run 会话后目标进程仍存活;dll inject/eject 成对完成
 - 清理:测试结束 taskkill deeptrace_target.exe,无残留进程
