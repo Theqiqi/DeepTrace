@@ -255,10 +255,16 @@ TEST(Parser, PatternValid) {
 
 // resolve scan is pattern-only again (v1.4.0 typed-value change was reverted).
 TEST(Parser, ScanTypedValueRejected) {
+    // a non-pattern token fails pattern validation first
     auto r = parse({"deeptrace_cli", "resolve", "scan", "100", "dword"});
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.exit_code, 2);
-    EXPECT_NE(r.error.find("too many arguments"), std::string::npos);
+    EXPECT_NE(r.error.find("invalid pattern"), std::string::npos);
+    // a valid pattern with an extra arg hits the too-many-arguments path
+    auto r2 = parse({"deeptrace_cli", "resolve", "scan", "48 8B", "dword"});
+    EXPECT_FALSE(r2.ok);
+    EXPECT_EQ(r2.exit_code, 2);
+    EXPECT_NE(r2.error.find("too many arguments"), std::string::npos);
 }
 
 // ---- convert (standalone command, type first) ----
@@ -276,10 +282,12 @@ TEST(Parser, ConvertParsesTypeFirst) {
 TEST(Parser, ConvertAllTypes) {
     const char* types[] = {"byte", "word", "dword", "qword", "float", "double",
                            "string", "hex"};
-    for (const char* t : types) {
-        auto r = parse({"deeptrace_cli", "convert", t, "1"});
-        ASSERT_TRUE(r.ok) << t;
-        EXPECT_EQ(r.req.args[0], t) << t;
+    // "1" is valid for every type except hex (odd length); hex needs "11".
+    const char* vals[] = {"1", "1", "1", "1", "1", "1", "1", "11"};
+    for (size_t i = 0; i < 8; ++i) {
+        auto r = parse({"deeptrace_cli", "convert", types[i], vals[i]});
+        ASSERT_TRUE(r.ok) << types[i];
+        EXPECT_EQ(r.req.args[0], types[i]) << types[i];
     }
 }
 
@@ -332,7 +340,15 @@ TEST(Parser, ConvertIntRanges) {
     ok("qword", "18446744073709551615");
     bad("qword", "18446744073709551616");
     bad("dword", "xyz");
-    bad("dword", "-1");  // negatives unsupported
+}
+
+TEST(Parser, ConvertNegativeRejectedByOptionScanner) {
+    // "-1" starts with '-', so the option scanner rejects it as an unknown
+    // option before value validation (negatives are unsupported either way).
+    auto r = parse({"deeptrace_cli", "convert", "dword", "-1"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("unknown option"), std::string::npos);
 }
 
 TEST(Parser, ConvertNoOctalTrap) {

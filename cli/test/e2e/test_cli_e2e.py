@@ -239,7 +239,7 @@ def main():
               any(want_int == g or want_int in g for g in got_int), repr(out2[:300]))
 
         # ---- resolve scan is pattern-only again (v1.4.0 typed syntax gone) ----
-        code, _, err = run_cli(["-p", str(pid), "resolve", "scan", "100", "dword"])
+        code, _, err = run_cli(["-p", str(pid), "resolve", "scan", "48 8B", "dword"])
         check("resolve scan typed syntax rejected exit 2", code == 2)
         check("resolve scan typed syntax msg", "too many arguments" in err, repr(err))
 
