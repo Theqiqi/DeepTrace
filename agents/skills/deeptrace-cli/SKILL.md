@@ -1,15 +1,12 @@
 ---
 name: deeptrace-cli
 description: >
-  Windows process memory tool deeptrace_cli - install (prefer the official release
-  download over a source build) and use it to inspect/modify process memory, enumerate
-  processes, read/write memory, scan for AOB/byte patterns, set breakpoints, single-step
-  debug, disassemble/assemble, watch variables, and inject DLLs/shellcode. Use when the
-  user needs any process-memory / debugging operation on Windows x64. Windows 进程内存
-  工具 deeptrace_cli 的安装(优先下载发布版,免构建)与使用。触发词/triggers: process
-  memory, memory read/write, AOB/pattern scan, breakpoint, single-step, disassemble,
-  inject DLL/shellcode, 进程内存、mem read/write、特征码扫描、断点、单步、反汇编、注入、
-  deeptrace。
+  Windows x64 进程内存工具 deeptrace_cli 的安装与使用。优先下载官方发布版(免构建),
+  仅当发布版不可用时才从源码构建。用于:枚举进程、读写内存、AOB/特征码扫描、设置断点、
+  单步调试、反汇编/汇编、监视变量、注入 DLL/Shellcode 等。当用户需要在 Windows x64
+  上进行进程内存或调试操作时使用。触发词/triggers: process memory, memory read/write,
+  AOB/pattern scan, breakpoint, single-step, disassemble, inject DLL/shellcode,
+  进程内存、mem read/write、特征码扫描、断点、单步、反汇编、注入、deeptrace。
 ---
 
 # deeptrace-cli
