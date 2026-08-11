@@ -3,7 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 namespace {
 
@@ -275,6 +277,35 @@ TEST_F(DeeptraceIntegration, WatchListReadsValues) {
     EXPECT_TRUE(entries[0].valid);
     EXPECT_EQ(entries[0].value, "0x11223344");
     EXPECT_EQ(deeptrace::watch_remove(0), deeptrace::Result::Ok);
+}
+
+// debug_continue: set a software breakpoint on the busy worker loop (worker_fn
+// executes constantly) and run to it. The hit is consumed (INT3 restored and
+// re-armed) and reported in ContinueInfo.
+TEST_F(DeeptraceIntegration, DebugContinueBreakpointHit) {
+    EXPECT_EQ(deeptrace::debug_attach(), deeptrace::Result::Ok);
+    // worker_tick runs on every worker iteration, so the INT3 fires quickly.
+    deeptrace::BreakpointInfo bp;
+    EXPECT_EQ(deeptrace::breakpoint_set(g_target.worker_tick, bp),
+              deeptrace::Result::Ok);
+
+    deeptrace::ContinueInfo info;
+    EXPECT_EQ(deeptrace::debug_continue(5000, info), deeptrace::Result::Ok);
+    EXPECT_TRUE(info.hit);
+    EXPECT_EQ(info.exception, 0x80000003u);  // EXCEPTION_BREAKPOINT
+    EXPECT_EQ(info.address, g_target.worker_tick);
+    EXPECT_NE(info.tid, 0u);
+    EXPECT_NE(info.rip, 0u);
+
+    EXPECT_EQ(deeptrace::breakpoint_clear(g_target.worker_tick),
+              deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::debug_detach(), deeptrace::Result::Ok);
+}
+
+// debug_continue without an attached debugger must fail cleanly.
+TEST_F(DeeptraceIntegration, DebugContinueNotAttached) {
+    deeptrace::ContinueInfo info;
+    EXPECT_EQ(deeptrace::debug_continue(100, info), deeptrace::Result::NotAttached);
 }
 
 // Debugger attach must not kill the target: detach() pairs

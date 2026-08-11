@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v1.0.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.1.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -137,6 +137,38 @@ def main():
     # ---- invalid arguments ----
     code, _, err = run_cli(["mem", "read", "zzz"])
     check("invalid address exit 2", code == 2)
+
+    # ---- convert (standalone, no process needed) ----
+    code, out, _ = run_cli(["convert", "byte", "255"])
+    check("convert byte exit 0", code == 0)
+    check("convert byte FF", "FF" in out, repr(out))
+    code, out, _ = run_cli(["convert", "word", "0x0102"])
+    check("convert word LE", "02 01" in out, repr(out))
+    code, out, _ = run_cli(["convert", "dword", "100"])
+    check("convert dword exit 0", code == 0)
+    check("convert dword 64 00 00 00", "64 00 00 00" in out, repr(out))
+    code, out, _ = run_cli(["convert", "qword", "0x1122334455667788"])
+    check("convert qword LE", "88 77 66 55 44 33 22 11" in out, repr(out))
+    code, out, _ = run_cli(["convert", "float", "1.0"])
+    check("convert float IEEE754", "00 00 80 3F" in out, repr(out))
+    code, out, _ = run_cli(["convert", "double", "1.0"])
+    check("convert double IEEE754", "00 00 00 00 00 00 F0 3F" in out, repr(out))
+    code, out, _ = run_cli(["convert", "string", "hi"])
+    check("convert string ascii", "68 69" in out, repr(out))
+    code, out, _ = run_cli(["convert", "hex", "DEADBEEF"])
+    check("convert hex passthrough", "DE AD BE EF" in out, repr(out))
+    code, _, err = run_cli(["convert", "bogus", "1"])
+    check("convert invalid type exit 2", code == 2)
+    check("convert invalid type msg", "invalid type" in err, repr(err))
+    code, _, err = run_cli(["convert", "dword", "xyz"])
+    check("convert invalid value exit 2", code == 2)
+    check("convert invalid value msg", "invalid value for type 'dword'" in err,
+          repr(err))
+    code, _, _ = run_cli(["convert", "byte", "256"])
+    check("convert overflow exit 2", code == 2)
+    code, _, err = run_cli(["convert", "dword"])
+    check("convert missing value exit 2", code == 2)
+    check("convert missing value msg", "missing argument: value" in err, repr(err))
 
     # ---- target ----
     proc, lines = start_target()
@@ -193,15 +225,28 @@ def main():
         check("resolve scan finds g_bytes", any(want == g or want in g for g in got),
               repr(out[:300]))
 
+        # ---- convert output feeds resolve scan (v1.4.1 chain) ----
+        # convert dword 0x11223344 -> "44 33 22 11", scan must find g_int
+        code, out, _ = run_cli(["convert", "dword", "287454020"])
+        check("convert g_int bytes exit 0", code == 0)
+        check("convert g_int bytes", "44 33 22 11" in out, repr(out))
+        pattern = out.strip()
+        code, out2, _ = run_cli(["-p", str(pid), "resolve", "scan", pattern])
+        check("convert output scan exit 0", code == 0)
+        want_int = g_int.lower().lstrip("0x").lstrip("0").lstrip("x")
+        got_int = [h.lower().lstrip("0x").lstrip("0") for h in out2.split()]
+        check("convert output scan finds g_int",
+              any(want_int == g or want_int in g for g in got_int), repr(out2[:300]))
+
+        # ---- resolve scan is pattern-only again (v1.4.0 typed syntax gone) ----
+        code, _, err = run_cli(["-p", str(pid), "resolve", "scan", "48 8B", "dword"])
+        check("resolve scan typed syntax rejected exit 2", code == 2)
+        check("resolve scan typed syntax msg", "too many arguments" in err, repr(err))
+
         # ---- thread ----
         code, out, _ = run_cli(["-p", str(pid), "thread", "list"])
         check("thread list exit 0", code == 0)
 
-        # ---- registers ----
-        code, out, _ = run_cli(["-p", str(pid), "debug", "registers"])
-        check("registers exit 0", code == 0)
-        check("registers have rip", re.search(r"rip\s", out) is not None,
-              repr(out[:200]))
 
         # ---- disasm ----
         if g_bytes:
@@ -233,19 +278,61 @@ def main():
         check("watch list shows value", "0x11223344" in out, repr(out))
         run_cli(["-p", str(pid), "watch", "remove", "0"])
 
-        # ---- debug break / status ----
-        code, out, _ = run_cli(["-p", str(pid), "debug", "status"])
-        check("debug status exit 0", code == 0)
-        code, _, _ = run_cli(["-p", str(pid), "debug", "break", g_int])
-        check("debug break exit 0", code == 0)
-        run_cli(["-p", str(pid), "debug", "clear", g_int])
-        check("debug clear exit 0", code == 0)
+        # ---- v2.1.0: standalone debug commands are removed (single entry: debug run) ----
+        for action in ["step", "break", "registers", "attach", "status", "pause",
+                       "resume", "next", "register", "guard", "hbreak", "hclear",
+                       "clear", "detach", "unguard"]:
+            code, _, err = run_cli(["-p", str(pid), "debug", action])
+            check(f"debug {action} rejected exit 2", code == 2)
+            check(f"debug {action} unknown command msg", "unknown command" in err,
+                  repr(err))
+        # the target must be intact (no 0xCC pollution from rejected commands)
+        code, out, _ = run_cli(["-p", str(pid), "mem", "read", g_int, "1", "hex"])
+        check("target intact after rejected debug cmds", "44" in out, repr(out))
 
-        # ---- debug attach must not kill the target ----
-        code, _, _ = run_cli(["-p", str(pid), "debug", "attach"])
-        check("debug attach exit 0", code == 0)
+        # ---- debug run: scripted session (one invocation = one session) ----
+        # Scripts are real fixtures under cli/test/scripts/; tests substitute
+        # the %G_INT% placeholder with the runtime address and write a temp
+        # copy under BIN_DIR (the CLI is a Windows binary, so it needs a
+        # Windows path to read the file).
+        SCRIPTS_DIR = os.path.join(PROJECT_ROOT, "cli", "test", "scripts")
+
+        def materialize(fixture, tag):
+            with open(os.path.join(SCRIPTS_DIR, fixture)) as f:
+                content = f.read()
+            content = content.replace("%G_INT%", g_int)
+            tmp = os.path.join(BIN_DIR, f"e2e_{tag}.json")
+            with open(tmp, "w") as f:
+                f.write(content)
+            return win_path(tmp)
+
+        script_win = materialize("debug_session.json", "session")
+        code, out, _ = run_cli(["-p", str(pid), "debug", "run", script_win])
+        check("debug run scripted session exit 0", code == 0)
+        check("debug run step headers", "[1] status" in out, repr(out[:200]))
+        check("debug run watch value", "0x11223344" in out, repr(out))
         code, out, _ = run_cli(["ps", "list"])
-        check("target alive after debug attach", str(pid) in out, repr(out[:200]))
+        check("target alive after debug run", str(pid) in out, repr(out[:200]))
+        os.remove(os.path.join(BIN_DIR, "e2e_session.json"))
+
+        # ---- debug run: write with space-separated hex bytes ----
+        script2_win = materialize("debug_write.json", "write")
+        code, _, _ = run_cli(["-p", str(pid), "debug", "run", script2_win])
+        check("debug run spaced write exit 0", code == 0)
+        code, out, _ = run_cli(["-p", str(pid), "mem", "read", g_int, "4", "hex"])
+        check("debug run spaced write applied", "BE BA FE CA" in out, repr(out))
+        run_cli(["-p", str(pid), "mem", "write", g_int, "44332211", "hex"])
+        os.remove(os.path.join(BIN_DIR, "e2e_write.json"))
+
+        # ---- debug run: script errors -> exit 2 ----
+        code, _, err = run_cli(["-p", str(pid), "debug", "run", "no_such.json"])
+        check("debug run missing file exit 2", code == 2)
+        check("debug run missing file msg", "cannot open script file" in err, repr(err))
+        script3_win = materialize("debug_bad.json", "bad")
+        code, _, err = run_cli(["-p", str(pid), "debug", "run", script3_win])
+        check("debug run unknown op exit 2", code == 2)
+        check("debug run unknown op msg", "unknown op" in err, repr(err))
+        os.remove(os.path.join(BIN_DIR, "e2e_bad.json"))
 
         # ---- dll inject round trip (companion testdll.dll) ----
         # The path must be a Windows path: it is written into the target and

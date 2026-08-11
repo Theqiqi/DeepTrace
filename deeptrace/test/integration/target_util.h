@@ -16,6 +16,7 @@ struct TargetInfo {
     uintptr_t g_flag = 0;
     uintptr_t g_counter = 0;
     uintptr_t worker_fn = 0;
+    uintptr_t worker_tick = 0;
 };
 
 // Launch the target exe and parse its banner. Returns false on failure.

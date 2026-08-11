@@ -12,6 +12,7 @@ Result debug_pause();
 Result debug_resume();
 Result debug_step(uint32_t tid, uintptr_t* out_rip);
 Result debug_step_over(uint32_t tid, uintptr_t* out_rip);
+Result debug_continue(uint32_t timeout_ms, ContinueInfo& out);
 Result breakpoint_set(uintptr_t addr, BreakpointInfo& out);
 Result breakpoint_clear(uintptr_t addr);
 Result hw_breakpoint_set(uintptr_t addr, uint32_t type, uint32_t length);

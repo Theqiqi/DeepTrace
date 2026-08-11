@@ -2,8 +2,8 @@
   <img src="https://img.shields.io/badge/platform-Windows%20x64-blue" alt="平台:Windows x64"/>
   <img src="https://img.shields.io/badge/language-C%2B%2B20-yellowgreen" alt="C++20"/>
   <img src="https://img.shields.io/badge/build-CMake%20%2B%20Ninja%20%2B%20MSVC-informational" alt="CMake + Ninja + MSVC"/>
-  <img src="https://img.shields.io/badge/version-v1.3.0-blueviolet" alt="v1.3.0"/>
-  <img src="https://img.shields.io/badge/API-55%20functions-green" alt="55 个公共 API"/>
+  <img src="https://img.shields.io/badge/version-v2.1.0-blueviolet" alt="v2.1.0"/>
+  <img src="https://img.shields.io/badge/API-56%20functions-green" alt="56 个公共 API"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="许可证"/>
 </p>
 
@@ -22,7 +22,7 @@ deeptrace_cli -p 1234 mem read 0x14000D000 4 hex
 
 ## 功能特性
 
-**`deeptrace` — 静态库(C++20,55 个公共 API)**
+**`deeptrace` — 静态库(C++20,56 个公共 API)**
 
 - **进程** — 枚举 / 附加 / 分离 / 挂起 / 恢复 / 结束
 - **内存** — 读 / 写 / 转储 / 区域 / 类型化数值读取(byte…double)
@@ -33,16 +33,17 @@ deeptrace_cli -p 1234 mem read 0x14000D000 4 hex
 - **解析** — 模块基址、AOB 特征码扫描(`??` 通配)
 - **监视** — 持久化的变量监视,实时取值
 - **注入** — DLL 与壳码注入,含运行状态跟踪
-- **状态持久化** — 断点 / 监视 / 注入记录跨命令保留(`%TEMP%\deeptrace_<pid>\`)
+- **状态持久化** — 监视 / 注入记录跨命令保留(`%TEMP%\deeptrace_<pid>\`);调试断点只存在于 `debug run` 会话内,会话结束自动恢复
 
-**`deeptrace_cli` — 命令行工具(53 个命令,纯 ASCII 输出)**
+**`deeptrace_cli` — 命令行工具(12 组 40 个命令,纯 ASCII 输出)**
 
 ```
-ps, mem, module, thread, debug, disasm, resolve, watch, dll, asm, shellcode
+ps, mem, module, thread, debug, disasm, resolve, convert, watch, dll, asm, shellcode
 ```
 
 - 单次命令,稳定退出码(`0` 成功 / `1` 执行失败 / `2` 用法错误)
 - 无交互、适合脚本化、定宽表格输出
+- 调试为脚本化会话 — `debug run <script.json>` 是唯一调试入口(v2.1.0):一次调用 = 一次完整会话(断点/页守卫自动恢复)
 
 ## 快速开始
 
@@ -92,7 +93,7 @@ deeptrace\script\build_release.bat
 cli\script\build_release.bat
 
 :: 打包 zip 到 cli\out\dist\
-cli\script\package.bat v1.3.0
+cli\script\package.bat v2.1.0
 ```
 
 WSL 环境使用对应的 `*_wsl.sh` 脚本(自动桥接 cmd.exe)。
@@ -104,7 +105,7 @@ deeptrace\out\bin\Debug\deeptrace_unit_test.exe          :: 96 个单元测试(h
 deeptrace\out\bin\Debug\deeptrace_integration_test.exe   :: 真实目标进程集成测试
 cli\out\bin\Debug\deeptrace_cli_unit_test.exe            :: parser/printer/executor
 cli\out\bin\Debug\deeptrace_cli_integration_test.exe     :: 完整 CLI 链路
-python3 cli/test/e2e/test_cli_e2e.py                     :: 47 项端到端检查
+python3 cli/test/e2e/test_cli_e2e.py                     :: 104 项端到端检查
 ```
 
 ## 仓库结构
@@ -112,9 +113,9 @@ python3 cli/test/e2e/test_cli_e2e.py                     :: 47 项端到端检�
 ```
 deeptrace/   静态库(domain / algorithm / infrastructure / service)+ include/deeptrace.h
 cli/         命令行工具(command / interface / printing 三层)
-design/      设计文档(v1.0.0 / v1.1.0 / v1.2.0)
-docs/        API 参考、开发者文档、用户手册(v1.3.0)
-agents/      面向 AI / LLM 工具的安装与调用提示词
+design/      设计文档(v1.0.0 … v2.1.0)
+docs/        API 参考、开发者文档、用户手册(v2.1.0)
+agents/      AI agent 文档(agents/README.md)+ deeptrace-cli 技能(agents/skills/deeptrace-cli/)
 sandbox/     实验验证项目(不参与交付)
 ```
 
@@ -122,26 +123,23 @@ sandbox/     实验验证项目(不参与交付)
 
 | 文档 | 读者 | 内容 |
 |------|------|------|
-| [API 参考](docs/api/v1.3.0/README.md) | 集成库的开发者 | 全部 55 个函数、类型、错误码 |
-| [开发者文档](docs/developers/v1.3.0/README.md) | 贡献者 / 维护者 | 架构、构建、测试、扩展、ADR |
-| [用户手册](docs/users/v1.3.0/README.md) | 终端用户 | 快速开始、命令参考、FAQ、故障排除 |
+| [API 参考](docs/api/v2.1.0/README.md) | 集成库的开发者 | 全部 56 个函数、类型、错误码 |
+| [开发者文档](docs/developers/v2.1.0/README.md) | 贡献者 / 维护者 | 架构、构建、测试、扩展、ADR |
+| [用户手册](docs/users/v2.1.0/README.md) | 终端用户 | 快速开始、命令参考、FAQ、故障排除 |
 
 ## AI / Agent 使用说明
 
-> **本节是给 AI 与 AI agent 看的索引**(Claude Code、Codex、Cursor、自定义 agent、LLM 工具等)。如果你是一个正在阅读本 README 的 AI,请按以下步骤执行:**① 安装软件 → ② 安装提示词 → ③ 用提示词调用软件**。
+> **本节是给 AI 与 AI agent 看的索引**(Claude Code、Codex、Cursor、自定义 agent、LLM 工具等)。如果你是一个正在阅读本 README 的 AI,请按以下步骤执行:**① 读 agent 文档 → ② 加载技能 → ③ 安装软件(优先下载发布版)→ ④ 用技能调用软件**。
 
-**第 ① 步 — 安装软件。** 本仓库是 Windows x64 C++20 进程内存工具。`deeptrace_cli` 必须先构建(或从发行 zip 解压)才能使用。安装/验证的 agent 版说明见[安装提示词](agents/deeptrace-cli-install.md)(构建顺序:先 `deeptrace` 库,后 `deeptrace_cli`)。
+**第 ① 步 — 读 agent 文档。** [agents/README.md](agents/README.md) 是给 AI agent 看的文档(文档为英文):项目概览(deeptrace 2.0.0 库,56 个公共 API;deeptrace_cli 2.1.0)、安装指引、关键事实、命令组与文档地图。
 
-**第 ② 步 — 安装提示词。** 本仓库提供两个标准 SKILL 格式(YAML frontmatter + 指令)的 agent 提示词,请加载到你的 agent 中,使其知道何时以及如何使用本工具:
+**第 ② 步 — 加载技能。** 本仓库提供一个标准 SKILL 格式(YAML frontmatter `name`/`description` + Markdown 指令,技能指令为中文)的 agent 技能:[agents/skills/deeptrace-cli/SKILL.md](agents/skills/deeptrace-cli/SKILL.md)。加载到你的 agent 中,使其知道何时以及如何安装与使用本工具。
 
-| 提示词 | 用途 | 文件 |
-|--------|------|------|
-| **安装提示词** | 引导 agent 在使用前构建/验证 `deeptrace_cli` | [agents/deeptrace-cli-install.md](agents/deeptrace-cli-install.md) |
-| **调用提示词** | 调用 `deeptrace_cli` 的命令与工作流(进程内存/调试/反汇编/注入等) | [agents/deeptrace-cli-usage.md](agents/deeptrace-cli-usage.md) |
+**第 ③ 步 — 安装软件(优先下载发布版)。** 本仓库是 Windows x64 C++20 进程内存工具。使用前需先获得 `deeptrace_cli`:**优先从 [GitHub Releases](https://github.com/Theqiqi/DeepTrace/releases) 下载官方发行 zip**(`deeptrace_cli-v2.1.0-win64.zip`,单个 exe,免依赖);仅当没有发布版时才从源码构建(构建顺序:先 `deeptrace` 库,后 `deeptrace_cli`)。见 [agents/README.md](agents/README.md) 或技能的 [INSTALL.md](agents/skills/deeptrace-cli/references/INSTALL.md)。
 
-**第 ③ 步 — 用提示词调用软件。** 加载调用提示词后,agent 即可执行如 `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex` 的命令。关键事实:退出码 `0`/`1`/`2`(成功/执行失败/用法错误);地址为 `0x` 前缀十六进制;断点/watch/注入状态存于 `%TEMP%\deeptrace_<pid>\`;测试目标 `deeptrace_target.exe` 关闭 ASLR,固定地址存已知值(如 `0x14000D000` = `0x11223344`)。
+**第 ④ 步 — 用技能调用软件。** 加载技能后,agent 即可执行如 `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex` 的命令。关键事实:退出码 `0`/`1`/`2`(成功/执行失败/用法错误);地址为 `0x` 前缀十六进制;watch/注入状态存于 `%TEMP%\deeptrace_<pid>\`;调试为脚本化会话,唯一入口 `debug run <script.json>`(v2.1.0);测试目标 `deeptrace_target.exe` 关闭 ASLR,固定地址存已知值(如 `0x14000D000` = `0x11223344`)。
 
-其他参考:[用户手册](docs/users/v1.3.0/USER_MANUAL.md)(完整命令参考)、[API 参考](docs/api/v1.3.0/README.md)(库 API,用于代码集成)。
+其他参考:[用户手册](docs/users/v2.1.0/USER_MANUAL.md)(完整命令参考)、[API 参考](docs/api/v2.1.0/README.md)(库 API,用于代码集成)。
 
 ## 许可证
 
