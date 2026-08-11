@@ -36,15 +36,17 @@
 
 ## 3. debug run(新增,v2.0.0,一次调用 = 一次调试会话)
 
-前置:启动 deeptrace_target.exe,解析 PID / g_int 地址。脚本文件用临时 json。
+前置:启动 deeptrace_target.exe,解析 PID / g_int 地址。
+脚本样例为仓库真实文件 `cli/test/scripts/*.json`,测试读取后替换
+`%G_INT%` 占位符为运行时地址,写入临时副本执行。
 
 | 用例 | 操作 | 预期输出 | 退出码 |
 |------|------|----------|--------|
-| 脚本化会话(状态/寄存器/读/断点/监视) | 写脚本含 status/registers/read/break/clear/watch_add/watch_list/watch_clear,`-p <pid> debug run s.json` | 各步 `[N] op ...` 头 + 结果;watch_list 显示 0x11223344 | 0 |
+| 脚本化会话(状态/寄存器/读/断点/监视) | 用 `debug_session.json`(status/registers/read/break/clear/watch_add/watch_list/watch_clear),`-p <pid> debug run` | 各步 `[N] op ...` 头 + 结果;watch_list 显示 0x11223344 | 0 |
 | 副作用:会话后目标存活 | 上例后 `ps list` | 目标 pid 仍在 | 0 |
-| write 空格分隔 hex | 脚本 `{"op":"write","addr":g_int,"bytes":"BE BA FE CA"}` 后 `mem read` | 读出 CA FE BA BE | 0 |
+| write 空格分隔 hex | 用 `debug_write.json`(bytes "BE BA FE CA")后 `mem read` | 读出 BE BA FE CA | 0 |
 | 脚本文件不存在 | `debug run no_such.json` | stderr 含 cannot open script file | 2 |
-| 脚本 op 未知 | 脚本 `[{"op":"frobnicate"}]` | stderr 含 unknown op | 2 |
+| 脚本 op 未知 | 用 `debug_bad.json`(op frobnicate) | stderr 含 unknown op | 2 |
 
 ## 4. resolve scan(恢复 pattern-only)
 

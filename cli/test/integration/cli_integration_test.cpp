@@ -363,8 +363,25 @@ TEST(CliChain, BreakpointAffectsDeeptraceState) {
               0);
 }
 
-// Helper: write a script file and return its path (unique per call).
-std::string write_script(const std::string& content, int tag) {
+// Load a JSON script fixture next to the test exe (deployed by POST_BUILD),
+// substitute the %G_INT% placeholder with the runtime address, and write the
+// materialized script to a temp file. Returns the temp path.
+std::string materialize_script(const char* fixture, uintptr_t g_int, int tag) {
+    char buf[MAX_PATH] = {0};
+    ::GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    std::string dir(buf);
+    size_t slash = dir.find_last_of("/\\");
+    if (slash != std::string::npos) dir = dir.substr(0, slash);
+    std::ifstream in(dir + "\\" + fixture);
+    EXPECT_TRUE(in.good()) << "fixture not deployed: " << fixture;
+    std::string content((std::istreambuf_iterator<char>(in)),
+                        std::istreambuf_iterator<char>());
+    std::string addr = hex(g_int);
+    size_t p = 0;
+    while ((p = content.find("%G_INT%", p)) != std::string::npos) {
+        content.replace(p, 7, addr);
+        p += addr.size();
+    }
     char tmpname[L_tmpnam] = {0};
     std::tmpnam(tmpname);
     std::string path = std::string(tmpname) + "_" + std::to_string(tag) + ".json";
@@ -376,21 +393,9 @@ std::string write_script(const std::string& content, int tag) {
 
 // One invocation = one debug session: attach -> debug_attach -> steps ->
 // cleanup -> debug_detach -> detach. The target must survive.
+// The step list comes from the real fixture cli/test/scripts/debug_session.json.
 TEST(CliChain, DebugRunScriptedSession) {
-    std::string script = write_script(
-        "[\n"
-        "  {\"op\": \"status\"},\n"
-        "  {\"op\": \"registers\"},\n"
-        "  {\"op\": \"read\", \"addr\": \"" + hex(g_target.g_int) +
-            "\", \"size\": \"4\"},\n"
-        "  {\"op\": \"break\", \"addr\": \"" + hex(g_target.g_int) + "\"},\n"
-        "  {\"op\": \"clear\", \"addr\": \"" + hex(g_target.g_int) + "\"},\n"
-        "  {\"op\": \"watch_add\", \"desc\": \"sc_g\", \"addr\": \"" +
-            hex(g_target.g_int) + "\", \"type\": \"dword\"},\n"
-        "  {\"op\": \"watch_list\"},\n"
-        "  {\"op\": \"watch_clear\"}\n"
-        "]\n",
-        1);
+    std::string script = materialize_script("debug_session.json", g_target.g_int, 1);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
                        script}),
               0);
@@ -405,11 +410,9 @@ TEST(CliChain, DebugRunScriptedSession) {
 }
 
 // Regression: write accepts space-separated hex; the bytes must land correctly.
+// The script comes from the real fixture cli/test/scripts/debug_write.json.
 TEST(CliChain, DebugRunWriteSpacedHex) {
-    std::string script = write_script(
-        "[{\"op\": \"write\", \"addr\": \"" + hex(g_target.g_int) +
-            "\", \"bytes\": \"BE BA FE CA\"}]\n",
-        2);
+    std::string script = materialize_script("debug_write.json", g_target.g_int, 2);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
                        script}),
               0);
@@ -425,15 +428,20 @@ TEST(CliChain, DebugRunWriteSpacedHex) {
 }
 
 // Script errors: missing file and invalid content -> exit 2, no session opened.
+// The bad script comes from the real fixture cli/test/scripts/debug_bad.json.
 TEST(CliChain, DebugRunScriptErrors) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
                        "no_such_script.json"}),
               2);
-    std::string bad = write_script("[{\"op\": \"frobnicate\"}]\n", 3);
+    char buf[MAX_PATH] = {0};
+    ::GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    std::string dir(buf);
+    size_t slash = dir.find_last_of("/\\");
+    if (slash != std::string::npos) dir = dir.substr(0, slash);
+    std::string bad = dir + "\\debug_bad.json";
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
                        bad}),
               2);
-    std::remove(bad.c_str());
 }
 
 TEST(CliChain, NoSuchProcessAttach) {

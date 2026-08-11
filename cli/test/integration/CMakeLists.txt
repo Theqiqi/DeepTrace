@@ -21,5 +21,20 @@ add_custom_command(TARGET deeptrace_cli_integration_test POST_BUILD
     COMMENT "Copying testdll.dll for dll-injection tests"
 )
 
+# Companion fixtures for debug-run tests: copy the JSON script samples next to
+# the test exe so tests can load them and substitute the runtime %G_INT% address.
+add_custom_command(TARGET deeptrace_cli_integration_test POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/debug_session.json"
+        "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/debug_session.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/debug_write.json"
+        "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/debug_write.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/debug_bad.json"
+        "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/debug_bad.json"
+    COMMENT "Copying debug-run script fixtures"
+)
+
 include(GoogleTest)
 gtest_discover_tests(deeptrace_cli_integration_test)

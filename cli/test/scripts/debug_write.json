@@ -1,0 +1,3 @@
+[
+  {"op": "write", "addr": "%G_INT%", "bytes": "BE BA FE CA"}
+]
