@@ -285,6 +285,74 @@ deeptrace::debug_step_over(0, &rip);
 
 ---
 
+## deeptrace::debug_continue
+
+### Syntax
+
+```cpp
+Result debug_continue(uint32_t timeout_ms, ContinueInfo& out);
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `timeout_ms` | `uint32_t` | wait timeout in milliseconds; the call returns `Ok` with no stop reason when the timeout elapses |
+| `out` | `ContinueInfo&` | output parameter, stop reason (breakpoint hit / other exception / process exit / timeout) |
+
+### Return Value
+
+| Return value | Meaning |
+|--------------|---------|
+| `Result::Ok` | the debuggee was resumed and the call returned — inspect `out` (hit / exited / exit_code / exception / address / rip / tid) to tell the stop reason |
+| `Result::NotAttached` | no debug session (requires `debug_attach()`) |
+| `Result::AccessDenied` | insufficient privileges to wait on debug events |
+| `Result::Error` | `WaitForDebugEvent`/`ContinueDebugEvent` failed |
+
+### Description
+
+Resumes the debuggee (equivalent to a debugger's "run/free run") and waits for the next debug event for up to `timeout_ms` milliseconds. Four stop reasons are reported through `ContinueInfo`:
+
+1. **Software breakpoint hit** — a self-set software breakpoint (`breakpoint_set`) was executed: the library restores the original byte, single-steps the breakpoint instruction, re-arms the INT3, and reports the breakpoint address in `out.address` together with the post-instruction RIP in `out.rip` (`out.hit = true`). The target stays paused.
+2. **Other exception** — a hardware breakpoint, page guard, or unhandled exception occurred: the exception code and address are reported (`out.hit = true`, `out.exception`, `out.address`); the exception is **not** consumed, and the target stays paused.
+3. **Process exit** — the debuggee exited: `out.exited = true` and `out.exit_code` is the exit code.
+4. **Timeout** — no event within `timeout_ms`: `Ok` with `out.hit = false` and `out.exited = false`.
+
+Behavior notes: the system loader breakpoint (`EXCEPTION_BREAKPOINT` raised at attach) is skipped internally, and detach events are drained, so a fresh `debug_continue` reliably waits for a user-set breakpoint; RIP rollback (reporting the instruction before the breakpoint) applies only to self-set software breakpoints. Outside debug mode the function returns `NotAttached`; breakpoint-hit condition filtering and automatic consumption of single-step exceptions are not supported.
+
+Prerequisites: `debug_attach()` done. Postconditions: the debuggee ran until the stop reason or timeout; the target remains paused on a hit.
+
+### Example
+
+```cpp
+deeptrace::ContinueInfo info;
+if (deeptrace::debug_continue(5000, info) == deeptrace::Result::Ok) {
+    if (info.hit) {
+        std::cout << "stopped: exception=0x" << std::hex << info.exception
+                  << " addr=" << info.address << " rip=" << info.rip << "\n";
+    } else if (info.exited) {
+        std::cout << "target exited with code " << info.exit_code << "\n";
+    } else {
+        std::cout << "timeout\n";
+    }
+}
+```
+
+### Header
+
+```cpp
+#include "deeptrace.h"
+```
+
+### See Also
+
+- [deeptrace::breakpoint_set](#deeptracebreakpoint_set)
+- [deeptrace::debug_pause](#deeptracedebug_pause)
+- [deeptrace::debug_resume](#deeptracedebug_resume)
+- [ContinueInfo](../Types/STRUCTS.md#continueinfo--continue-information)
+
+---
+
 ## deeptrace::breakpoint_set
 
 ### Syntax

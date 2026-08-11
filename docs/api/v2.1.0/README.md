@@ -1,8 +1,8 @@
-# deeptrace Static Library API Reference (v1.3.0)
+# deeptrace Static Library API Reference (v2.1.0)
 
 > This document is the API reference for the **deeptrace static library** (process memory operations / debugging utility library), written for its callers.
 > Callers include: the CLI (deeptrace_cli), other developers, AI tools and integrators.
-> Corresponding code version: **v1.3.0** (git tag); public header: `deeptrace/include/deeptrace.h`.
+> Corresponding code versions: deeptrace library **v2.0.0** (git tag v2.0.0); this doc set is archived at **v2.1.0** to align with the overall release (deeptrace_cli v2.1.0). Public header: `deeptrace/include/deeptrace.h`.
 
 ## 1. Overview
 
@@ -16,7 +16,7 @@ deeptrace is a Windows x64 process-operation static library providing process en
 
 ## 2. API Group Overview
 
-**55 public functions**, **3 enums**, **11 structs** in total.
+**56 public functions**, **3 enums**, **12 structs** in total.
 
 | Module | Doc | Functions | Count |
 |--------|-----|-----------|-------|
@@ -24,7 +24,7 @@ deeptrace is a Windows x64 process-operation static library providing process en
 | Memory | [Modules/MEMORY.md](Modules/MEMORY.md) | `memory_read`, `memory_write`, `memory_dump`, `memory_regions`, `memory_readval` | 5 |
 | Module | [Modules/MODULE.md](Modules/MODULE.md) | `module_list`, `module_find`, `module_base`, `module_exports`, `module_dump` | 5 |
 | Thread | [Modules/THREAD.md](Modules/THREAD.md) | `thread_list`, `thread_suspend`, `thread_resume`, `thread_terminate` | 4 |
-| Debug | [Modules/DEBUG.md](Modules/DEBUG.md) | `debug_attach`, `debug_detach`, `debug_pause`, `debug_resume`, `debug_step`, `debug_step_over`, `breakpoint_set`, `breakpoint_clear`, `hw_breakpoint_set`, `hw_breakpoint_clear`, `guard_set`, `guard_clear`, `debug_status`, `registers_get`, `register_get` | 15 |
+| Debug | [Modules/DEBUG.md](Modules/DEBUG.md) | `debug_attach`, `debug_detach`, `debug_pause`, `debug_resume`, `debug_step`, `debug_step_over`, `debug_continue`, `breakpoint_set`, `breakpoint_clear`, `hw_breakpoint_set`, `hw_breakpoint_clear`, `guard_set`, `guard_clear`, `debug_status`, `registers_get`, `register_get` | 16 |
 | Disassembly | [Modules/DISASM.md](Modules/DISASM.md) | `disasm_at`, `disasm_range` | 2 |
 | Assembly | [Modules/ASM.md](Modules/ASM.md) | `asm_assemble` | 1 |
 | Resolution | [Modules/RESOLVE.md](Modules/RESOLVE.md) | `resolve_base`, `pattern_scan` | 2 |
@@ -37,7 +37,7 @@ Data type documentation:
 |------|-----|
 | `Result` (14 error codes) | [Types/RESULT.md](Types/RESULT.md) |
 | `ValueType`, `BreakpointType` | [Types/ENUMS.md](Types/ENUMS.md) |
-| `ProcessInfo`, `MemoryRegion`, `ModuleInfo`, `ExportInfo`, `ThreadInfo`, `RegisterInfo`, `BreakpointInfo`, `WatchEntry`, `Instruction`, `DebugStatus`, `InjectInfo` | [Types/STRUCTS.md](Types/STRUCTS.md) |
+| `ProcessInfo`, `MemoryRegion`, `ModuleInfo`, `ExportInfo`, `ThreadInfo`, `RegisterInfo`, `BreakpointInfo`, `WatchEntry`, `Instruction`, `DebugStatus`, `ContinueInfo`, `InjectInfo` | [Types/STRUCTS.md](Types/STRUCTS.md) |
 
 ## 3. Prerequisites for Calling (Dependency Analysis)
 
@@ -52,7 +52,7 @@ enumerate_processes / process_info (query by pid)   ← no session needed
  attach(pid)     ──►   session operations (memory/module/thread/disasm/…)
         │
         ▼
- debug_attach()  ──►   debug operations (breakpoints/single-step/registers/guard)
+ debug_attach()  ──►   debug operations (breakpoints/single-step/run-to-breakpoint/registers/guard)
         │
         ▼
  debug_detach()  /  detach()   ──►   close the session
@@ -61,6 +61,7 @@ enumerate_processes / process_info (query by pid)   ← no session needed
 - Every API that needs a target process requires `attach(pid)` first; otherwise it returns `Result::NotAttached`.
 - Exceptions (operate by pid, no session needed): `enumerate_processes`, `process_info`, `suspend_process`, `resume_process`, `terminate_process`, `asm_assemble`, `result_message`.
 - The debug session nests on top of the process session: `debug_attach()` requires a prior `attach()`.
+- `debug_continue` resumes the debuggee in debug mode and returns on software-breakpoint hit / other exception / process exit / timeout; stop reason is reported in `ContinueInfo` (see [DEBUG.md](Modules/DEBUG.md#deeptracedebug_continue)).
 - `debug_step` / `debug_step_over` support a one-shot **attach → single-step → detach** flow without a debug session (the CLI's non-interactive usage).
 
 ### 3.2 Privilege Requirements

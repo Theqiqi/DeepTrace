@@ -109,6 +109,34 @@ struct DebugStatus {
 };
 ```
 
+## ContinueInfo — Debug Continue Stop Reason
+
+Output of `debug_continue`: why the debuggee stopped after being resumed.
+
+```cpp
+struct ContinueInfo {
+    bool hit = false;             // stopped on an exception (breakpoint/guard/other)
+    bool exited = false;          // target process exited
+    uint32_t exit_code = 0;       // valid when exited
+    uint32_t exception = 0;       // exception code (valid when hit)
+    uintptr_t address = 0;        // exception address (valid when hit)
+    uintptr_t rip = 0;            // stopped-thread RIP (software breakpoint: post-instruction)
+    uint32_t tid = 0;             // stopped-thread id (valid when hit)
+};
+```
+
+| Field | Meaning |
+|-------|---------|
+| `hit` | `true` when the call returned because the debuggee raised an exception (self-set software breakpoint, hardware breakpoint, page guard, or other unhandled exception) |
+| `exited` | `true` when the debuggee process exited; `exit_code` is then valid |
+| `exit_code` | target process exit code (valid only when `exited` is `true`) |
+| `exception` | exception code of the stop (e.g. `0x80000003` EXCEPTION_BREAKPOINT); valid when `hit`; final field name `exception` (an earlier design name `exception_code` was dropped — it collides with the Windows SDK `excpt.h` macro) |
+| `address` | exception address (the instruction that raised the exception); valid when `hit` |
+| `rip` | stopped-thread RIP; for a self-set software breakpoint this is the **post-instruction** RIP (the breakpoint instruction has been executed); for other exceptions it is the faulting instruction address |
+| `tid` | stopped-thread ID; valid when `hit` |
+
+`hit` and `exited` are mutually exclusive; when both are `false` the call returned on timeout (see [debug_continue](../Modules/DEBUG.md#deeptracedebug_continue)).
+
 ## InjectInfo — Injection Information
 
 ```cpp
