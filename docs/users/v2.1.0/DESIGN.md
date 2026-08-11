@@ -68,7 +68,7 @@ Cross-references: USER_MANUAL command chapters link to related chapters; FAQ pro
 |---------|----------|---------|
 | Example A | practice with the test target: launch deeptrace_target.exe, view the process, read its known values | GETTING_STARTED, start of USER_MANUAL |
 | Example B | read/write a 4-byte value: mem read 0x14000D000 4 hex → 44 33 22 11; mem write to modify, then read back | USER_MANUAL memory chapter |
-| Example C | set and inspect a breakpoint: debug break → debug status → debug clear | USER_MANUAL debugging chapter |
+| Example C | set and inspect a breakpoint via a debug run script (break → continue → registers steps) | USER_MANUAL debugging chapter |
 | Example D | AOB scan: resolve scan "DE AD BE EF" finds the g_bytes address | USER_MANUAL resolution chapter |
 | Example E | assemble: asm assemble "nop; ret" → 90C3 | USER_MANUAL assembly chapter |
 

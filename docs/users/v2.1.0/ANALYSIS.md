@@ -42,10 +42,10 @@ Use case 7: Watch a variable change
   watch add <description> <address> <type> → watch refresh / watch list shows the live value
 
 Use case 8: Set a breakpoint and check status
-  debug break <address> → debug status shows the breakpoint count → debug clear <address> clears it
+  write a debug run script with break/status steps → debug run shows the breakpoint count; the breakpoint is restored when the session ends (debugging is script-driven since v2.1.0)
 
 Use case 9: View CPU registers
-  debug registers shows all registers; debug register rip shows just one
+  add a registers step (or a register step with "name": "rip") to a debug run script → debug run prints the register table / the single value
 
 Use case 10: Disassemble a memory region
   disasm at <address> <count> → see address/machine code/assembly side by side

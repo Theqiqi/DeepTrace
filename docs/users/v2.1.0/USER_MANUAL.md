@@ -291,25 +291,27 @@ Run it:
 deeptrace_cli -p 1234 debug run session.json
 ```
 
-Expected output (real sample, excerpt):
+Expected output (real capture from deeptrace_cli.exe against deeptrace_target.exe, excerpt):
 
 ```
 [1] status
 attached: yes
-pid: 26128
+pid: 2796
 breakpoints: 0
 hw_breakpoints: 0
-[2] registers
+[2] registers tid=0
 REG      VALUE
 rax      0x0000000000000034
 ...
-[3] read
-44 33 22 11
-[4] break
+rip      0x00007FFC98E606E4
+eflags   0x0000000000000246
+[3] read addr=0x14000D000 format=hex size=4
+0x000000014000D000  44 33 22 11                                      |D3".|
+[4] break addr=0x14000D000
 breakpoint set at 0x000000014000D000 (orig 0x44)
-[5] clear
+[5] clear addr=0x14000D000
 OK
-[6] watch_add
+[6] watch_add addr=0x14000D000 desc=sc_g type=dword
 OK
 [7] watch_list
 IDX    DESCRIPTION              ADDRESS            TYPE     VALUE                VALID
@@ -318,7 +320,7 @@ IDX    DESCRIPTION              ADDRESS            TYPE     VALUE               
 OK
 ```
 
-Each step prints `[N] <op>` followed by its result. If a step fails, the session stops there and the target is cleaned up (breakpoints restored, guards removed) before detaching.
+Each step prints `[N] <op> <arguments>` followed by its result. If a step fails, the session stops there and the target is cleaned up (breakpoints restored, guards removed) before detaching.
 
 ### 5.4 Exit codes
 
