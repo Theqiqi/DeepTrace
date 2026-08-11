@@ -34,4 +34,5 @@ Result shellcode_free(uintptr_t addr);
   hex, addr, tid=0);写入失败 → RemoteFree 后返回错误(无残留)。
 - `shellcode_run`:按 addr 在记录中查找 kind=shellcode(NotFound)→
   CreateRemoteThreadEx(addr, 0) → 更新记录 thread_id → out 填充(running=true)。
-- `shellcode_free`:按 addr 查找 kind=shellcode(NotFound)→ RemoteFree → 删除记录。
+- `shellcode_free`:按 addr 查找 kind=shellcode(NotFound)→ 等待记录线程结束
+  (5s 超时返回 Timeout 不释放)→ 删除记录并保存 → RemoteFree。

@@ -290,7 +290,11 @@ Result shellcode_alloc(const std::vector<uint8_t>& bytes, InjectInfo& out) {
     auto recs = internal::load_injects(s.pid);
     recs.push_back(internal::InjectRecord{
         "shellcode", internal::hex_encode(bytes.data(), bytes.size()), remote, 0});
-    internal::save_injects(s.pid, recs);
+    if (!internal::save_injects(s.pid, recs)) {
+        // avoid an untrackable allocation: roll back on record-save failure
+        internal::RemoteFree(s.handle, remote);
+        return Result::Error;
+    }
     return Result::Ok;
 }
 
@@ -330,25 +334,36 @@ Result shellcode_free(uintptr_t addr) {
     if (addr == 0) return Result::InvalidArg;
 
     auto recs = internal::load_injects(s.pid);
-    bool found = false;
-    for (const auto& rec : recs) {
-        if (rec.kind == "shellcode" && rec.address == addr) {
-            found = true;
+    const internal::InjectRecord* rec = nullptr;
+    for (const auto& r : recs) {
+        if (r.kind == "shellcode" && r.address == addr) {
+            rec = &r;
             break;
         }
     }
-    if (!found) return Result::NotFound;
+    if (!rec) return Result::NotFound;
 
-    Result r = internal::RemoteFree(s.handle, addr);
-    if (r != Result::Ok) return r;
-
-    std::vector<internal::InjectRecord> rest;
-    for (const auto& rec : recs) {
-        if (rec.kind == "shellcode" && rec.address == addr) continue;
-        rest.push_back(rec);
+    // Freeing memory while a thread is still executing on it crashes the
+    // target: wait for the recorded thread first (mirrors dll_eject).
+    if (rec->thread_id != 0) {
+        uint32_t code = 0;
+        Result w = internal::WaitRemoteThread(s.handle, rec->thread_id, 5000, &code);
+        if (w == Result::Timeout) return Result::Timeout;
+        // Error here means OpenThread failed because the thread object is gone
+        // (thread already exited) -> treat as finished and proceed to free.
+        if (w != Result::Ok && w != Result::Error) return w;
     }
-    internal::save_injects(s.pid, rest);
-    return Result::Ok;
+
+    // Remove the record (and persist) before releasing memory, so a failed
+    // save can never leave a record pointing at freed memory.
+    std::vector<internal::InjectRecord> rest;
+    for (const auto& r : recs) {
+        if (r.kind == "shellcode" && r.address == addr) continue;
+        rest.push_back(r);
+    }
+    if (!internal::save_injects(s.pid, rest)) return Result::Error;
+
+    return internal::RemoteFree(s.handle, addr);
 }
 
 Result shellcode_status(std::vector<InjectInfo>& out) {

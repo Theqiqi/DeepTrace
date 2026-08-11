@@ -428,6 +428,20 @@ TEST_F(DeeptraceIntegration, ShellcodeAllocRunFree) {
     EXPECT_EQ(deeptrace::shellcode_run(info.remote_base, run2), deeptrace::Result::Ok);
     EXPECT_NE(run2.thread_id, 0u);
 
+    // {0xC3} (ret) exits immediately: status must eventually report the
+    // record as not running (locks the real exit state, not the optimistic
+    // `running=true` that run reports right after creating the thread).
+    bool exited = false;
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+        for (const auto& i : list) {
+            if (i.remote_base == info.remote_base && !i.running) exited = true;
+        }
+        if (exited) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    EXPECT_TRUE(exited);
+
     // free: memory released + record removed -> later ops NotFound
     EXPECT_EQ(deeptrace::shellcode_free(info.remote_base), deeptrace::Result::Ok);
     EXPECT_EQ(deeptrace::shellcode_run(info.remote_base, run_info),
