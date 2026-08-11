@@ -33,7 +33,7 @@ deeptrace_cli -p 1234 mem read 0x14000D000 4 hex
 - **Resolve** — module base, AOB pattern scanning (`??` wildcards)
 - **Watch** — persistent variable watches with live values
 - **Injection** — DLL and shellcode injection with status tracking
-- **State persistence** — breakpoints / watches / injections survive across CLI invocations (`%TEMP%\deeptrace_<pid>\`)
+- **State persistence** — watches / injection records survive across CLI invocations (`%TEMP%\deeptrace_<pid>\`); debug breakpoints exist only inside a `debug run` session and are restored when it ends
 
 **`deeptrace_cli` — command-line tool (40 commands across 12 groups, pure ASCII output)**
 
@@ -43,6 +43,7 @@ ps, mem, module, thread, debug, disasm, resolve, convert, watch, dll, asm, shell
 
 - One-shot commands with stable exit codes (`0` success / `1` failure / `2` usage error)
 - Non-interactive, script-friendly, fixed-width tables
+- Scripted debug sessions — `debug run <script.json>` is the single debug entry (v2.1.0): one invocation = one complete session (breakpoints/page-guards auto-restored)
 
 ## Quick Start
 
@@ -130,9 +131,9 @@ sandbox/     experiments (not part of the deliverable)
 
 > **This section is an index for AI and AI agents** (Claude Code, Codex, Cursor, custom agents, LLM tools, etc.). If you are an AI reading this README, follow the steps below: **1) read the agent docs, 2) load the skill, 3) install the tool (prefer the release download), 4) use the skill to call the tool.**
 
-**Step 1 — Read the agent docs.** [agents/README.md](agents/README.md) is the document for AI agents: project overview (deeptrace 2.0.0 library, 56 public APIs; deeptrace_cli 2.1.0), install guidance, key facts, command groups, and the doc map.
+**Step 1 — Read the agent docs.** [agents/README.md](agents/README.md) is the document for AI agents (written in English): project overview (deeptrace 2.0.0 library, 56 public APIs; deeptrace_cli 2.1.0), install guidance, key facts, command groups, and the doc map.
 
-**Step 2 — Load the skill.** This repo ships one agent skill in standard SKILL format (YAML frontmatter `name`/`description` + Markdown instructions): [agents/skills/deeptrace-cli/SKILL.md](agents/skills/deeptrace-cli/SKILL.md). Load it into your agent so it knows when and how to install and use this tool.
+**Step 2 — Load the skill.** This repo ships one agent skill in standard SKILL format (YAML frontmatter `name`/`description` + Markdown instructions, written in Chinese): [agents/skills/deeptrace-cli/SKILL.md](agents/skills/deeptrace-cli/SKILL.md). Load it into your agent so it knows when and how to install and use this tool.
 
 **Step 3 — Install the software (prefer the release download).** This repo is a Windows x64 C++20 process-memory tool. `deeptrace_cli` must be available before use. **Prefer downloading the official release zip** from [GitHub Releases](https://github.com/Theqiqi/DeepTrace/releases) (`deeptrace_cli-v2.1.0-win64.zip`, single exe, no dependencies); build from source only when no release is available (build order: `deeptrace` library first, then `deeptrace_cli`). See [agents/README.md](agents/README.md) or the skill's [INSTALL.md](agents/skills/deeptrace-cli/references/INSTALL.md).
 
