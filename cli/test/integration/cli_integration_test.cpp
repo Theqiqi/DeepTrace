@@ -211,31 +211,26 @@ TEST(CliChain, ThreadList) {
               0);
 }
 
-TEST(CliChain, Registers) {
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug",
-                       "registers"}),
-              0);
-}
-
-TEST(CliChain, DebugStatus) {
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "status"}),
-              0);
-}
-
-// Regression: `debug attach` used to kill the target because the executor
-// auto-detached without DebugActiveProcessStop (debugger exit terminates the
-// debuggee on Windows). The target must still be running afterwards.
-TEST(CliChain, DebugAttachTargetSurvives) {
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug",
-                       "attach"}),
-              0);
-    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
-                             g_target.pid);
-    ASSERT_NE(h, nullptr);
-    DWORD code = 0;
-    EXPECT_TRUE(::GetExitCodeProcess(h, &code));
-    EXPECT_EQ(code, STILL_ACTIVE);
-    ::CloseHandle(h);
+// v2.1.0: standalone debug commands were removed (single entry = debug run).
+// Calling them is a usage error (exit 2) and must not touch the target.
+TEST(CliChain, DebugSingleCommandsRejected) {
+    const char* removed[] = {"attach", "detach", "pause", "resume", "step",
+                             "next", "break", "clear", "hbreak", "hclear",
+                             "guard", "unguard", "status", "registers",
+                             "register"};
+    for (const char* a : removed) {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid),
+                           "debug", a}),
+                  2) << a;
+    }
+    // no residual breakpoint bytes: the target must still be intact
+    std::vector<uint8_t> buf(4);
+    size_t n = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(g_target.g_int, buf.data(), 4, &n),
+              deeptrace::Result::Ok);
+    EXPECT_EQ(buf[0], 0x44);  // g_int unchanged (no 0xCC pollution)
+    deeptrace::detach();
 }
 
 // The CLI `watch list` must display live values (list reads target memory).
@@ -287,6 +282,31 @@ TEST(CliChain, ResolveScanFindsKnownPattern) {
               0);
 }
 
+// convert is a pure data conversion: works without -p and without a session.
+TEST(CliChain, ConvertNoProcess) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "dword", "100"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "float", "3.14"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "string", "hello"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "hex", "DEADBEEF"}), 0);
+    // usage errors -> exit 2
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "bogus", "1"}), 2);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "dword", "xyz"}), 2);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "byte", "256"}), 2);
+}
+
+// The convert output format is scan-compatible: the documented pattern for
+// dword 0x11223344 (g_int) is "44 33 22 11" and must be found by resolve scan.
+TEST(CliChain, ConvertOutputFeedsScan) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "convert", "dword", "287454020"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "resolve", "scan",
+                       "44 33 22 11"}),
+              0);
+    // the pre-v1.4.0 typed scan syntax is gone: extra arg is a usage error
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "resolve", "scan",
+                       "100", "dword"}),
+              2);
+}
+
 TEST(CliChain, DisasmAt) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "disasm", "at",
                        hex(g_target.g_bytes), "4"}),
@@ -313,29 +333,110 @@ TEST(CliChain, WatchRoundTrip) {
               0);
 }
 
-TEST(CliChain, DebugBreakRoundTrip) {
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "break",
-                       hex(g_target.g_int)}),
-              0);
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "clear",
-                       hex(g_target.g_int)}),
-              0);
+// Load a JSON script fixture next to the test exe (deployed by POST_BUILD),
+// substitute the %G_INT% placeholder with the runtime address, and write the
+// materialized script to a temp file. Returns the temp path.
+std::string materialize_script(const char* fixture, uintptr_t g_int, int tag) {
+    char buf[MAX_PATH] = {0};
+    ::GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    std::string dir(buf);
+    size_t slash = dir.find_last_of("/\\");
+    if (slash != std::string::npos) dir = dir.substr(0, slash);
+    std::ifstream in(dir + "\\" + fixture);
+    EXPECT_TRUE(in.good()) << "fixture not deployed: " << fixture;
+    std::string content((std::istreambuf_iterator<char>(in)),
+                        std::istreambuf_iterator<char>());
+    std::string addr = hex(g_int);
+    size_t p = 0;
+    while ((p = content.find("%G_INT%", p)) != std::string::npos) {
+        content.replace(p, 7, addr);
+        p += addr.size();
+    }
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string path = std::string(tmpname) + "_" + std::to_string(tag) + ".json";
+    std::ofstream f(path, std::ios::binary);
+    f << content;
+    f.close();
+    return path;
 }
 
-TEST(CliChain, BreakpointAffectsDeeptraceState) {
-    // break through CLI, then verify the byte is 0xCC via deeptrace directly
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "break",
-                       hex(g_target.g_int)}),
+// One invocation = one debug session: attach -> debug_attach -> steps ->
+// cleanup -> debug_detach -> detach. The target must survive.
+// The step list comes from the real fixture cli/test/scripts/debug_session.json.
+TEST(CliChain, DebugRunScriptedSession) {
+    std::string script = materialize_script("debug_session.json", g_target.g_int, 1);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       script}),
               0);
+    std::remove(script.c_str());
+    // side effect check: target must still be alive after the session
+    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, g_target.pid);
+    ASSERT_NE(h, nullptr);
+    DWORD code = 0;
+    EXPECT_TRUE(::GetExitCodeProcess(h, &code));
+    EXPECT_EQ(code, STILL_ACTIVE);
+    ::CloseHandle(h);
+}
+
+// Regression: write accepts space-separated hex; the bytes must land correctly.
+// The script comes from the real fixture cli/test/scripts/debug_write.json.
+TEST(CliChain, DebugRunWriteSpacedHex) {
+    std::string script = materialize_script("debug_write.json", g_target.g_int, 2);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       script}),
+              0);
+    std::remove(script.c_str());
+    uint32_t v = 0;
+    size_t n = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(g_target.g_int, &v, 4, &n), deeptrace::Result::Ok);
+    EXPECT_EQ(v, 0xCAFEBABEu);  // little-endian: BE BA FE CA -> 0xCAFEBABE
+    v = 0x11223344;
+    deeptrace::memory_write(g_target.g_int, &v, 4, &n);
+    deeptrace::detach();
+}
+
+// Session-end cleanup: a breakpoint armed in the script and never cleared
+// must be restored by cleanup_session at detach (no residual 0xCC in the
+// target after debug run returns).
+// Fixture: cli/test/scripts/debug_break_only.json.
+TEST(CliChain, DebugRunSessionCleanupRestoresByte) {
+    std::string script = materialize_script("debug_break_only.json", g_target.g_int, 4);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       script}),
+              0);
+    std::remove(script.c_str());
     uint8_t b = 0;
     size_t n = 0;
     ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
     EXPECT_EQ(deeptrace::memory_read(g_target.g_int, &b, 1, &n), deeptrace::Result::Ok);
-    EXPECT_EQ(b, 0xCC);
+    EXPECT_EQ(b, 0x44);  // original byte restored (no 0xCC residual)
     deeptrace::detach();
-    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "clear",
-                       hex(g_target.g_int)}),
-              0);
+    // side effect check: target survived the session
+    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, g_target.pid);
+    ASSERT_NE(h, nullptr);
+    DWORD code = 0;
+    EXPECT_TRUE(::GetExitCodeProcess(h, &code));
+    EXPECT_EQ(code, STILL_ACTIVE);
+    ::CloseHandle(h);
+}
+
+// Script errors: missing file and invalid content -> exit 2, no session opened.
+// The bad script comes from the real fixture cli/test/scripts/debug_bad.json.
+TEST(CliChain, DebugRunScriptErrors) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       "no_such_script.json"}),
+              2);
+    char buf[MAX_PATH] = {0};
+    ::GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    std::string dir(buf);
+    size_t slash = dir.find_last_of("/\\");
+    if (slash != std::string::npos) dir = dir.substr(0, slash);
+    std::string bad = dir + "\\debug_bad.json";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "debug", "run",
+                       bad}),
+              2);
 }
 
 TEST(CliChain, NoSuchProcessAttach) {

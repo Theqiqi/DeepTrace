@@ -3,7 +3,7 @@
 // Public API header. This is the ONLY header a consumer (CLI) may include.
 // All public types use standard C++ types only (no windows.h types).
 // Detailed per-function docs (params/returns/error codes) live in
-// docs/api/v1.3.0/ (see docs/developers/v1.3.0/ for architecture).
+// docs/api/v2.1.0/ (see docs/developers/v2.1.0/ for architecture).
 
 #include "domain/types.h"
 
@@ -52,6 +52,7 @@ Result debug_pause();
 Result debug_resume();
 Result debug_step(uint32_t tid, uintptr_t* out_rip);         // tid=0 -> first thread
 Result debug_step_over(uint32_t tid, uintptr_t* out_rip);    // tid=0 -> first thread
+Result debug_continue(uint32_t timeout_ms, ContinueInfo& out);  // run to breakpoint/exit/timeout
 Result breakpoint_set(uintptr_t addr, BreakpointInfo& out);
 Result breakpoint_clear(uintptr_t addr);
 Result hw_breakpoint_set(uintptr_t addr, uint32_t type, uint32_t length);

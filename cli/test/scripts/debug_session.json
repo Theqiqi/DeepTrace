@@ -1,0 +1,10 @@
+[
+  {"op": "status"},
+  {"op": "registers"},
+  {"op": "read", "addr": "%G_INT%", "size": "4"},
+  {"op": "break", "addr": "%G_INT%"},
+  {"op": "clear", "addr": "%G_INT%"},
+  {"op": "watch_add", "desc": "sc_g", "addr": "%G_INT%", "type": "dword"},
+  {"op": "watch_list"},
+  {"op": "watch_clear"}
+]

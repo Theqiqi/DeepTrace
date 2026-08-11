@@ -3,7 +3,9 @@
 #include "command/commands.h"
 
 #include <cctype>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 namespace deeptrace_cli {
@@ -92,10 +94,6 @@ bool valid_value_type(const std::string& s) {
            s == "float" || s == "double";
 }
 
-bool valid_hw_type(const std::string& s) {
-    return s == "0" || s == "1" || s == "2";
-}
-
 // AOB pattern: space-separated bytes; each token is "??" or exactly 2 hex chars.
 bool valid_pattern(const std::string& s) {
     if (s.empty()) return false;
@@ -144,6 +142,56 @@ bool valid_hex_bytes(const std::string& s) {
     return true;
 }
 
+bool valid_convert_type(const std::string& s) {
+    return s == "byte" || s == "word" || s == "dword" || s == "qword" ||
+           s == "float" || s == "double" || s == "string" || s == "hex";
+}
+
+// Value validity depends on its type; used as a cross-field check after all
+// params of `convert` are collected.
+bool valid_convert_value(const std::string& v, const std::string& type) {
+    if (v.empty()) return false;
+    if (type == "hex") return valid_hex_bytes(v);
+    if (type == "string") {
+        for (unsigned char c : v) {
+            if (c < 0x20 || c > 0x7E) return false;  // printable ASCII only
+        }
+        return true;
+    }
+    if (type == "byte" || type == "word" || type == "dword" || type == "qword") {
+        uint64_t val = 0;
+        if (!parse_uint(v, val)) return false;
+        uint64_t maxv = 0;
+        if (type == "byte") maxv = 0xFFULL;
+        else if (type == "word") maxv = 0xFFFFULL;
+        else if (type == "dword") maxv = 0xFFFFFFFFULL;
+        else maxv = UINT64_MAX;
+        return val <= maxv;
+    }
+    if (type == "float") {
+        // decimal float only: reject hex float literals such as "0x10" or "0x1p3"
+        for (char c : v) {
+            if (c == 'x' || c == 'X' || c == 'p' || c == 'P') return false;
+        }
+        const char* p = v.c_str();
+        char* end = nullptr;
+        float f = std::strtof(p, &end);
+        if (end == p || *end != '\0') return false;
+        return std::isfinite(f);
+    }
+    if (type == "double") {
+        for (char c : v) {
+            if (c == 'x' || c == 'X' || c == 'p' || c == 'P') return false;
+        }
+        const char* p = v.c_str();
+        char* end = nullptr;
+        double d = std::strtod(p, &end);
+        if (end == p || *end != '\0') return false;
+        return std::isfinite(d);
+    }
+    return false;
+}
+
 bool valid_param(const ParamSpec& p, const std::string& v) {
     const std::string& t = p.type;
     if (t == "address") return valid_address(v);
@@ -153,11 +201,13 @@ bool valid_param(const ParamSpec& p, const std::string& v) {
     if (t == "format") return valid_format(v);
     if (t == "format-rw") return valid_format_rw(v);
     if (t == "value-type") return valid_value_type(v);
-    if (t == "hw-type") return valid_hw_type(v);
     if (t == "pattern") return valid_pattern(v);
     if (t == "hex-bytes") return valid_hex_bytes(v);
+    if (t == "convert-type") return valid_convert_type(v);
+    if (t == "convert-value") return !v.empty();  // full check depends on type
     if (t == "exit-code") return valid_exit_code(v);
     if (t == "index") return valid_index(v);
+    if (t == "script-path") return !v.empty();  // existence/readability checked by script module
     if (t == "flag") return v == p.name;
     return true;
 }
@@ -218,13 +268,28 @@ ParseResult parse_args(int argc, char* argv[]) {
     }
 
     res.req.group = pos[0];
-    if (pos.size() < 2) {
+    // Standalone commands (spec with empty action) take their positional
+    // arguments starting at pos[1]; grouped commands use pos[1] as the action.
+    res.req.action = "";
+    size_t arg_start = 1;
+    if (pos.size() >= 2 && find_command(res.req.group, pos[1])) {
+        res.req.action = pos[1];
+        arg_start = 2;
+    } else if (pos.size() >= 2 && !find_command(res.req.group, "")) {
+        res.ok = false;
+        res.exit_code = 2;
+        if (is_group(res.req.group)) {
+            res.error = "unknown command: '" + pos[1] + "'";
+        } else {
+            res.error = "unknown command group: '" + res.req.group + "'";
+        }
+        return res;
+    } else if (pos.size() < 2 && !find_command(res.req.group, "")) {
         res.ok = false;
         res.exit_code = 2;
         res.error = "missing subcommand for group: '" + res.req.group + "'";
         return res;
     }
-    res.req.action = pos[1];
 
     const CommandSpec* spec = find_command(res.req.group, res.req.action);
     if (!spec) {
@@ -239,7 +304,7 @@ ParseResult parse_args(int argc, char* argv[]) {
     }
 
     // Validate parameters against the spec.
-    std::vector<std::string> args(pos.begin() + 2, pos.end());
+    std::vector<std::string> args(pos.begin() + arg_start, pos.end());
     size_t ai = 0;
     for (const auto& p : spec->params) {
         if (p.type == "flag") {
@@ -276,6 +341,18 @@ ParseResult parse_args(int argc, char* argv[]) {
         res.exit_code = 2;
         res.error = "too many arguments: '" + args[ai] + "'";
         return res;
+    }
+
+    // Cross-field check: for `convert`, value validity depends on its type.
+    if (res.req.group == "convert") {
+        const std::string& type = res.req.args[0];
+        const std::string& value = res.req.args[1];
+        if (!valid_convert_value(value, type)) {
+            res.ok = false;
+            res.exit_code = 2;
+            res.error = "invalid value for type '" + type + "': '" + value + "'";
+            return res;
+        }
     }
 
     return res;

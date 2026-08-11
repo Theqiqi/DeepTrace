@@ -35,6 +35,61 @@ Result debug_attach() {
 Result debug_detach() {
     auto& s = internal::session();
     if (!s.debug_mode) return Result::NotAttached;
+
+    // Drain pending debug events so detach never leaves a pending exception
+    // that would crash the debuggee.
+    auto sw = internal::load_sw_breaks(s.pid);
+    DEBUG_EVENT de;
+    for (;;) {
+        if (!::WaitForDebugEvent(&de, 200)) break;  // quiet window -> done
+        if (de.dwDebugEventCode == EXCEPTION_DEBUG_EVENT &&
+            de.u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_BREAKPOINT) {
+            uintptr_t ea = reinterpret_cast<uintptr_t>(
+                de.u.Exception.ExceptionRecord.ExceptionAddress);
+            // A software breakpoint we patched: restore the original byte and
+            // rewind the hitting thread's RIP to the breakpoint address so the
+            // restored instruction is re-executed (RIP already sits past the
+            // int3, which would resume mid-instruction otherwise).
+            bool found_sw = false;
+            uint8_t orig = 0;
+            for (const auto& b : sw) {
+                if (b.address == ea) {
+                    found_sw = true;
+                    orig = b.original;
+                    break;
+                }
+            }
+            // A cleared breakpoint still has a pending exception: the byte is
+            // already restored (not 0xCC), so only RIP needs the rewind.
+            bool rewound = false;
+            if (found_sw) {
+                internal::WriteByte(s.handle, ea, orig);
+                rewound = true;
+            } else {
+                uint8_t cur = 0;
+                if (internal::ReadByte(s.handle, ea, &cur) == Result::Ok && cur != 0xCC)
+                    rewound = true;
+            }
+            if (rewound) {
+                HANDLE ht = ::OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
+                                         FALSE, de.dwThreadId);
+                if (ht) {
+                    CONTEXT ctx;
+                    std::memset(&ctx, 0, sizeof(ctx));
+                    ctx.ContextFlags = CONTEXT_CONTROL;
+                    if (::GetThreadContext(ht, &ctx)) {
+                        ctx.Rip = ea;
+                        ::SetThreadContext(ht, &ctx);
+                    }
+                    ::CloseHandle(ht);
+                }
+            }
+            // else: the attach-time system break (permanent int 3 inside
+            // ntdll, RIP already past it) -> continue as-is.
+        }
+        ::ContinueDebugEvent(de.dwProcessId, de.dwThreadId, DBG_CONTINUE);
+    }
+
     if (internal::DebugDetachProcess(s.pid) != Result::Ok) return Result::Error;
     s.debug_mode = false;
     return Result::Ok;
@@ -84,6 +139,37 @@ Result debug_step_over(uint32_t tid, uintptr_t* out_rip) {
         return step;
     }
     return internal::DebugStepOver(s.pid, tid, out_rip);
+}
+
+Result debug_continue(uint32_t timeout_ms, ContinueInfo& out) {
+    auto& s = internal::session();
+    if (!s.debug_mode) return Result::NotAttached;
+    if (timeout_ms == 0) return Result::InvalidArg;
+
+    // Pass the armed software-breakpoint addresses so the system break
+    // (attach-time breakpoint inside ntdll) is skipped by DebugWaitEvent.
+    std::vector<uintptr_t> sw_addrs;
+    for (const auto& b : internal::load_sw_breaks(s.pid)) sw_addrs.push_back(b.address);
+
+    Result r = internal::DebugWaitEvent(s.pid, timeout_ms, sw_addrs, out);
+    if (r != Result::Ok) return r;
+
+    // A software breakpoint hit is consumed: restore the original byte,
+    // single-step the instruction, re-arm the INT3, and report the post-rip.
+    if (out.hit && out.exception == EXCEPTION_BREAKPOINT) {
+        auto sw = internal::load_sw_breaks(s.pid);
+        for (const auto& b : sw) {
+            if (b.address == out.address) {
+                uintptr_t rip = 0;
+                Result cr = internal::DebugConsumeBreakpoint(
+                    s.pid, out.tid, out.address, b.original, &rip);
+                if (cr != Result::Ok) return cr;
+                out.rip = rip;
+                return Result::Ok;
+            }
+        }
+    }
+    return Result::Ok;
 }
 
 Result breakpoint_set(uintptr_t addr, BreakpointInfo& out) {

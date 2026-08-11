@@ -23,6 +23,10 @@ std::string capture(Fn fn) {
     int out_fd = _open(tmpname, _O_CREAT | _O_TRUNC | _O_WRONLY | _O_BINARY,
                        _S_IREAD | _S_IWRITE);
     if (out_fd < 0) return "";
+    // Flush any pre-test output (e.g. gtest's "Running main()" banner) that is
+    // still buffered in stdout; otherwise the first redirected flush would
+    // contaminate the captured file and make this test flaky.
+    std::fflush(stdout);
     int saved = _dup(_fileno(stdout));
     _dup2(out_fd, _fileno(stdout));
     fn();
@@ -107,7 +111,7 @@ TEST(Printer, PrintMessage) {
 
 TEST(Printer, Version) {
     auto s = capture([&] { printer::print_version(); });
-    EXPECT_EQ(s, "deeptrace_cli v1.0.0\n");
+    EXPECT_EQ(s, "deeptrace_cli v2.1.0\n");
 }
 
 TEST(Printer, ErrorGoesToStderr) {

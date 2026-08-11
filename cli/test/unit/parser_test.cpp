@@ -116,7 +116,7 @@ TEST(Parser, MissingSubcommand) {
 TEST(Parser, AllGroupsKnown) {
     const char* groups[] = {"ps", "mem", "module", "thread", "debug",
                             "disasm", "resolve", "watch", "dll", "asm",
-                            "shellcode"};
+                            "shellcode", "convert"};
     for (const char* g : groups) {
         EXPECT_TRUE(is_group(g)) << g;
     }
@@ -213,29 +213,33 @@ TEST(Parser, PsKillDefaultExitCode) {
     EXPECT_EQ(r.req.args[0], "0");
 }
 
-TEST(Parser, DebugStepDefaultTid) {
-    auto r = parse({"deeptrace_cli", "debug", "step"});
+TEST(Parser, DebugRunScriptPath) {
+    auto r = parse({"deeptrace_cli", "-p", "1234", "debug", "run", "demo.json"});
     ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "debug");
+    EXPECT_EQ(r.req.action, "run");
     EXPECT_EQ(r.req.args.size(), 1u);
-    EXPECT_EQ(r.req.args[0], "0");
-    auto r2 = parse({"deeptrace_cli", "debug", "step", "77"});
-    ASSERT_TRUE(r2.ok);
-    EXPECT_EQ(r2.req.args[0], "77");
+    EXPECT_EQ(r.req.args[0], "demo.json");
+    auto missing = parse({"deeptrace_cli", "debug", "run"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+    EXPECT_NE(missing.error.find("missing argument: script"), std::string::npos);
 }
 
-TEST(Parser, DebugHbreakDefaults) {
-    auto r = parse({"deeptrace_cli", "debug", "hbreak", "0x1000"});
-    ASSERT_TRUE(r.ok);
-    EXPECT_EQ(r.req.args.size(), 3u);
-    EXPECT_EQ(r.req.args[1], "0");
-    EXPECT_EQ(r.req.args[2], "1");
-}
-
-TEST(Parser, HwTypeValid) {
-    auto r = parse({"deeptrace_cli", "debug", "hbreak", "0x1000", "2", "8"});
-    ASSERT_TRUE(r.ok);
-    auto bad = parse({"deeptrace_cli", "debug", "hbreak", "0x1000", "9", "1"});
-    EXPECT_FALSE(bad.ok);
+// v2.1.0: debug group has a single entry `debug run`; all standalone debug
+// commands (step/break/registers/attach/...) were removed and must be rejected
+// with exit 2. Their capabilities live in script steps only.
+TEST(Parser, DebugSingleCommandsRejected) {
+    const char* removed[] = {"attach", "detach", "pause", "resume", "step",
+                             "next", "break", "clear", "hbreak", "hclear",
+                             "guard", "unguard", "status", "registers",
+                             "register"};
+    for (const char* a : removed) {
+        auto r = parse({"deeptrace_cli", "debug", a});
+        EXPECT_FALSE(r.ok) << a;
+        EXPECT_EQ(r.exit_code, 2) << a;
+        EXPECT_NE(r.error.find("unknown command"), std::string::npos) << a;
+    }
 }
 
 TEST(Parser, DisasmAtDefaultCount) {
@@ -251,6 +255,148 @@ TEST(Parser, PatternValid) {
     EXPECT_FALSE(bad.ok);
     auto empty = parse({"deeptrace_cli", "resolve", "scan", ""});
     EXPECT_FALSE(empty.ok);
+}
+
+// resolve scan is pattern-only again (v1.4.0 typed-value change was reverted).
+TEST(Parser, ScanTypedValueRejected) {
+    // a non-pattern token fails pattern validation first
+    auto r = parse({"deeptrace_cli", "resolve", "scan", "100", "dword"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("invalid pattern"), std::string::npos);
+    // a valid pattern with an extra arg hits the too-many-arguments path
+    auto r2 = parse({"deeptrace_cli", "resolve", "scan", "48 8B", "dword"});
+    EXPECT_FALSE(r2.ok);
+    EXPECT_EQ(r2.exit_code, 2);
+    EXPECT_NE(r2.error.find("too many arguments"), std::string::npos);
+}
+
+// ---- convert (standalone command, type first) ----
+
+TEST(Parser, ConvertParsesTypeFirst) {
+    auto r = parse({"deeptrace_cli", "convert", "dword", "100"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "convert");
+    EXPECT_EQ(r.req.action, "");  // standalone command, no sub-action
+    EXPECT_EQ(r.req.args.size(), 2u);
+    EXPECT_EQ(r.req.args[0], "dword");  // type first
+    EXPECT_EQ(r.req.args[1], "100");
+}
+
+TEST(Parser, ConvertAllTypes) {
+    const char* types[] = {"byte", "word", "dword", "qword", "float", "double",
+                           "string", "hex"};
+    // "1" is valid for every type except hex (odd length); hex needs "11".
+    const char* vals[] = {"1", "1", "1", "1", "1", "1", "1", "11"};
+    for (size_t i = 0; i < 8; ++i) {
+        auto r = parse({"deeptrace_cli", "convert", types[i], vals[i]});
+        ASSERT_TRUE(r.ok) << types[i];
+        EXPECT_EQ(r.req.args[0], types[i]) << types[i];
+    }
+}
+
+TEST(Parser, ConvertInvalidType) {
+    auto r = parse({"deeptrace_cli", "convert", "bogus", "1"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("invalid type"), std::string::npos);
+    auto r2 = parse({"deeptrace_cli", "convert", "pattern", "48 8B"});
+    EXPECT_FALSE(r2.ok);  // AOB wildcards are scan-only, not a convert type
+}
+
+TEST(Parser, ConvertMissingArgs) {
+    auto r = parse({"deeptrace_cli", "convert"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("missing argument: type"), std::string::npos);
+    auto r2 = parse({"deeptrace_cli", "convert", "dword"});
+    EXPECT_FALSE(r2.ok);
+    EXPECT_EQ(r2.exit_code, 2);
+    EXPECT_NE(r2.error.find("missing argument: value"), std::string::npos);
+}
+
+TEST(Parser, ConvertTooManyArgs) {
+    auto r = parse({"deeptrace_cli", "convert", "dword", "1", "extra"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+}
+
+TEST(Parser, ConvertIntRanges) {
+    auto ok = [&](const char* t, const char* v) {
+        auto r = parse({"deeptrace_cli", "convert", t, v});
+        EXPECT_TRUE(r.ok) << t << " " << v;
+    };
+    auto bad = [&](const char* t, const char* v) {
+        auto r = parse({"deeptrace_cli", "convert", t, v});
+        EXPECT_FALSE(r.ok) << t << " " << v;
+        EXPECT_EQ(r.exit_code, 2);
+        EXPECT_NE(r.error.find("invalid value for type"), std::string::npos);
+    };
+    ok("byte", "0");
+    ok("byte", "255");
+    ok("byte", "0xFF");
+    bad("byte", "256");
+    ok("word", "65535");
+    bad("word", "65536");
+    ok("dword", "4294967295");
+    bad("dword", "4294967296");
+    ok("dword", "0x11223344");
+    ok("qword", "18446744073709551615");
+    bad("qword", "18446744073709551616");
+    bad("dword", "xyz");
+}
+
+TEST(Parser, ConvertNegativeRejectedByOptionScanner) {
+    // "-1" starts with '-', so the option scanner rejects it as an unknown
+    // option before value validation (negatives are unsupported either way).
+    auto r = parse({"deeptrace_cli", "convert", "dword", "-1"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("unknown option"), std::string::npos);
+}
+
+TEST(Parser, ConvertNoOctalTrap) {
+    // "08" must parse as decimal 8, not invalid octal
+    auto r = parse({"deeptrace_cli", "convert", "byte", "08"});
+    ASSERT_TRUE(r.ok);
+    auto r2 = parse({"deeptrace_cli", "convert", "byte", "010"});
+    ASSERT_TRUE(r2.ok);  // decimal 10, not octal 8
+}
+
+TEST(Parser, ConvertFloatDouble) {
+    auto r = parse({"deeptrace_cli", "convert", "float", "3.14"});
+    ASSERT_TRUE(r.ok);
+    auto r2 = parse({"deeptrace_cli", "convert", "double", "2.71828"});
+    ASSERT_TRUE(r2.ok);
+    auto bad = parse({"deeptrace_cli", "convert", "float", "0x1p3"});  // hex float
+    EXPECT_FALSE(bad.ok);
+    auto bad2 = parse({"deeptrace_cli", "convert", "float", "nan"});
+    EXPECT_FALSE(bad2.ok);
+    auto bad3 = parse({"deeptrace_cli", "convert", "float", "abc"});
+    EXPECT_FALSE(bad3.ok);
+}
+
+TEST(Parser, ConvertStringAscii) {
+    auto r = parse({"deeptrace_cli", "convert", "string", "hello"});
+    ASSERT_TRUE(r.ok);
+    auto bad = parse({"deeptrace_cli", "convert", "string", ""});
+    EXPECT_FALSE(bad.ok);
+    // non-printable ASCII is rejected
+    std::string s = "a";
+    s += static_cast<char>(1);
+    auto bad2 = parse({"deeptrace_cli", "convert", "string", s.c_str()});
+    EXPECT_FALSE(bad2.ok);
+}
+
+TEST(Parser, ConvertHexBytes) {
+    auto r = parse({"deeptrace_cli", "convert", "hex", "DEADBEEF"});
+    ASSERT_TRUE(r.ok);
+    auto r2 = parse({"deeptrace_cli", "convert", "hex", "0x4831C0"});
+    ASSERT_TRUE(r2.ok);
+    auto bad = parse({"deeptrace_cli", "convert", "hex", "ABC"});  // odd length
+    EXPECT_FALSE(bad.ok);
+    auto bad2 = parse({"deeptrace_cli", "convert", "hex", "DEADGG"});
+    EXPECT_FALSE(bad2.ok);
 }
 
 TEST(Parser, TooManyArguments) {

@@ -84,33 +84,10 @@ const std::vector<CommandSpec>& command_table() {
         cmd("thread", "resume", "thread resume <tid>", "Resume a thread", {req("tid", "tid")}),
         cmd("thread", "kill", "thread kill <tid>", "Terminate a thread", {req("tid", "tid")}),
 
-        // ---- debug ----
-        cmd("debug", "attach", "debug attach", "Enter debug mode", {}),
-        cmd("debug", "detach", "debug detach", "Exit debug mode, remain attached", {}),
-        cmd("debug", "pause", "debug pause", "Pause the debugged process", {}),
-        cmd("debug", "resume", "debug resume", "Resume the debugged process", {}),
-        cmd("debug", "step", "debug step [tid]", "Step into (single step)",
-            {opt("tid", "tid", "0")}),
-        cmd("debug", "next", "debug next [tid]", "Step over", {opt("tid", "tid", "0")}),
-        cmd("debug", "break", "debug break <address>", "Set a software breakpoint at address",
-            {req("address", "address")}),
-        cmd("debug", "clear", "debug clear <address>", "Clear a software breakpoint at address",
-            {req("address", "address")}),
-        cmd("debug", "hbreak", "debug hbreak <address> [type] [len]",
-            "Set a hardware breakpoint (type: 0=execute,1=write,2=io)",
-            {req("address", "address"), opt("type", "hw-type", "0"), opt("len", "number", "1")}),
-        cmd("debug", "hclear", "debug hclear <address>", "Clear a hardware breakpoint",
-            {req("address", "address")}),
-        cmd("debug", "guard", "debug guard <address> <size>", "Set a page guard breakpoint",
-            {req("address", "address"), req("size", "number")}),
-        cmd("debug", "unguard", "debug unguard <address> <size>",
-            "Remove a page guard breakpoint",
-            {req("address", "address"), req("size", "number")}),
-        cmd("debug", "status", "debug status", "Show debug status", {}),
-        cmd("debug", "registers", "debug registers [tid]", "Display all registers",
-            {opt("tid", "tid", "0")}),
-        cmd("debug", "register", "debug register <name> [tid]", "Get a specific register value",
-            {req("name", "string"), opt("tid", "tid", "0")}),
+        // ---- debug (single entry: debug run, all debug ops via script) ----
+        cmd("debug", "run", "debug run <script.json>",
+            "Run a scripted debug session (one invocation = one session)",
+            {req("script", "script-path")}),
 
         // ---- disasm ----
         cmd("disasm", "at", "disasm at <address> [count]", "Disassemble at address",
@@ -154,6 +131,12 @@ const std::vector<CommandSpec>& command_table() {
             "Inject shellcode at address",
             {req("address", "address"), req("hex_bytes", "hex-bytes")}),
         cmd("shellcode", "status", "shellcode status", "Show shellcode inject status", {}),
+
+        // ---- convert (standalone command, no sub-action) ----
+        cmd("convert", "", "convert <type> <value>",
+            "Convert typed data to hex bytes "
+            "(type: byte|word|dword|qword|float|double|string|hex)",
+            {req("type", "convert-type"), req("value", "convert-value")}),
     };
     return kTable;
 }
@@ -178,7 +161,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v1.3.0\n";
+    os << "deeptrace_cli v2.1.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

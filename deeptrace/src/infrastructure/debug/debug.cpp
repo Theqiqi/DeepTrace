@@ -162,6 +162,144 @@ Result DebugSingleStep(uint32_t pid, uint32_t tid, uintptr_t* out_rip) {
     }
 }
 
+Result DebugWaitEvent(uint32_t pid, uint32_t timeout_ms,
+                      const std::vector<uintptr_t>& sw_addrs, ContinueInfo& out) {
+    out = ContinueInfo{};
+    if (timeout_ms == 0) return Result::InvalidArg;
+    DEBUG_EVENT de;
+    // Phase 1: drain pending initial events until the CREATE_PROCESS event of
+    // the debuggee is continued (this unfreezes the process). If the process
+    // is already running (e.g. after a single step), no CREATE_PROCESS is
+    // pending and the short timeout just expires.
+    for (;;) {
+        if (!::WaitForDebugEvent(&de, 200)) return Result::Timeout;
+        bool created = de.dwDebugEventCode == CREATE_PROCESS_DEBUG_EVENT &&
+                       de.dwProcessId == pid;
+        ::ContinueDebugEvent(de.dwProcessId, de.dwThreadId, DBG_CONTINUE);
+        if (created) break;
+    }
+    // Phase 2: wait for the next interesting event within the timeout budget.
+    ULONGLONG deadline = ::GetTickCount64() + timeout_ms;
+    for (;;) {
+        ULONGLONG now = ::GetTickCount64();
+        if (now >= deadline) return Result::Timeout;
+        DWORD wait_ms = static_cast<DWORD>(deadline - now);
+        if (wait_ms == 0) wait_ms = 1;
+        if (!::WaitForDebugEvent(&de, wait_ms)) return Result::Timeout;
+        if (de.dwProcessId != pid) {
+            ::ContinueDebugEvent(de.dwProcessId, de.dwThreadId, DBG_CONTINUE);
+            continue;
+        }
+        if (de.dwDebugEventCode == EXCEPTION_DEBUG_EVENT) {
+            // Skip breakpoint exceptions that are not at one of our armed
+            // software breakpoints: the first one after attach is the system
+            // break (DbgUiRemoteBreakin inside ntdll) that real debuggers
+            // swallow. Continue it and keep waiting for a real breakpoint.
+            if (de.u.Exception.ExceptionRecord.ExceptionCode ==
+                    EXCEPTION_BREAKPOINT) {
+                uintptr_t ea = reinterpret_cast<uintptr_t>(
+                    de.u.Exception.ExceptionRecord.ExceptionAddress);
+                bool known = false;
+                for (auto a : sw_addrs) {
+                    if (a == ea) { known = true; break; }
+                }
+                if (!known) {
+                    ::ContinueDebugEvent(de.dwProcessId, de.dwThreadId,
+                                         DBG_CONTINUE);
+                    continue;
+                }
+            }
+            out.hit = true;
+            out.exception = de.u.Exception.ExceptionRecord.ExceptionCode;
+            out.address = reinterpret_cast<uintptr_t>(
+                de.u.Exception.ExceptionRecord.ExceptionAddress);
+            out.tid = de.dwThreadId;
+            HANDLE ht = ::OpenThread(THREAD_GET_CONTEXT, FALSE, de.dwThreadId);
+            if (ht) {
+                CONTEXT ctx;
+                std::memset(&ctx, 0, sizeof(ctx));
+                ctx.ContextFlags = CONTEXT_CONTROL;
+                if (::GetThreadContext(ht, &ctx)) out.rip = ctx.Rip;
+                ::CloseHandle(ht);
+            }
+            return Result::Ok;  // leave the exception pending (debuggee frozen)
+        }
+        if (de.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT) {
+            out.exited = true;
+            out.exit_code = de.u.ExitProcess.dwExitCode;
+            return Result::Ok;
+        }
+        ::ContinueDebugEvent(de.dwProcessId, de.dwThreadId, DBG_CONTINUE);
+    }
+}
+
+Result DebugConsumeBreakpoint(uint32_t pid, uint32_t tid, uintptr_t addr,
+                              uint8_t orig, uintptr_t* out_rip) {
+    // The breakpoint exception is pending; the hitting thread is frozen. Force
+    // RIP back to the INT3 address and single-step the restored instruction.
+    Result err = Result::Ok;
+    void* hp = OpenProcessById(pid, PROCESS_VM_READ | PROCESS_VM_WRITE |
+                                     PROCESS_VM_OPERATION,
+                               &err);
+    if (!hp) return err;
+    if (WriteByte(hp, addr, orig) != Result::Ok) {
+        ::CloseHandle(static_cast<HANDLE>(hp));
+        return Result::Error;
+    }
+    HANDLE hThread =
+        ::OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, tid);
+    if (!hThread) {
+        ::CloseHandle(static_cast<HANDLE>(hp));
+        return Result::Error;
+    }
+    CONTEXT ctx;
+    std::memset(&ctx, 0, sizeof(ctx));
+    ctx.ContextFlags = CONTEXT_CONTROL;
+    if (!::GetThreadContext(hThread, &ctx)) {
+        ::CloseHandle(hThread);
+        ::CloseHandle(static_cast<HANDLE>(hp));
+        return Result::Error;
+    }
+    ctx.Rip = addr;          // re-point at the restored instruction
+    ctx.EFlags |= 0x100;     // TF
+    if (!::SetThreadContext(hThread, &ctx)) {
+        ::CloseHandle(hThread);
+        ::CloseHandle(static_cast<HANDLE>(hp));
+        return Result::Error;
+    }
+    ::CloseHandle(hThread);
+    // Let the restored instruction execute (single step).
+    ::ContinueDebugEvent(pid, tid, DBG_CONTINUE);
+    DEBUG_EVENT de;
+    for (;;) {
+        if (!::WaitForDebugEvent(&de, 2000)) {
+            // Re-arm the INT3 best-effort so the breakpoint stays effective.
+            WriteByte(hp, addr, 0xCC);
+            ::CloseHandle(static_cast<HANDLE>(hp));
+            return Result::Timeout;
+        }
+        if (de.dwDebugEventCode == EXCEPTION_DEBUG_EVENT &&
+            de.u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_SINGLE_STEP &&
+            de.dwThreadId == tid) {
+            if (out_rip) {
+                HANDLE ht = ::OpenThread(THREAD_GET_CONTEXT, FALSE, tid);
+                if (ht) {
+                    CONTEXT c2;
+                    std::memset(&c2, 0, sizeof(c2));
+                    c2.ContextFlags = CONTEXT_CONTROL;
+                    if (::GetThreadContext(ht, &c2)) *out_rip = c2.Rip;
+                    ::CloseHandle(ht);
+                }
+            }
+            WriteByte(hp, addr, 0xCC);  // re-arm the INT3
+            ::ContinueDebugEvent(de.dwProcessId, de.dwThreadId, DBG_CONTINUE);
+            ::CloseHandle(static_cast<HANDLE>(hp));
+            return Result::Ok;
+        }
+        ::ContinueDebugEvent(de.dwProcessId, de.dwThreadId, DBG_CONTINUE);
+    }
+}
+
 namespace {
 
 // Detect a near call at the current RIP: 0xE8 (call rel32) or 0xFF /2
