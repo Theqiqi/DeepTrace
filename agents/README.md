@@ -1,6 +1,6 @@
 # DeepTrace — AI / Agent Setup Guide
 
-> This is the document for **AI / AI agents** (Claude Code, Codex, Cursor, custom agents, LLM tools).
+> This is the document for **AI / AI agents** (custom agents, LLM tooling).
 > Read it whenever you need to operate on process memory, debug, or disassemble with this repo.
 > After reading, do these two things automatically: **① download and install `deeptrace_cli` into your current directory, ② download the two skills below into `.agents/` in your current directory.**
 

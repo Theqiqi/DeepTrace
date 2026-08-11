@@ -129,7 +129,7 @@ sandbox/     实验验证项目(不参与交付)
 
 ## AI / Agent 使用说明
 
-> **本节是给 AI 与 AI agent 看的索引**(Claude Code、Codex、Cursor、自定义 agent、LLM 工具等)。如果你是一个正在阅读本 README 的 AI,请按以下步骤执行:**① 读 agent 文档 → ② 安装工具到当前工作目录 → ③ 把技能下载到 .agents/ → ④ 用技能调用软件**。
+> **本节是给 AI 与 AI agent 看的索引**(自定义 agent、LLM 工具等)。如果你是一个正在阅读本 README 的 AI,请按以下步骤执行:**① 读 agent 文档 → ② 安装工具到当前工作目录 → ③ 把技能下载到 .agents/ → ④ 用技能调用软件**。
 
 **第 ① 步 — 读 agent 文档。** [agents/README.md](agents/README.md) 是给 AI agent 看的设置指南(文档为英文):项目概览、关键事实,以及两个设置动作——把 `deeptrace_cli` 安装到当前工作目录、把技能下载到 `.agents/`。
 

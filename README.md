@@ -129,7 +129,7 @@ sandbox/     experiments (not part of the deliverable)
 
 ## AI / Agent Usage Guide
 
-> **This section is an index for AI and AI agents** (Claude Code, Codex, Cursor, custom agents, LLM tools, etc.). If you are an AI reading this README, follow the steps below: **1) read the agent doc, 2) install the tool into your working directory, 3) download the skill into `.agents/`, 4) use the skill to call the tool.**
+> **This section is an index for AI and AI agents** (custom agents, LLM tooling, etc.). If you are an AI reading this README, follow the steps below: **1) read the agent doc, 2) install the tool into your working directory, 3) download the skill into `.agents/`, 4) use the skill to call the tool.**
 
 **Step 1 — Read the agent doc.** [agents/README.md](agents/README.md) is the setup guide for AI agents (written in English): project overview, key facts, and the two setup actions — install `deeptrace_cli` into your working directory and download the skill into `.agents/`.
 
