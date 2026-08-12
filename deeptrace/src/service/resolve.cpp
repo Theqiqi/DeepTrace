@@ -28,12 +28,11 @@ namespace {
 
 // A partial chain candidate discovered during the reverse walk: the slot
 // address (the pointer's own location) and the offsets accumulated from that
-// slot down to the target. root is the *source* address (where the pointer
+// slot down to the target. slot is the *source* address (where the pointer
 // lives); offsets[0] is the first dereference offset.
 struct Candidate {
     uintptr_t slot = 0;                 // where the pointer lives
     std::vector<int64_t> offsets;       // [off0, off1, ...] to reach target
-    uintptr_t final_addr = 0;           // eval(slot) == target (debug)
 };
 
 // Collect readable committed regions (same filter as pattern_scan).
@@ -133,9 +132,12 @@ Result pointer_map_snapshot(const PointerScanConfig& cfg,
     // are emitted. All slots still feed the next level regardless of anchor.
     std::vector<Candidate> results;
     std::set<std::pair<uintptr_t, int64_t>> seen;  // (slot, first_offset)
-    // current level candidates: slot -> offsets from that slot down to target
-    std::map<uintptr_t, std::vector<int64_t>> level_chains;
-    level_chains[cfg.target] = {};  // level 0 target = the value address
+    // current level candidates: slot -> all offset paths from that slot down
+    // to the target. A slot may lie within max_offset of several targets, so
+    // each slot carries a vector of paths (each a distinct chain prefix).
+    using OffsetPath = std::vector<int64_t>;
+    std::map<uintptr_t, std::vector<OffsetPath>> level_chains;
+    level_chains[cfg.target] = {OffsetPath{}};  // level 0 target = value addr
 
     for (uint32_t level = 0; level < cfg.max_level; ++level) {
         std::vector<uintptr_t> targets;
@@ -145,28 +147,32 @@ Result pointer_map_snapshot(const PointerScanConfig& cfg,
         scan_all_regions(s.handle, regions, targets, cfg.max_offset, pool, hits);
         if (hits.empty()) break;
 
-        std::map<uintptr_t, std::vector<int64_t>> next_chains;
+        std::map<uintptr_t, std::vector<OffsetPath>> next_chains;
+        size_t next_count = 0;
         for (const auto& h : hits) {
-            if (results.size() + next_chains.size() >= cfg.max_results) break;
-            // chain from this slot: [delta] + offsets already collected for
-            // the target it points at
+            if (results.size() + next_count >= cfg.max_results) break;
             auto it = level_chains.find(h.target);
             if (it == level_chains.end()) continue;  // not one of our targets
             if (!seen.insert({h.address, h.delta}).second) continue;
 
-            Candidate c;
-            c.slot = h.address;
-            c.offsets.push_back(h.delta);
-            c.offsets.insert(c.offsets.end(), it->second.begin(), it->second.end());
+            // this slot may point at several level targets (multi-path);
+            // each path yields a distinct chain prefix, all preserved
+            for (const auto& path : it->second) {
+                Candidate c;
+                c.slot = h.address;
+                c.offsets.push_back(h.delta);
+                c.offsets.insert(c.offsets.end(), path.begin(), path.end());
 
-            // emit only when the root slot is anchored inside the module
-            if (mod_base == 0 ||
-                (c.slot >= mod_base && c.slot < mod_end)) {
-                results.push_back(c);
-            }
-            // this slot becomes a target for the next level either way
-            if (level + 1 < cfg.max_level) {
-                next_chains[h.address] = c.offsets;
+                // emit only when the root slot is anchored inside the module
+                if (mod_base == 0 ||
+                    (c.slot >= mod_base && c.slot < mod_end)) {
+                    results.push_back(c);
+                }
+                // this slot becomes a target for the next level either way
+                if (level + 1 < cfg.max_level) {
+                    next_chains[h.address].push_back(c.offsets);
+                    ++next_count;
+                }
             }
         }
         if (next_chains.empty()) break;

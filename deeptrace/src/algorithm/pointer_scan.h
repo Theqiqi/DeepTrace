@@ -41,7 +41,11 @@ std::vector<PointerHit> scan_pointers_to(const uint8_t* data, size_t len,
 // level, find every unaligned qword whose value points within +/-max_offset
 // of ANY candidate. Returns the absolute slot address and the delta to the
 // matched candidate (delta = matched - value). A value may match multiple
-// candidates; the first (lowest) matched candidate is used.
+// candidates; the first (lowest) matched candidate is used and only ONE hit
+// is produced for that slot, so when max_offset spans several targets the
+// slot may be attributed to the wrong target. Chains are therefore
+// candidates: `pointer_map_rescan` re-verifies them against the live value
+// address to intersect away such coincidences.
 std::vector<PointerHit> scan_pointers_to_any(const uint8_t* data, size_t len,
                                              uintptr_t base_addr,
                                              const std::vector<uintptr_t>& targets,
