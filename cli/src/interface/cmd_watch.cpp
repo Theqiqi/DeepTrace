@@ -20,9 +20,11 @@ int cmd_watch(const CommandRequest& req) {
     }
     if (req.action == "add") {
         std::string desc = req.args[0];
-        uintptr_t addr = internal::to_addr(req.args[1]);
+        uintptr_t addr = 0;
+        Result r = internal::resolve_addr(req.args[1], addr);
+        if (r != Result::Ok) return internal::report_error(r, req.args[1]);
         deeptrace::ValueType type = static_cast<deeptrace::ValueType>(internal::value_type_id(req.args[2]));
-        Result r = deeptrace::watch_add(desc, addr, type);
+        r = deeptrace::watch_add(desc, addr, type);
         if (r != Result::Ok) return internal::report_error(r, "");
         printer::print_message("OK");
         return 0;

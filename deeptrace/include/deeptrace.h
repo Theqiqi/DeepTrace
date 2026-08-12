@@ -108,6 +108,11 @@ Result script_free(const std::string& name);
 Result script_enable(const std::string& path);
 Result script_disable(const std::string& path);
 Result script_status(std::vector<ScriptInfo>& out);
+// Look up a script symbol's recorded address by name for the current session
+// (read-only; does not modify the per-PID record). NotFound if the symbol is
+// not registered, NotAttached without a session, InvalidArg for a bad name
+// or null out_addr.
+Result script_symbol(const std::string& name, uintptr_t* out_addr);
 
 // ---- hook --------------------------------------------------------------------------
 // Patch target to `jmp newmem` (5-byte E9 rel32), save original bytes. owner

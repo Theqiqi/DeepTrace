@@ -28,4 +28,9 @@ Result script_disable(const std::string& path);
 // List enabled scripts and their hooks/alloc symbols for the current process.
 Result script_status(std::vector<ScriptInfo>& out);
 
+// Look up a script symbol's recorded address by name for the current session
+// (read-only). NotFound if the symbol is not registered; NotAttached without
+// a session; InvalidArg for a bad name or null out_addr.
+Result script_symbol(const std::string& name, uintptr_t* out_addr);
+
 }  // namespace deeptrace

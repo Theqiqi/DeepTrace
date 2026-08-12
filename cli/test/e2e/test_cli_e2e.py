@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.5.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.6.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -135,8 +135,12 @@ def main():
     check("attach missing process exit 1", code == 1)
 
     # ---- invalid arguments ----
-    code, _, err = run_cli(["mem", "read", "zzz"])
+    # v2.6.0: symbol-shaped tokens (e.g. "zzz") now parse; only shapes that are
+    # neither a number nor an identifier are rejected at parse time.
+    code, _, err = run_cli(["mem", "read", "foo bar"])
     check("invalid address exit 2", code == 2)
+    code, _, err = run_cli(["mem", "read", "a-b"])
+    check("invalid address dash exit 2", code == 2)
 
     # ---- convert (standalone, no process needed) ----
     code, out, _ = run_cli(["convert", "byte", "255"])
@@ -549,6 +553,47 @@ def main():
         os.remove(os.path.join(BIN_DIR, "e2e_aptr.aa"))
         code, out, _ = run_cli(["ps", "list"])
         check("target alive after aptr ops", str(pid) in out, repr(out[:200]))
+
+        # ---- v2.6.0: symbol addressing (address args accept script symbols) ----
+        # After `script run` of the aptr fixture, `mem read slotA` resolves the
+        # symbol to its recorded address without a manual address lookup.
+        aptr_win = materialize_aa("script_aptr.aa", "aptr")
+        code, out, _ = run_cli(["-p", str(pid), "script", "run", aptr_win])
+        check("symbol addressing script run exit 0", code == 0)
+        # read by symbol name
+        code, out, _ = run_cli(["-p", str(pid), "mem", "read", "slotA", "8", "hex"])
+        check("symbol addressing mem read slotA",
+              "88 77 66 55 44 33 22 11" in out, repr(out))
+        code, out, _ = run_cli(["-p", str(pid), "mem", "read", "slotB", "8", "hex"])
+        check("symbol addressing mem read slotB",
+              "00 FF EE DD CC BB AA 99" in out, repr(out))
+        # readval by symbol
+        code, out, _ = run_cli(["-p", str(pid), "mem", "readval", "slotA", "qword"])
+        check("symbol addressing readval slotA", "0x1122334455667788" in out,
+              repr(out))
+        # watch add by symbol -> live value
+        code, _, _ = run_cli(["-p", str(pid), "watch", "clear"])
+        code, out, _ = run_cli(["-p", str(pid), "watch", "add", "aptr_sym", "slotA",
+                                "qword"])
+        check("symbol addressing watch add exit 0", code == 0)
+        code, out, _ = run_cli(["-p", str(pid), "watch", "list"])
+        check("symbol addressing watch list value", "0x1122334455667788" in out,
+              repr(out))
+        run_cli(["-p", str(pid), "watch", "remove", "0"])
+        # unknown symbol -> NotFound (business error, exit 1)
+        code, _, err = run_cli(["-p", str(pid), "mem", "read", "no_such_sym", "8"])
+        check("symbol addressing unknown symbol exit 1", code == 1)
+        check("symbol addressing unknown symbol msg", "NotFound" in err, repr(err))
+        code, _, err = run_cli(["-p", str(pid), "watch", "add", "d", "nosuch", "qword"])
+        check("symbol addressing watch unknown exit 1", code == 1)
+        # disable frees the slots by name; re-reading the symbol -> NotFound
+        code, _, _ = run_cli(["-p", str(pid), "script", "disable", aptr_win])
+        code, _, err = run_cli(["-p", str(pid), "mem", "read", "slotA", "8"])
+        check("symbol addressing after disable exit 1", code == 1)
+        os.remove(os.path.join(BIN_DIR, "e2e_aptr.aa"))
+        code, out, _ = run_cli(["ps", "list"])
+        check("target alive after symbol addressing", str(pid) in out,
+              repr(out[:200]))
 
         # ---- dll inject round trip (companion testdll.dll) ----
         # The path must be a Windows path: it is written into the target and

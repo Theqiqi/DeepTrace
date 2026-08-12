@@ -195,7 +195,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.5.0\n";
+    os << "deeptrace_cli v2.6.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";
@@ -203,6 +203,10 @@ std::string build_help_text() {
     os << "  -p, --pid <pid>    Target process ID\n";
     os << "  -h, --help         Show help\n";
     os << "  -v, --version      Show version\n";
+    os << "\n";
+    os << "Notes:\n";
+    os << "  <address> args accept a numeric address or a script symbol name\n";
+    os << "  (e.g. `mem read sunObjPtr` after `script run`; v2.6.0).\n";
 
     std::string cur_group;
     size_t max_usage = 0;

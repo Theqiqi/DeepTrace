@@ -39,6 +39,28 @@ TEST(Internal, ToAddr) {
     EXPECT_EQ(internal::to_addr("100"), 100ULL);
 }
 
+// v2.6.0 symbol addressing: resolve_addr keeps numeric tokens as addresses
+// (no octal trap) and defers symbol-shaped tokens to script_symbol. Without
+// a session, a symbol lookup fails with NotAttached (the target process owns
+// the per-PID symbol records).
+TEST(Internal, ResolveAddrNumericFirst) {
+    uintptr_t out = 0;
+    EXPECT_EQ(internal::resolve_addr("0x140001000", out), deeptrace::Result::Ok);
+    EXPECT_EQ(out, 0x140001000ULL);
+    EXPECT_EQ(internal::resolve_addr("4096", out), deeptrace::Result::Ok);
+    EXPECT_EQ(out, 4096ULL);
+    // leading-zero decimal must stay decimal (no strtoull base-0 octal trap)
+    EXPECT_EQ(internal::resolve_addr("010", out), deeptrace::Result::Ok);
+    EXPECT_EQ(out, 10ULL);
+}
+
+TEST(Internal, ResolveAddrSymbolNeedsSession) {
+    uintptr_t out = 0;
+    // symbol-shaped token: no attached session in unit tests -> NotAttached
+    EXPECT_EQ(internal::resolve_addr("sunObjPtr", out), deeptrace::Result::NotAttached);
+    EXPECT_EQ(internal::resolve_addr("slotA", out), deeptrace::Result::NotAttached);
+}
+
 TEST(Internal, HexBytes) {
     auto b = internal::hex_bytes("DEADBEEF");
     ASSERT_EQ(b.size(), 4u);

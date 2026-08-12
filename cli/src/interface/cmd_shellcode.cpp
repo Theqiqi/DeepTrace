@@ -55,11 +55,13 @@ int cmd_shellcode(const CommandRequest& req) {
         return 0;
     }
     if (req.action == "injectat") {
-        uintptr_t addr = internal::to_addr(req.args[0]);
+        uintptr_t addr = 0;
+        Result r = internal::resolve_addr(req.args[0], addr);
+        if (r != Result::Ok) return internal::report_error(r, req.args[0]);
         std::vector<uint8_t> bytes = internal::hex_bytes(req.args[1]);
         if (bytes.empty()) return internal::report_error(Result::InvalidArg, req.args[1]);
         deeptrace::InjectInfo info;
-        Result r = deeptrace::shellcode_inject_at(addr, bytes, info);
+        r = deeptrace::shellcode_inject_at(addr, bytes, info);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_inject(info);
         return 0;
@@ -91,16 +93,20 @@ int cmd_shellcode(const CommandRequest& req) {
         return 0;
     }
     if (req.action == "run") {
-        uintptr_t addr = internal::to_addr(req.args[0]);
+        uintptr_t addr = 0;
+        Result r = internal::resolve_addr(req.args[0], addr);
+        if (r != Result::Ok) return internal::report_error(r, req.args[0]);
         deeptrace::InjectInfo info;
-        Result r = deeptrace::shellcode_run(addr, info);
+        r = deeptrace::shellcode_run(addr, info);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_inject(info);
         return 0;
     }
     if (req.action == "free") {
-        uintptr_t addr = internal::to_addr(req.args[0]);
-        Result r = deeptrace::shellcode_free(addr);
+        uintptr_t addr = 0;
+        Result r = internal::resolve_addr(req.args[0], addr);
+        if (r != Result::Ok) return internal::report_error(r, req.args[0]);
+        r = deeptrace::shellcode_free(addr);
         if (r != Result::Ok) return internal::report_error(r, printer::format_address(addr));
         printer::print_message("OK");
         return 0;

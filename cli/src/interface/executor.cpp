@@ -40,6 +40,24 @@ uintptr_t to_addr(const std::string& s) {
     return static_cast<uintptr_t>(std::strtoull(s.c_str(), nullptr, 0));
 }
 
+deeptrace::Result resolve_addr(const std::string& s, uintptr_t& out) {
+    // v2.6.0 symbol addressing: numeric addresses keep working unchanged; a
+    // non-numeric identifier is resolved as a script symbol (requires the
+    // attached session, so callers must run inside an attached command).
+    //
+    // The parser guarantees the token is either a valid address (decimal or
+    // 0x-prefixed hex, first char a digit) or a valid symbol shape (first
+    // char a letter/underscore), so the first char disambiguates. Parse with
+    // an explicit base to avoid strtoull base-0 octal pitfalls (010 -> 8).
+    if (!s.empty() && s[0] >= '0' && s[0] <= '9') {
+        bool hex = s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
+        const char* p = s.c_str() + (hex ? 2 : 0);
+        out = static_cast<uintptr_t>(std::strtoull(p, nullptr, hex ? 16 : 10));
+        return deeptrace::Result::Ok;
+    }
+    return deeptrace::script_symbol(s, &out);
+}
+
 std::vector<uint8_t> hex_bytes(const std::string& s) {
     size_t start = 0;
     if (s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) start = 2;

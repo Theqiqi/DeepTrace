@@ -6,7 +6,8 @@
 > (汇编代码注入并执行,分阶段操作);v2.3.0 新增 script 组(AA 风格脚本引擎
 > run/disable/status,幂等);v2.4.0 新增 `script check`(只检查不执行);
 > v2.5.0 新增脚本符号引用(人造指针:mov [sym],reg / mov reg,sym,任意指令);
-> 版本号同步 v2.5.0;既有用例全量回归。
+> v2.6.0 新增符号寻址(地址参数接受脚本符号名,如 `mem read sunObjPtr`,
+> 配合人造指针外部读值);版本号同步 v2.6.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -15,10 +16,10 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.5.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.6.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
-| 非法参数 | - | `deeptrace_cli mem read zzz` | Error | 2 |
+| 非法参数(v2.6.0:符号形状现在合法,真非法形状仍拒绝) | - | `deeptrace_cli mem read "foo bar"` / `mem read a-b` | Error | 2 |
 
 ## 2. convert(新增,v1.4.1,无需目标进程)
 
@@ -153,6 +154,26 @@ slotA=moffs64、slotB=RIP 相对两种编码)。
 
 > 集成测试另覆盖:真实进程上双编码写入值读回验证、owner 字段保留(status 归属
 > 脚本而非 (unowned))。
+
+## 4.9 符号寻址:地址参数接受脚本符号(v2.6.0,新增)
+
+前置:启动 deeptrace_target.exe,解析 PID。`script run` 执行 script_aptr.aa
+后,地址参数直接写符号名(slotA/slotB),CLI 解析为记录地址。
+
+| 用例 | 操作 | 预期输出 | 退出码 |
+|------|------|----------|--------|
+| 按符号 mem read | `-p <pid> mem read slotA 8 hex` | 88 77 66 55 44 33 22 11 | 0 |
+| 按符号 mem read(slotB) | `-p <pid> mem read slotB 8 hex` | 00 FF EE DD CC BB AA 99 | 0 |
+| 按符号 readval | `-p <pid> mem readval slotA qword` | 0x1122334455667788 | 0 |
+| 按符号 watch add | `-p <pid> watch add aptr_sym slotA qword` → `watch list` | 0x1122334455667788 | 0 |
+| 未知符号(业务错误) | `-p <pid> mem read no_such_sym 8` | Error 含 NotFound | 1 |
+| watch 未知符号 | `-p <pid> watch add d nosuch qword` | Error 含 NotFound | 1 |
+| disable 后符号失效 | `script disable` 后 `mem read slotA 8` | Error 含 NotFound | 1 |
+| 副作用:符号寻址后目标存活 | 上例后 `ps list` | 目标 pid 仍在 | 0 |
+
+> 数字地址行为完全不变(数字优先);符号形状(`[A-Za-z_][A-Za-z0-9_]*`)通过解析,
+> 存在性由接口层 attach 后查记录决定。集成测试另覆盖 script_symbol 静态库
+> API(alloc 后查到同一地址、free 后 NotFound)。
 
 ## 5. 既有回归(引用)
 

@@ -42,6 +42,11 @@ uint64_t to_u64(const std::string& s);
 uint32_t to_u32(const std::string& s);
 int to_int(const std::string& s);
 uintptr_t to_addr(const std::string& s);
+// Resolve an address argument: numeric addresses parse as before; otherwise
+// the token is looked up as a script symbol (v2.6.0 symbol addressing, e.g.
+// `mem read sunObjPtr`). Requires an attached session for symbol lookup.
+// Returns Ok with out set, or a deeptrace Result (NotFound/NotAttached/...).
+deeptrace::Result resolve_addr(const std::string& s, uintptr_t& out);
 std::vector<uint8_t> hex_bytes(const std::string& s);
 
 // Convert an already-validated typed value (convert-value + convert-type) to

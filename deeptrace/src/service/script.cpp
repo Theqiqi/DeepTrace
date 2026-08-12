@@ -127,6 +127,21 @@ Result script_disable(const std::string& path) {
                                                        : Result::Error;
 }
 
+Result script_symbol(const std::string& name, uintptr_t* out_addr) {
+    auto& s = internal::session();
+    if (!s.handle) return Result::NotAttached;
+    if (!valid_symbol_name(name) || !out_addr) return Result::InvalidArg;
+
+    auto recs = internal::load_script_symbols(s.pid);
+    for (const auto& r : recs) {
+        if (r.name == name) {
+            *out_addr = r.address;
+            return Result::Ok;
+        }
+    }
+    return Result::NotFound;
+}
+
 Result script_status(std::vector<ScriptInfo>& out) {
     out.clear();
     auto& s = internal::session();

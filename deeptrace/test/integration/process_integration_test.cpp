@@ -504,6 +504,54 @@ TEST_F(DeeptraceIntegration, ScriptAllocFree) {
     EXPECT_EQ(deeptrace::script_alloc("ok", 0, "", &addr), deeptrace::Result::InvalidArg);
 }
 
+TEST_F(DeeptraceIntegration, ScriptSymbolLookup) {
+    // v2.6.0: script_symbol resolves a registered symbol to its recorded address.
+    uintptr_t addr = 0;
+    ASSERT_EQ(deeptrace::script_alloc("symlookup", 64, "", &addr), deeptrace::Result::Ok);
+    ASSERT_NE(addr, 0u);
+
+    uintptr_t found = 0;
+    EXPECT_EQ(deeptrace::script_symbol("symlookup", &found), deeptrace::Result::Ok);
+    EXPECT_EQ(found, addr);
+
+    // unregistered symbol -> NotFound
+    EXPECT_EQ(deeptrace::script_symbol("no_such_sym", &found), deeptrace::Result::NotFound);
+
+    // invalid args
+    EXPECT_EQ(deeptrace::script_symbol("", &found), deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_symbol("bad name!", &found), deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_symbol("symlookup", nullptr), deeptrace::Result::InvalidArg);
+
+    // after free the symbol is gone -> NotFound
+    EXPECT_EQ(deeptrace::script_free("symlookup"), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_symbol("symlookup", &found), deeptrace::Result::NotFound);
+}
+
+namespace {
+// Case-insensitive substring match. Capstone renders absolute targets in
+// lowercase hex (e.g. "jmp 0x7ff6..."), so comparing against uppercase hex
+// is flaky whenever the address contains letters A-F.
+bool text_contains_ci(const std::string& haystack, const std::string& needle) {
+    if (needle.empty()) return true;
+    auto lower = [](char c) -> char {
+        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    };
+    for (size_t i = 0; i + needle.size() <= haystack.size(); ++i) {
+        size_t j = 0;
+        for (; j < needle.size(); ++j) {
+            if (lower(haystack[i + j]) != lower(needle[j])) break;
+        }
+        if (j == needle.size()) return true;
+    }
+    return false;
+}
+std::string hex_upper(uintptr_t v) {
+    char buf[32];
+    snprintf(buf, sizeof buf, "%llX", (unsigned long long)v);
+    return buf;
+}
+}  // namespace
+
 TEST_F(DeeptraceIntegration, AsmAssembleLabels) {
     // label defined and referenced within one stream. Write the assembled code
     // into real remote memory and disassemble it to verify the jump target
@@ -531,12 +579,9 @@ TEST_F(DeeptraceIntegration, AsmAssembleLabels) {
     EXPECT_EQ(deeptrace::disasm_at(base, 3, insns), deeptrace::Result::Ok);
     ASSERT_EQ(insns.size(), 3u);
     EXPECT_EQ(insns[0].text, "xor eax, eax");
-    // jump target must resolve to the label address (base)
-    EXPECT_TRUE(insns[1].text.find("0x" + [&]() -> std::string {
-        char buf[32];
-        snprintf(buf, sizeof buf, "%llX", (unsigned long long)base);
-        return buf;
-    }()) != std::string::npos);
+    // jump target must resolve to the label address (base); compare hex
+    // case-insensitively (Capstone renders lowercase)
+    EXPECT_TRUE(text_contains_ci(insns[1].text, "0x" + hex_upper(base)));
     EXPECT_EQ(insns[2].text, "nop");
 
     EXPECT_EQ(deeptrace::script_free("labtest"), deeptrace::Result::Ok);
@@ -564,9 +609,7 @@ TEST_F(DeeptraceIntegration, AsmAssembleLabelsExternalSymbol) {
     std::vector<deeptrace::Instruction> insns;
     EXPECT_EQ(deeptrace::disasm_at(base, 1, insns), deeptrace::Result::Ok);
     ASSERT_EQ(insns.size(), 1u);
-    char buf[32];
-    snprintf(buf, sizeof buf, "%llX", (unsigned long long)target);
-    EXPECT_TRUE(insns[0].text.find(buf) != std::string::npos);
+    EXPECT_TRUE(text_contains_ci(insns[0].text, hex_upper(target)));
 
     EXPECT_EQ(deeptrace::script_free("exttest"), deeptrace::Result::Ok);
 }

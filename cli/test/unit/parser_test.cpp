@@ -131,11 +131,37 @@ TEST(Parser, MissingRequiredArg) {
     EXPECT_NE(r.error.find("missing argument: address"), std::string::npos);
 }
 
+// v2.6.0: address args accept a numeric address OR a script symbol name
+// (symbol addressing). Symbol-shaped tokens now parse; only tokens that are
+// neither a valid number nor a valid symbol shape are rejected at parse time.
 TEST(Parser, InvalidAddress) {
-    auto r = parse({"deeptrace_cli", "mem", "read", "not_an_addr"});
-    EXPECT_FALSE(r.ok);
-    EXPECT_EQ(r.exit_code, 2);
-    EXPECT_NE(r.error.find("invalid address"), std::string::npos);
+    auto bad = parse({"deeptrace_cli", "mem", "read", "foo bar"});  // space
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
+    EXPECT_NE(bad.error.find("invalid address"), std::string::npos);
+    auto bad2 = parse({"deeptrace_cli", "mem", "read", "a-b"});  // '-' not identifier
+    EXPECT_FALSE(bad2.ok);
+    EXPECT_EQ(bad2.exit_code, 2);
+    auto bad3 = parse({"deeptrace_cli", "mem", "read", "0xZZ"});  // neither number nor shape
+    EXPECT_FALSE(bad3.ok);
+    EXPECT_EQ(bad3.exit_code, 2);
+}
+
+TEST(Parser, AddressAcceptsSymbolShape) {
+    // v2.6.0 symbol addressing: symbol-shaped tokens pass the parser; actual
+    // existence is resolved later by the interface layer (requires attach).
+    auto r = parse({"deeptrace_cli", "mem", "read", "sunObjPtr"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[0], "sunObjPtr");
+    auto w = parse({"deeptrace_cli", "watch", "add", "desc", "slotA", "qword"});
+    ASSERT_TRUE(w.ok);
+    EXPECT_EQ(w.req.args[1], "slotA");
+    auto d = parse({"deeptrace_cli", "disasm", "at", "code_newmem"});
+    ASSERT_TRUE(d.ok);
+    EXPECT_EQ(d.req.args[0], "code_newmem");
+    auto s = parse({"deeptrace_cli", "shellcode", "run", "slotB"});
+    ASSERT_TRUE(s.ok);
+    EXPECT_EQ(s.req.args[0], "slotB");
 }
 
 TEST(Parser, AddressHexAndDec) {
@@ -504,8 +530,9 @@ TEST(Parser, ShellcodeAllocRunFreeExec) {
     auto exec = parse({"deeptrace_cli", "shellcode", "exec", "code.bin"});
     ASSERT_TRUE(exec.ok);
     EXPECT_EQ(exec.req.args[0], "code.bin");
-    // address validation: must be a valid address
-    auto bad = parse({"deeptrace_cli", "shellcode", "run", "not_an_addr"});
+    // address validation: must be a valid address or symbol shape (v2.6.0);
+    // a shape with a space is rejected at parse time
+    auto bad = parse({"deeptrace_cli", "shellcode", "run", "foo bar"});
     EXPECT_FALSE(bad.ok);
     EXPECT_EQ(bad.exit_code, 2);
 }
@@ -532,7 +559,7 @@ TEST(Parser, HelpTextListsNewCommands) {
     EXPECT_NE(help.find("script run"), std::string::npos);
     EXPECT_NE(help.find("script disable"), std::string::npos);
     EXPECT_NE(help.find("script status"), std::string::npos);
-    EXPECT_NE(help.find("deeptrace_cli v2.5.0"), std::string::npos);
+    EXPECT_NE(help.find("deeptrace_cli v2.6.0"), std::string::npos);
 }
 
 TEST(Parser, ScriptCheckParses) {

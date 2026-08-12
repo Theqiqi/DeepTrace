@@ -847,6 +847,54 @@ TEST(CliChain, ScriptArtificialPointerRoundTrip) {
     EXPECT_TRUE(target_alive());
 }
 
+// v2.6.0 symbol addressing: after `script run`, address args accept the
+// script symbol name directly (`mem read slotA 8`), resolved to the recorded
+// address. Read back the value the spawned thread wrote; then the same symbol
+// feeds watch add, and an unknown symbol fails with NotFound (exit 1).
+TEST(CliChain, SymbolAddressingMemReadWatchAdd) {
+    std::string script = materialize_aa("script_aptr.aa", "", 40);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    // mem read by symbol name: slotA holds 0x1122334455667788 (written by the
+    // thread). Symbol resolution happens inside the command, no manual address.
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "read", "slotA", "8",
+                       "hex"}),
+              0);
+    // readval by symbol
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "readval", "slotB",
+                       "qword"}),
+              0);
+    // watch add by symbol, then list shows the live value
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "watch", "clear"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "watch", "add", "aptr", "slotA",
+                       "qword"}),
+              0);
+    std::vector<deeptrace::WatchEntry> entries;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::watch_list(entries), deeptrace::Result::Ok);
+    deeptrace::detach();
+    bool found = false;
+    for (const auto& e : entries) {
+        if (e.description == "aptr") {
+            found = true;
+            EXPECT_EQ(e.value, "0x1122334455667788");
+        }
+    }
+    EXPECT_TRUE(found) << "watch entry by symbol missing";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "watch", "remove", "0"}), 0);
+
+    // unknown symbol -> NotFound (business error, exit 1)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "read", "no_such_sym",
+                       "8"}),
+              1);
+
+    // cleanup: disable frees the slots and code buffer by name
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
 // script check accepts the artificial-pointer script (no attach).
 TEST(CliChain, ScriptCheckArtificialPointer) {
     std::string script = materialize_aa("script_aptr.aa", "", 31);

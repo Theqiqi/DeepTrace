@@ -55,6 +55,26 @@ bool valid_address(const std::string& s) {
     return v > 0 && v <= 0x7FFFFFFFFFFFULL;
 }
 
+// Address arguments accept either a numeric address or a script symbol name
+// (v2.6.0 symbol addressing: `mem read sunObjPtr`). Symbol shape = non-empty
+// ASCII identifier ([A-Za-z_][A-Za-z0-9_]*), matching script alloc names;
+// pure digits/0x-prefixed hex are still parsed as addresses first. Whether
+// the symbol actually exists is resolved later by the interface layer
+// (requires attach); here we only validate the shape.
+bool valid_symbol_shape(const std::string& s) {
+    if (s.empty()) return false;
+    char c0 = s[0];
+    if (!((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z') || c0 == '_'))
+        return false;
+    for (unsigned char c : s) {
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool valid_number(const std::string& s) {
     uint64_t v;
     return parse_uint(s, v);
@@ -194,7 +214,8 @@ bool valid_convert_value(const std::string& v, const std::string& type) {
 
 bool valid_param(const ParamSpec& p, const std::string& v) {
     const std::string& t = p.type;
-    if (t == "address") return valid_address(v);
+    if (t == "address")
+        return valid_address(v) || valid_symbol_shape(v);  // v2.6.0: number or symbol
     if (t == "number") return valid_number(v);
     if (t == "pid" || t == "tid") return valid_pid_tid(v);
     if (t == "string") return valid_string(v);
