@@ -204,7 +204,9 @@ int cmd_mem_batch(const CommandRequest& req) {
             if (it.type == "bytes") {
                 data = bytes_value(it.value);
             } else if (!internal::typed_bytes(it.value, it.type, data)) {
-                fail(Result::InvalidArg, it.name, it.name + " value", 0);
+                // defensive: batch.cpp already validates values in write mode;
+                // report at the resolved address for a consistent error row
+                fail(Result::InvalidArg, it.name, it.name + " value", addr);
                 continue;
             }
             size_t n = 0;

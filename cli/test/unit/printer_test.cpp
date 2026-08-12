@@ -170,6 +170,18 @@ TEST(Printer, BatchRowsCsvQuotesCommaAndQuote) {
               std::string::npos);
 }
 
+TEST(Printer, BatchRowsCsvQuotesEmbeddedNewline) {
+    // a value containing a newline must be quoted and kept on one CSV row
+    std::vector<BatchRow> rows;
+    BatchRow r;
+    r.name = "n";
+    r.address = 0x4000;
+    r.value = "a\nb";
+    rows.push_back(r);
+    std::string s = printer::batch_rows_text(rows, "csv");
+    EXPECT_NE(s.find("n,0x0000000000004000,\"a\nb\",ok,\n"), std::string::npos);
+}
+
 TEST(Printer, BatchRowsJsonShape) {
     std::string s = printer::batch_rows_text(sample_rows(), "json");
     EXPECT_EQ(s.front(), '[');

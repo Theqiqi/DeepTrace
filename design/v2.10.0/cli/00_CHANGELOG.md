@@ -21,3 +21,17 @@
 - JSON 为对象数组 `[{"name":..,"address":..,"value":..,"status":..,"error":..}]`,字符串按 JSON 转义。
 - 失败项:status=error,value 空,error 消息独立字段;表格格式失败行 value 显示 `error`(与 v2.9.0 一致)。
 - 版本号:功能位 +1 → v2.10.0。
+
+## 实现期决策(编码/测试后补充)
+
+- `--format`/`--out` 由解析器按参数槽位消费(仿 convert 的 out-flag 机制):
+  `--format` 单独 format-flag 类型,值非法/缺值 → 退出 2。
+- 表格输出改用 batch_rows_text("table") 序列化,行格式与 v2.9.0 逐字节一致
+  (%-24s %-18s %s),成功行不变;导出不影响默认行为。
+- JSON 输出为紧凑单行数组(每行一项);address 用 0x 十六进制字符串(避免
+  JSON 数字 2^53 精度丢失);CSV 的 error 列含逗号时也按 RFC4180 引号包裹。
+- 导出文件内失败项不丢信息(status=error + error 消息),退出码仍反映
+  是否存在失败条目。
+- 审查修复:写模式 value 校验失败行 address 用已解析地址(非 0);JSON
+  转义补 0x7F;CSV 换行字段单测覆盖 csv_field 换行分支。
+- 验证:单测 183(+10)、集成 47、e2e 241(+11)全绿(Debug/Release)。

@@ -274,7 +274,7 @@ std::string json_escape(const std::string& s) {
             case '\r': out += "\\r"; break;
             case '\t': out += "\\t"; break;
             default:
-                if (c < 0x20) {
+                if (c < 0x20 || c == 0x7F) {
                     char buf[8];
                     std::snprintf(buf, sizeof buf, "\\u%04X", c);
                     out += buf;
