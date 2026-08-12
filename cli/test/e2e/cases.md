@@ -17,7 +17,9 @@
 > v2.11.0 ps attach 输出实际权限摘要(语义化名列表,read|write|...);
 > v2.12.0 新增 resolve ptrscan(指针链反向搜索:JSON 配置 + 模块锚定 +
 > 快照/重扫,链格式兼容 mem batch 定位器;堆内链输出裸地址 + 带符号偏移);
-> 版本号同步 v2.12.0;既有用例全量回归。
+> v2.13.0 新增转换层闭环:bin2hex(.bin → hex,多格式)与 disasm file
+> (本地 .bin 反汇编,离线分析 shellcode;asm→bin→asm 往返);
+> 版本号同步 v2.13.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -26,7 +28,7 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.12.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.13.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
 | attach 权限透出(v2.11.0) | 目标已启动 | `deeptrace_cli ps attach <pid>` | OK (permissions: read\|write\|...) 含 read/write | 0 |
@@ -88,6 +90,17 @@
 | 重扫保留 | 改 psym 指向 g_int → `resolve ptrscan`(target=g_int,rescan.target=g_int) | 输出含 psym 链 + "after rescan" | 0 |
 | 重扫交集掉 | `resolve ptrscan`(target=g_int,rescan.target=g_int64) | No chains found | 0 |
 | 配置错误 | `resolve ptrscan`(version=9) | stderr 含 invalid version | 2 |
+
+## 4.13 bin2hex / disasm file(转换层闭环,v2.13.0)
+
+| 用例 | 操作 | 预期输出 | 退出码 |
+|------|------|----------|--------|
+| bin2hex 默认 hex | `bin2hex payload.bin` | stdout 含 48 8B 05 ... C3(空格分隔) | 0 |
+| bin2hex c-array | `bin2hex payload.bin c-array` | unsigned char code[] = { 0x48, ... } | 0 |
+| disasm file | `disasm file payload.bin` | stdout 含 mov rax / jmp(基址从 0) | 0 |
+| bin2hex 非法格式 | `bin2hex payload.bin yaml` | Usage 错误 | 2 |
+| bin2hex 文件缺失 | `bin2hex missing.bin` | stderr 含 cannot read file | 2 |
+| hex2bin→disasm file 往返 | `hex2bin 9090C3 rt.bin` → `disasm file rt.bin` | stdout 含 nop / ret | 0 |
 
 ## 4.5 asm file / hex2bin / shellcode 分阶段(v2.2.0,新增)
 

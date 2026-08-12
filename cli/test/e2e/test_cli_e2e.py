@@ -124,7 +124,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.12.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.13.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -174,6 +174,36 @@ def main():
     code, _, err = run_cli(["convert", "dword"])
     check("convert missing value exit 2", code == 2)
     check("convert missing value msg", "missing argument: value" in err, repr(err))
+
+    # ---- v2.13.0: conversion layer closure (bin2hex + disasm file) ----
+    payload = os.path.join(BIN_DIR, "e2e_payload.bin")
+    with open(payload, "wb") as f:
+        f.write(bytes.fromhex("488B0500000000FF2500000000C3"))
+    code, out, _ = run_cli(["bin2hex", win_path(payload)])
+    check("bin2hex exit 0", code == 0, repr(out))
+    check("bin2hex hex bytes",
+          "48 8B 05 00 00 00 00 FF 25 00 00 00 00 C3" in out, repr(out))
+    code, out, _ = run_cli(["bin2hex", win_path(payload), "c-array"])
+    check("bin2hex c-array exit 0", code == 0, repr(out))
+    check("bin2hex c-array shape",
+          "unsigned char code[] = { 0x48, 0x8B, 0x05" in out, repr(out))
+    code, out, _ = run_cli(["disasm", "file", win_path(payload)])
+    check("disasm file exit 0", code == 0, repr(out))
+    check("disasm file mov rax", "mov rax" in out, repr(out))
+    check("disasm file jmp", "jmp" in out, repr(out))
+    code, _, _ = run_cli(["bin2hex", win_path(payload), "yaml"])
+    check("bin2hex bad format exit 2", code == 2)
+    code, _, err = run_cli(["bin2hex", win_path(payload) + ".nope"])
+    check("bin2hex missing file exit 2", code == 2)
+    check("bin2hex missing file msg", "cannot read file" in err, repr(err))
+    # round-trip: hex2bin -> disasm file (nop nop ret survives the file)
+    rt = os.path.join(BIN_DIR, "e2e_rt.bin")
+    code, out, _ = run_cli(["hex2bin", "9090C3", win_path(rt)])  # compact hex
+    check("hex2bin roundtrip exit 0", code == 0, repr(out))
+    code, out, _ = run_cli(["disasm", "file", win_path(rt)])
+    check("disasm file roundtrip", "nop" in out and "ret" in out, repr(out))
+    os.remove(payload)
+    os.remove(rt)
 
     # ---- target ----
     proc, lines = start_target()

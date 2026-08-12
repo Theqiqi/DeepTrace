@@ -101,6 +101,9 @@ const std::vector<CommandSpec>& command_table() {
             {req("address", "address"), opt("count", "number", "10")}),
         cmd("disasm", "range", "disasm range <start> <end>", "Disassemble memory range",
             {req("start", "address"), req("end", "address")}),
+        cmd("disasm", "file", "disasm file <file.bin> [count]",
+            "Disassemble a local binary file (no attach needed)",
+            {req("file", "script-path"), opt("count", "number", "100")}),
 
         // ---- resolve ----
         cmd("resolve", "base", "resolve base <module>", "Get base address of module",
@@ -169,6 +172,12 @@ const std::vector<CommandSpec>& command_table() {
             "Write hex bytes to a raw binary file",
             {req("hex", "hex-bytes"), req("output", "string")}),
 
+        // ---- bin2hex (standalone command, no sub-action; v2.13.0) ----
+        cmd("bin2hex", "", "bin2hex <file.bin> [format]",
+            "Print a raw binary file as hex bytes "
+            "(format: hex|dec|bin|ascii|c-array)",
+            {req("file", "script-path"), opt("format", "bin2hex-format", "hex")}),
+
         // ---- script (AA-style script engine) ----
         cmd("script", "check", "script check <file>",
             "Check AA script syntax and assembly only (no attach, no execute)",
@@ -205,7 +214,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.12.0\n";
+    os << "deeptrace_cli v2.13.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

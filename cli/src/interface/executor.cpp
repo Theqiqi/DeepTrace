@@ -264,6 +264,7 @@ int execute(const CommandRequest& req) {
     else if (req.group == "shellcode") rc = cmd_shellcode(req);
     else if (req.group == "convert") rc = cmd_convert(req);
     else if (req.group == "hex2bin") rc = cmd_hex2bin(req);
+    else if (req.group == "bin2hex") rc = cmd_bin2hex(req);
     else if (req.group == "script") rc = cmd_script(req);
     else {
         printer::print_error("unknown command group: '" + req.group + "'");

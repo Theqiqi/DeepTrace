@@ -35,6 +35,21 @@ int cmd_disasm(const CommandRequest& req) {
         printer::print_instructions(insns);
         return 0;
     }
+    if (req.action == "file") {
+        // v2.13.0: disassemble a local binary file (no session needed).
+        std::vector<uint8_t> bytes;
+        if (!internal::read_binary_file(req.args[0], bytes)) {
+            printer::print_error("cannot read file: " + req.args[0]);
+            return 2;
+        }
+        uint32_t count = static_cast<uint32_t>(internal::to_u64(req.args[1]));
+        std::vector<deeptrace::Instruction> insns;
+        Result r = deeptrace::disasm_buffer(bytes.data(), bytes.size(), 0,
+                                            count, insns);
+        if (r != Result::Ok) return internal::report_error(r, req.args[0]);
+        printer::print_instructions(insns);
+        return 0;
+    }
     return internal::report_error(Result::InvalidArg, req.action);
 }
 

@@ -29,6 +29,7 @@ int cmd_asm(const CommandRequest& req);
 int cmd_shellcode(const CommandRequest& req);
 int cmd_convert(const CommandRequest& req);
 int cmd_hex2bin(const CommandRequest& req);
+int cmd_bin2hex(const CommandRequest& req);  // v2.13.0
 int cmd_script(const CommandRequest& req);  // AA-style script engine (run/disable/status)
 
 namespace internal {

@@ -177,6 +177,12 @@ bool valid_batch_format(const std::string& s) {
     return s == "table" || s == "csv" || s == "json";
 }
 
+// bin2hex output format (v2.13.0): printer::print_bytes_formatted names.
+bool valid_bin2hex_format(const std::string& s) {
+    return s == "hex" || s == "dec" || s == "bin" || s == "ascii" ||
+           s == "c-array";
+}
+
 // Value validity depends on its type; used as a cross-field check after all
 // params of `convert` are collected.
 bool valid_convert_value(const std::string& v, const std::string& type) {
@@ -236,6 +242,7 @@ bool valid_param(const ParamSpec& p, const std::string& v) {
     if (t == "hex-bytes") return valid_hex_bytes(v);
     if (t == "convert-type") return valid_convert_type(v);
     if (t == "batch-op") return valid_batch_op(v);
+    if (t == "bin2hex-format") return valid_bin2hex_format(v);
     if (t == "convert-value") return !v.empty();  // full check depends on type
     if (t == "exit-code") return valid_exit_code(v);
     if (t == "index") return valid_index(v);

@@ -270,6 +270,32 @@ TEST(CliChain, ResolvePtrscanConfigErrors) {
     std::remove(cfg);
 }
 
+// v2.13.0: conversion layer - `bin2hex` round-trip and `disasm file` local
+// disassembly through the full CLI chain (pure data, no target needed).
+TEST(CliChain, Bin2hexAndDisasmFile) {
+    const char* bin = "cli_v213_test.bin";
+    {
+        std::ofstream f(bin, std::ios::binary);
+        f.write("\x48\x8B\xC3\xC3", 4);  // mov rax, rbx ; ret
+    }
+    auto h = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "bin2hex", bin}), 0);
+    });
+    EXPECT_NE(h.find("48 8B C3"), std::string::npos) << "captured: " << h;
+
+    auto d = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "disasm", "file", bin}), 0);
+    });
+    EXPECT_NE(d.find("mov rax"), std::string::npos) << "captured: " << d;
+    EXPECT_NE(d.find("ret"), std::string::npos) << "captured: " << d;
+
+    // missing file -> usage error 2
+    EXPECT_EQ(run_cli({"deeptrace_cli", "bin2hex", "nope_v213.bin"}), 2);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "disasm", "file", "nope_v213.bin"}), 2);
+
+    std::remove(bin);
+}
+
 TEST(CliChain, AttachAndReadKnownInt) {
     // -p attaches in the executor; then mem read hits the real value.
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "ps", "info"}), 0);

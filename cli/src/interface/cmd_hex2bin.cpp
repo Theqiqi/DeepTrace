@@ -26,4 +26,21 @@ int cmd_hex2bin(const CommandRequest& req) {
     return 0;
 }
 
+// v2.13.0: hex2bin inverse - print a raw binary file as hex bytes (or other
+// formats). Output feeds back into `shellcode inject` / `hex2bin`.
+int cmd_bin2hex(const CommandRequest& req) {
+    std::vector<uint8_t> bytes;
+    if (!internal::read_binary_file(req.args[0], bytes)) {
+        printer::print_error("cannot read file: " + req.args[0]);
+        return 2;
+    }
+    if (bytes.empty()) {
+        printer::print_error("empty file: " + req.args[0]);
+        return 2;
+    }
+    std::string format = req.args[1].empty() ? "hex" : req.args[1];
+    printer::print_bytes_formatted(bytes, format);
+    return 0;
+}
+
 }  // namespace deeptrace_cli

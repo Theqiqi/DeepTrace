@@ -589,7 +589,23 @@ TEST(Parser, HelpTextListsNewCommands) {
     EXPECT_NE(help.find("mem batch"), std::string::npos);
     EXPECT_NE(help.find("--format table|csv|json"), std::string::npos);
     EXPECT_NE(help.find("resolve ptrscan"), std::string::npos);
-    EXPECT_NE(help.find("deeptrace_cli v2.12.0"), std::string::npos);
+    EXPECT_NE(help.find("disasm file"), std::string::npos);
+    EXPECT_NE(help.find("bin2hex"), std::string::npos);
+    EXPECT_NE(help.find("deeptrace_cli v2.13.0"), std::string::npos);
+}
+
+TEST(Parser, Bin2hexFormatValidated) {
+    // valid formats parse fine
+    auto ok = parse({"deeptrace_cli", "bin2hex", "payload.bin"});
+    ASSERT_TRUE(ok.ok);
+    EXPECT_EQ(ok.req.args[1], "hex");  // default format slot
+    auto c = parse({"deeptrace_cli", "bin2hex", "payload.bin", "c-array"});
+    ASSERT_TRUE(c.ok);
+    EXPECT_EQ(c.req.args[1], "c-array");
+    // unknown format -> usage error
+    auto bad = parse({"deeptrace_cli", "bin2hex", "payload.bin", "yaml"});
+    ASSERT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
 }
 
 TEST(Parser, BatchFormatFlagDefaultAndSet) {

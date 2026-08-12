@@ -38,7 +38,7 @@ void print_help(const std::string& text) {
 }
 
 void print_version() {
-    std::printf("deeptrace_cli v2.12.0\n");
+    std::printf("deeptrace_cli v2.13.0\n");
 }
 
 std::string to_ascii(const std::wstring& s) {
@@ -254,6 +254,18 @@ void print_bytes_formatted(const std::vector<uint8_t>& bytes, const std::string&
             std::printf("%c", (c >= 0x20 && c < 0x7F) ? static_cast<char>(c) : '.');
         }
         std::printf("\n");
+        return;
+    }
+    if (format == "c-array") {
+        // same shape as `asm assemble --c-array` (v2.13.0)
+        std::string out;
+        for (size_t i = 0; i < bytes.size(); ++i) {
+            char b[16];
+            std::snprintf(b, sizeof b, "0x%02X, ", bytes[i]);
+            out += b;
+        }
+        if (!out.empty()) out.resize(out.size() - 2);
+        std::printf("unsigned char code[] = { %s };\n", out.c_str());
         return;
     }
     // hex

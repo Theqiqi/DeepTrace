@@ -135,7 +135,14 @@ TEST(Printer, PrintMessage) {
 
 TEST(Printer, Version) {
     auto s = capture([&] { printer::print_version(); });
-    EXPECT_EQ(s, "deeptrace_cli v2.12.0\n");
+    EXPECT_EQ(s, "deeptrace_cli v2.13.0\n");
+}
+
+// v2.13.0: bin2hex c-array output (same shape as `asm assemble --c-array`).
+TEST(Printer, BytesFormattedCArray) {
+    std::vector<uint8_t> bytes = {0x48, 0x8B, 0xC3};
+    auto s = capture([&] { printer::print_bytes_formatted(bytes, "c-array"); });
+    EXPECT_EQ(s, "unsigned char code[] = { 0x48, 0x8B, 0xC3 };\n");
 }
 
 // ---- v2.12.0: pointer-chain line formatting ----
