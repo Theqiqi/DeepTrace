@@ -635,8 +635,9 @@ TEST(CliChain, ShellcodeExecAsmSource) {
 
 // ---- v2.3.0: AA-style script engine (script run/disable/status) ----
 
-// Write AA script text to a temp file next to the test exe; returns the path.
-std::string write_aa_script(const std::string& content, int tag) {
+// Shared temp-write for AA scripts (used by materialize_aa and
+// write_aa_script); content is written as-is.
+std::string materialize_aa_content(const std::string& content, int tag) {
     char tmpname[L_tmpnam] = {0};
     std::tmpnam(tmpname);
     std::string path = std::string(tmpname) + "_" + std::to_string(tag) + ".aa";
@@ -644,6 +645,35 @@ std::string write_aa_script(const std::string& content, int tag) {
     f << content;
     f.close();
     return path;
+}
+
+// Load an AA script fixture next to the test exe (deployed by POST_BUILD),
+// substitute the %HOOK_OFF% placeholder with the runtime module offset, and
+// write the materialized script to a temp file. Returns the temp path.
+std::string materialize_aa(const char* fixture, const std::string& hook_off,
+                           int tag) {
+    char buf[MAX_PATH] = {0};
+    ::GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    std::string dir(buf);
+    size_t slash = dir.find_last_of("/\\");
+    if (slash != std::string::npos) dir = dir.substr(0, slash);
+    std::ifstream in(dir + "\\" + fixture);
+    EXPECT_TRUE(in.good()) << "fixture not deployed: " << fixture;
+    std::string content((std::istreambuf_iterator<char>(in)),
+                        std::istreambuf_iterator<char>());
+    size_t p = 0;
+    constexpr size_t kPlaceholderLen = 10;  // strlen("%HOOK_OFF%")
+    while ((p = content.find("%HOOK_OFF%", p)) != std::string::npos) {
+        content.replace(p, kPlaceholderLen, hook_off);
+        p += hook_off.size();
+    }
+    return materialize_aa_content(content, tag);
+}
+
+// Write ad-hoc AA script text to a temp file (for boundary scripts that do
+// not warrant a repository fixture); returns the path.
+std::string write_aa_script(const std::string& content, int tag) {
+    return materialize_aa_content(content, tag);
 }
 
 bool target_alive() {
@@ -658,16 +688,9 @@ bool target_alive() {
 // call-type script: alloc + createThread(ret) + dealloc. Run is idempotent
 // (already enabled), disable is idempotent (already disabled). Target must
 // survive the whole round trip.
+// call-type script from the real fixture cli/test/scripts/script_call.aa.
 TEST(CliChain, ScriptRunCreateThreadIdempotent) {
-    std::string script = write_aa_script(
-        "[ENABLE]\n"
-        "alloc(newmem, 64)\n"
-        "createThread(newmem)\n"
-        "newmem:\n"
-        "ret\n"
-        "[DISABLE]\n"
-        "dealloc(newmem)\n",
-        1);
+    std::string script = materialize_aa("script_call.aa", "", 1);
     std::string pid = std::to_string(g_target.pid);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
@@ -691,18 +714,9 @@ TEST(CliChain, ScriptRunHookRoundTrip) {
     char offbuf[32];
     std::snprintf(offbuf, sizeof offbuf, "%llX", (unsigned long long)offset);
 
-    std::string script = write_aa_script(
-        std::string("[ENABLE]\n") +
-        "alloc(newmem, 64)\n" +
-        "newmem:\n" +
-        "ret\n" +
-        "\"deeptrace_target.exe\"+0x" + offbuf + ":\n" +
-        "jmp newmem\n" +
-        "[DISABLE]\n" +
-        "\"deeptrace_target.exe\"+0x" + offbuf + ":\n" +
-        "db DE AD BE EF 48 8B 45 08 90 90 90 90 CC C3 90 90\n" +
-        "dealloc(newmem)\n",
-        2);
+    // hook-type script from the real fixture cli/test/scripts/script_hook.aa
+    // with %HOOK_OFF% substituted by the runtime module offset.
+    std::string script = materialize_aa("script_hook.aa", "0x" + std::string(offbuf), 2);
     std::string pid = std::to_string(g_target.pid);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "status"}), 0);
@@ -744,7 +758,8 @@ TEST(CliChain, ScriptRunUsageErrors) {
     std::string pid = std::to_string(g_target.pid);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", "no_such.aa"}), 2);
 
-    std::string bad = write_aa_script("[FOO]\n", 3);
+    // unknown block from the real fixture cli/test/scripts/script_bad.aa
+    std::string bad = materialize_aa("script_bad.aa", "", 3);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", bad}), 2);
     std::remove(bad.c_str());
 
@@ -769,15 +784,9 @@ TEST(CliChain, ScriptRequiresAttach) {
 
 // Mid-script failure (invalid instruction -> BadFormat) must roll back:
 // no enabled record remains and no symbol is left allocated.
+// Fixture: cli/test/scripts/script_badasm.aa.
 TEST(CliChain, ScriptRunRollbackOnFailure) {
-    std::string script = write_aa_script(
-        "[ENABLE]\n"
-        "alloc(newmem, 64)\n"
-        "newmem:\n"
-        "bogus rax, 1\n"
-        "[DISABLE]\n"
-        "dealloc(newmem)\n",
-        6);
+    std::string script = materialize_aa("script_badasm.aa", "", 6);
     std::string pid = std::to_string(g_target.pid);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 1);
     std::vector<deeptrace::ScriptInfo> list;

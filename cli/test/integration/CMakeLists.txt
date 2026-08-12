@@ -36,7 +36,19 @@ add_custom_command(TARGET deeptrace_cli_integration_test POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/debug_break_only.json"
         "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/debug_break_only.json"
-    COMMENT "Copying debug-run script fixtures"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/script_call.aa"
+        "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/script_call.aa"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/script_hook.aa"
+        "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/script_hook.aa"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/script_bad.aa"
+        "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/script_bad.aa"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/script_badasm.aa"
+        "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/script_badasm.aa"
+    COMMENT "Copying debug-run + AA script fixtures"
 )
 
 include(GoogleTest)

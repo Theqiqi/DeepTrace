@@ -94,18 +94,24 @@
 
 ## 4.6 script 组:AA 风格脚本引擎(v2.3.0,新增)
 
-前置:启动 deeptrace_target.exe,解析 PID。临时 .aa 脚本写入 BIN_DIR(Windows
-可读路径),测试后清理。
+前置:启动 deeptrace_target.exe,解析 PID。脚本样例为仓库真实文件
+`cli/test/scripts/script_call.aa`(call 型 alloc+createThread+ret)、
+`script_hook.aa`(hook 型,"模块"+偏移改写,`%HOOK_OFF%` 运行时替换)、
+`script_bad.aa`(语法错误负例)、`script_badasm.aa`(汇编失败回滚负例);
+测试读取后写入临时副本(BIN_DIR,Windows 可读路径)执行,测试后清理。
 
 | 用例 | 操作 | 预期输出 | 退出码 |
 |------|------|----------|--------|
-| run 执行 ENABLE(call 型) | 写 `alloc+createThread+ret` 脚本 → `-p <pid> script run <aa>` | stdout 含 alloc newmem / createThread | 0 |
+| run 执行 ENABLE(call 型) | 用 `script_call.aa` → `-p <pid> script run <aa>` | stdout 含 alloc newmem / createThread | 0 |
 | run 幂等(重复) | 再次 `script run <aa>` | stdout 含 already enabled | 0 |
 | status 列出启用脚本 | `-p <pid> script status` | stdout 含脚本文件名 + enabled | 0 |
 | disable 执行 DISABLE | `-p <pid> script disable <aa>` | stdout 含 dealloc newmem + OK | 0 |
 | disable 幂等(重复) | 再次 `script disable <aa>` | stdout 含 already disabled | 0 |
-| run 脚本语法错误 | 写 `[FOO]` → `script run` | stderr 含 unknown block | 2 |
+| run 脚本语法错误 | 用 `script_bad.aa`(`[FOO]`)→ `script run` | stderr 含 unknown block | 2 |
 | 副作用:脚本往返后目标存活 | 上例后 `ps list` | 目标 pid 仍在 | 0 |
+
+> 集成测试另覆盖:`script_hook.aa` hook 改写/恢复字节往返、`script_badasm.aa`
+> 中途失败回滚(无残留记录/符号)、无 -p 时 NotAttached 退出 1。
 
 ## 5. 既有回归(引用)
 

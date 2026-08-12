@@ -1,0 +1,10 @@
+// Mid-script assembly failure: 'bogus rax, 1' is not an instruction, so the
+// run must fail (BadFormat) and roll back the already-allocated memory.
+[ENABLE]
+alloc(newmem, 64)
+
+newmem:
+    bogus rax, 1
+
+[DISABLE]
+dealloc(newmem)

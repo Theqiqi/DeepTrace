@@ -421,16 +421,20 @@ def main():
         os.remove(os.path.join(BIN_DIR, "e2e_bad.json"))
 
         # ---- v2.3.0: AA-style script engine (script run/disable/status) ----
-        script_aa = os.path.join(BIN_DIR, "e2e_script.aa")
-        with open(script_aa, "w") as f:
-            f.write("[ENABLE]\n"
-                    "alloc(newmem, 64)\n"
-                    "createThread(newmem)\n"
-                    "newmem:\n"
-                    "ret\n"
-                    "[DISABLE]\n"
-                    "dealloc(newmem)\n")
-        script_aa_win = win_path(script_aa)
+        # Real fixtures under cli/test/scripts/ (script_call.aa / script_bad.aa);
+        # copied to a temp file next to the CLI (Windows-readable path).
+        SCRIPTS_DIR = os.path.join(PROJECT_ROOT, "cli", "test", "scripts")
+
+        def materialize_aa(fixture, tag, hook_off=""):
+            with open(os.path.join(SCRIPTS_DIR, fixture)) as f:
+                content = f.read()
+            content = content.replace("%HOOK_OFF%", hook_off)
+            tmp = os.path.join(BIN_DIR, f"e2e_{tag}.aa")
+            with open(tmp, "w") as f:
+                f.write(content)
+            return win_path(tmp)
+
+        script_aa_win = materialize_aa("script_call.aa", "call")
         code, out, _ = run_cli(["-p", str(pid), "script", "run", script_aa_win])
         check("script run exit 0", code == 0)
         check("script run alloc summary", "alloc newmem" in out, repr(out))
@@ -440,7 +444,7 @@ def main():
         check("script run already enabled", "already enabled" in out, repr(out))
         code, out, _ = run_cli(["-p", str(pid), "script", "status"])
         check("script status exit 0", code == 0)
-        check("script status lists script", "e2e_script.aa" in out, repr(out))
+        check("script status lists script", "e2e_call.aa" in out, repr(out))
         code, out, _ = run_cli(["-p", str(pid), "script", "disable", script_aa_win])
         check("script disable exit 0", code == 0)
         check("script disable dealloc", "dealloc newmem" in out, repr(out))
@@ -448,13 +452,13 @@ def main():
         code, out, _ = run_cli(["-p", str(pid), "script", "disable", script_aa_win])
         check("script disable idempotent exit 0", code == 0)
         check("script disable already disabled", "already disabled" in out, repr(out))
-        # parse error -> exit 2
-        with open(script_aa, "w") as f:
-            f.write("[FOO]\n")
-        code, _, err = run_cli(["-p", str(pid), "script", "run", script_aa_win])
+        # parse error -> exit 2 (real fixture script_bad.aa)
+        bad_win = materialize_aa("script_bad.aa", "bad")
+        code, _, err = run_cli(["-p", str(pid), "script", "run", bad_win])
         check("script run bad block exit 2", code == 2)
         check("script run bad block msg", "unknown block" in err, repr(err))
-        os.remove(script_aa)
+        os.remove(os.path.join(BIN_DIR, "e2e_call.aa"))
+        os.remove(os.path.join(BIN_DIR, "e2e_bad.aa"))
         code, out, _ = run_cli(["ps", "list"])
         check("target alive after script ops", str(pid) in out, repr(out[:200]))
 

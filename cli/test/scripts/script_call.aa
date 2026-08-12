@@ -1,0 +1,15 @@
+// call-type script: allocate memory, spawn a remote thread at it (runs ret
+// and exits), free on disable. Run is idempotent (already enabled), disable
+// is idempotent (already disabled).
+[ENABLE]
+alloc(newmem, 64)
+createThread(newmem)
+
+newmem:
+    // Win64 ABI: keep the stack aligned; ret immediately.
+    sub rsp, 28
+    add rsp, 28
+    ret
+
+[DISABLE]
+dealloc(newmem)

@@ -1,0 +1,16 @@
+// hook-type script: patch a target address ("module"+offset) with a 5-byte
+// jmp to the alloc'd stub, saving the original bytes; disable restores them.
+// %HOOK_OFF% is substituted with the module offset at test time.
+[ENABLE]
+alloc(newmem, 64)
+
+newmem:
+    ret
+
+"deeptrace_target.exe"+%HOOK_OFF%:
+jmp newmem
+
+[DISABLE]
+"deeptrace_target.exe"+%HOOK_OFF%:
+db DE AD BE EF 48 8B 45 08 90 90 90 90 CC C3 90 90
+dealloc(newmem)
