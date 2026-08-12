@@ -206,6 +206,9 @@ bool needs_session_attach(const CommandRequest& req) {
         // list/attach/detach manage the session themselves
         return req.action != "list" && req.action != "attach" && req.action != "detach";
     }
+    if (req.group == "script" && req.action == "check") {
+        return false;  // check is pure local validation; no target session needed
+    }
     return true;
 }
 

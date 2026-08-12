@@ -481,6 +481,36 @@ bool aa_check_hook_structure(const std::vector<Step>& enable,
                              const std::set<std::string>& alloc_names,
                              const std::map<std::string, uintptr_t>& symbols,
                              std::string& err) {
+    // Hook jmp labels are resolved at run time only from alloc'd symbols plus
+    // labels defined *inside* a hook block (ext_labels in exec_enable). Mirror
+    // that universe here so check never accepts a jmp target that run would
+    // reject (BadFormat). Pre-scan: collect ext labels (a single pass over the
+    // block, mirroring resolve_enable's in_hook walk).
+    std::set<std::string> ext_labels;
+    {
+        bool in_hook = false;
+        for (const Step& st : enable) {
+            if (st.kind == StepKind::HookTarget) {
+                in_hook = true;
+                continue;
+            }
+            if (!in_hook) continue;
+            if (st.kind == StepKind::LabelDecl || st.kind == StepKind::LabelDef) {
+                if (alloc_names.count(st.name) != 0) {
+                    in_hook = false;  // label switches back to an alloc'd target
+                } else {
+                    ext_labels.insert(st.name);
+                }
+                continue;
+            }
+            if (st.kind == StepKind::Db || st.kind == StepKind::Asm ||
+                st.kind == StepKind::NopFill) {
+                continue;  // hook block content
+            }
+            in_hook = false;  // next section boundary
+        }
+    }
+
     bool in_hook = false;
     bool hook_jmp_done = false;
     size_t hook_target_line = 0;
@@ -528,7 +558,12 @@ bool aa_check_hook_structure(const std::vector<Step>& enable,
                         return false;
                     }
                     std::string label = trim_str(rest.substr(3));
-                    if (symbols.count(label) == 0) {
+                    // Same universe as run: alloc'd symbols + hook-block labels
+                    // only (a label defined in a plain asm section is NOT a
+                    // valid hook jmp target - run rejects it with BadFormat).
+                    bool known = alloc_names.count(label) != 0 ||
+                                 ext_labels.count(label) != 0;
+                    if (!known) {
                         err = "script check failed at line " +
                               std::to_string(st.line) + ": undefined label '" +
                               label + "'";
@@ -558,8 +593,17 @@ bool aa_precheck_asm(const std::vector<Step>& enable,
                      std::string& err) {
     std::vector<std::string> group_lines;
     size_t group_line = 0;
+    // Mirrors exec_enable's target_set: only an alloc'd-symbol label or a hook
+    // target establishes a write target; once set it stays set (flush does not
+    // reset it). Asm lines before any target must be rejected just like run.
+    bool target_set = false;
     auto flush = [&]() -> bool {
         if (group_lines.empty()) return true;
+        if (!target_set) {
+            err = "script check failed at line " + std::to_string(group_line) +
+                  ": asm line has no write target";
+            return false;
+        }
         std::string code;
         for (const std::string& l : group_lines) code += l + "\n";
         std::vector<uint8_t> bytes;
@@ -576,8 +620,14 @@ bool aa_precheck_asm(const std::vector<Step>& enable,
     for (const Step& st : enable) {
         switch (st.kind) {
             case StepKind::Alloc:
+                // An alloc alone does not establish a target (run requires the
+                // matching label line to switch to it); it only closes the
+                // previous group.
+                if (!flush()) return false;
+                continue;
             case StepKind::HookTarget:
                 if (!flush()) return false;
+                target_set = true;  // hook block continues at hook_addr (+5)
                 continue;
             case StepKind::LabelDecl:
                 // label(name) is a declaration only: the symbol universe is
@@ -588,6 +638,7 @@ bool aa_precheck_asm(const std::vector<Step>& enable,
             case StepKind::LabelDef:
                 if (alloc_names.count(st.name) != 0) {
                     if (!flush()) return false;
+                    target_set = true;  // alloc'd label switches the target
                     continue;
                 }
                 if (group_lines.empty()) group_line = st.line;

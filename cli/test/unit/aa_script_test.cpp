@@ -465,3 +465,68 @@ TEST(AaCheck, NonJumpSymbolRefFails) {
     EXPECT_FALSE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
     EXPECT_NE(err.find("BadFormat"), std::string::npos);
 }
+
+TEST(AaCheck, AsmNoWriteTargetFails) {
+    // Mirror of exec_enable's flush_asm rule: bare asm with no alloc'd-label
+    // switch and no hook target must be rejected statically (run errors with
+    // "asm line has no write target" at exit 1; check reports it as exit 2).
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\nmov eax, 1\n", enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_NE(err.find("asm line has no write target"), std::string::npos);
+}
+
+TEST(AaCheck, AsmAfterAllocBeforeLabelFails) {
+    // alloc alone does not establish a write target; the label line must
+    // follow before asm lines (same rule as exec_enable).
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\nalloc(n,64)\nmov eax, 1\n", enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_NE(err.find("asm line has no write target"), std::string::npos);
+}
+
+TEST(AaCheck, HookJmpToPlainLabelFails) {
+    // Mirror of exec_enable: a hook jmp may only target an alloc'd symbol or
+    // a label defined inside a hook block (ext_labels). A label defined in a
+    // plain asm section is NOT a valid hook jmp target (run -> BadFormat);
+    // check must reject it too instead of accepting the wider symbol set.
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\nplain:\nmov eax,1\n\"m.dll\"+100:\njmp plain\n",
+                         enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    // The plain label is followed by asm with no target -> first failure is
+    // the write-target error at that group; but the hook jmp label check must
+    // also reject 'plain'. Run both validations in the same order as check.
+    EXPECT_FALSE(internal::aa::aa_check_hook_structure(enable, alloc_names, symbols,
+                                                       err));
+    EXPECT_NE(err.find("undefined label 'plain'"), std::string::npos);
+}
+
+TEST(AaCheck, HookJmpToAllocOrExtLabelOk) {
+    // A hook jmp to an alloc'd symbol, and one to a label defined inside the
+    // hook block, are both accepted (run resolves them via ctx.symbols and
+    // ext_labels respectively).
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok(
+        "[ENABLE]\nalloc(n,64)\nn:\nmov eax,1\n\"m.dll\"+100:\njmp n\n"
+        "returnhere:\n\"m2.dll\"+200:\njmp returnhere\n",
+        enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_TRUE(internal::aa::aa_check_hook_structure(enable, alloc_names, symbols,
+                                                      err));
+    EXPECT_EQ(err, "");
+}
