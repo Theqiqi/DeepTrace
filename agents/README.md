@@ -10,8 +10,8 @@ Windows x64 C++20 process-memory tool, two parts:
 
 | Project | Version | What it is |
 |---|---|---|
-| `deeptrace` (`deeptrace/`) | 2.0.0 | Static library: process / memory / module / thread / debug / disasm / asm / resolve / watch / inject — **56 public APIs** |
-| `deeptrace_cli` (`cli/`) | 2.1.0 | CLI: **12 groups / 40 commands**, pure-ASCII output |
+| `deeptrace` (`deeptrace/`) | 2.13.0 | Static library: process / memory / module / thread / debug / disasm / asm / resolve / watch / inject / **script engine / hook / pointer-chain scan** — **74 public APIs** |
+| `deeptrace_cli` (`cli/`) | 2.13.0 | CLI: **15 groups / 55 commands**, pure-ASCII output |
 
 ## 2. Do these two things
 
@@ -21,12 +21,12 @@ Download the release zip and extract it **into the current directory**:
 
 ```bash
 curl -fL -o deeptrace_cli-v2.1.0-win64.zip \
-  "https://github.com/Theqiqi/DeepTrace/releases/download/v2.0.0/deeptrace_cli-v2.1.0-win64.zip"
+  "https://github.com/Theqiqi/DeepTrace/releases/download/v2.1.0/deeptrace_cli-v2.1.0-win64.zip"
 unzip -o deeptrace_cli-v2.1.0-win64.zip       # -> deeptrace_cli.exe in the current directory
-./deeptrace_cli.exe -v                        # -> deeptrace_cli v2.1.0
+./deeptrace_cli.exe -v                        # -> deeptrace_cli v2.1.0 (latest published release)
 ```
 
-> No release available / download fails? Build from source (Windows + VS2022/MSVC + CMake ≥ 3.24 + Ninja + vcpkg; from WSL use the `*_wsl.sh` scripts). See the install skill: [deeptrace-cli-install.md](deeptrace-cli-install.md).
+> ⚠️ Releases lag behind the repo: the latest published zip is **v2.1.0**, while the repo code is **v2.13.0**. The v2.13.0 features (AA script engine `script run`, `mem batch`, `resolve ptrscan`, `hex2bin`/`bin2hex` conversion layer) exist only in the source build. For the full feature set, build from source (Windows + VS2022/MSVC + CMake ≥ 3.24 + Ninja + vcpkg; from WSL use the `*_wsl.sh` scripts). See the install skill: [deeptrace-cli-install.md](deeptrace-cli-install.md).
 
 ### ② Download the skills into `.agents/`
 
@@ -45,13 +45,17 @@ cp agents/deeptrace-cli-usage.md    .agents/
 
 - Command format: `deeptrace_cli [options] <group> <action> [args...]`; most operations need `-p <pid>`.
 - Exit codes: `0` success / `1` failure / `2` usage error.
-- Addresses: `0x`-prefixed hex (e.g. `0x14000D000`).
-- State: watches / injection records persist in `%TEMP%\deeptrace_<pid>\`; debug breakpoints exist only inside a `debug run` session.
+- Addresses: `0x`-prefixed hex (e.g. `0x14000D000`), **or a script symbol name** (e.g. `mem read sunObjPtr` after `script run`; v2.6.0).
+- State: watches / injection / script / hook records persist in `%TEMP%\deeptrace_<pid>\`; debug breakpoints exist only inside a `debug run` session.
 - Debug single entry: `debug run <script.json>` (v2.1.0).
+- Scripts: `script run <file.aa>` runs a CE-style `[ENABLE]` block (alloc / registersymbol / hook / createThread), `script disable` undoes it; both idempotent.
+- `mem batch <read|write> <file.json>` executes JSON pointer-chain locators; `--format csv|json` exports results for other tools/AI (v2.9.0–v2.10.0).
+- `resolve ptrscan <config.json>` finds pointer chains that reach a value; printed chains plug straight into `mem batch` (v2.12.0).
+- Offline conversion ring: `asm file` → `hex2bin` → `bin2hex` / `disasm file` → `shellcode injectfile` (v2.2.0–v2.13.0).
 - Test target `deeptrace_target.exe`: ASLR disabled, `0x14000D000` = `0x11223344`.
 
 ## 4. More
 
-- User manual: [docs/users/v2.1.0/USER_MANUAL.md](../docs/users/v2.1.0/USER_MANUAL.md)
-- API reference: [docs/api/v2.1.0/README.md](../docs/api/v2.1.0/README.md)
-- Developer docs: [docs/developers/v2.1.0/README.md](../docs/developers/v2.1.0/README.md)
+- User manual: [docs/users/v2.13.0/USER_MANUAL.md](../docs/users/v2.13.0/USER_MANUAL.md)
+- API reference: [docs/api/v2.13.0/README.md](../docs/api/v2.13.0/README.md)
+- Developer docs: [docs/developers/v2.13.0/README.md](../docs/developers/v2.13.0/README.md)
