@@ -88,6 +88,42 @@
 - **Option comparison**: (a) interactive REPL (adds a TUI/state machine to a batch tool); (b) a single `debug run` flag per operation (can't express a multi-step session); (c) a script file: a JSON array of steps executed in one call, session state kept in memory, cleaned up on failure or success.
 - **Choice**: (c) — `debug run <script.json>` (v2.0.0). The step table in `cli/src/interface/script.cpp` fully covers the library's debug capabilities (break/clear/hbreak/hclear/guard/unguard/pause/resume/step/next/continue/status/registers/register + read/write/disasm/watch_*); unknown ops/fields/values are rejected at validation time (exit code 2). No control flow (conditions/loops/variables), no cross-call session persistence, and no breakpoint-hit callbacks are supported by design.
 
+## ADR-13 Why the script engine is a CLI-side keyword engine backed by persisted static-library records
+
+- **Background**: users want CE-style `.aa` scripts (alloc/label/registersymbol/createThread/db + `[ENABLE]`/`[DISABLE]` blocks) executed in the target; the library and CLI must share a clean boundary.
+- **Option comparison**: (a) implement all script semantics inside the library (a mini language in the lib, hard to evolve); (b) CLI owns parsing/execution and the library exposes only orthogonal primitives (`script_alloc`, `script_alloc_near`, `script_free`, `hook_set`, `hook_clear`, `asm_assemble_labels`, `script_symbol`, `thread_create_at`) with per-PID persisted records.
+- **Choice**: (b). The library stays a primitive provider; the CLI's `cmd_script.cpp` parses and drives enable/disable idempotently. Named allocations/hooks/enable-state persist per-PID (`scripts.dat`), so re-attaching later can resolve symbols (`script_symbol`) and `script status` can list the landscape. Idempotent enable/disable (repeated enable skips, repeated disable skips) makes re-running scripts naturally stateless.
+
+## ADR-14 Why pointer-chain search is two-phase (snapshot + rescan)
+
+- **Background**: a single reverse-walk from a value address produces many coincidence-based false positives; after a game restart the value address moves, so static chains are not enough.
+- **Option comparison**: (a) snapshot only (fast but noisy); (b) snapshot + rescan: re-evaluate saved chains against the new value address after a restart, keeping only chains whose final address still lands within ±max_offset of it (the Cheat Engine-style workflow); (c) a dedicated pointer-chain command with built-in persistence (heavier, duplicates mem batch).
+- **Choice**: (b) — `pointer_map_snapshot` + `pointer_map_rescan` (v2.12.0), exposed to the CLI as `resolve ptrscan <file.json>` with full parameter control (max_offset default 2048, max_level default 5) and default module anchoring. Rescanning intersects away false positives; chains are consumable by `mem batch` for the search→verify loop.
+
+## ADR-15 Why the thread pool is self-built (pure std::thread) instead of a third-party library
+
+- **Background**: the pointer scan needs parallel memory-sweep chunks; adding a heavyweight dependency (TBB/OpenMP) to a static library has build/runtime cost.
+- **Option comparison**: third-party pool (extra dep, linking burden on consumers) vs a minimal `std::thread` pool with `enqueue`/`wait`/`pending` semantics (~100 lines, thread count = `hardware_concurrency` or caller-supplied).
+- **Choice**: self-built `infrastructure/threadpool` (v2.12.0). Zero third-party dependencies, deterministic lifecycle (join on destruction), unit-tested (`ThreadPool.*`); the scan reuses one pool across levels.
+
+## ADR-16 Why complex interactions are JSON-config-driven instead of dedicated commands
+
+- **Background**: pointer chains, batched reads/writes, and pointer-map scans need structured multi-parameter input; the CLI's flat flags cannot express them cleanly, and dedicated per-feature commands would bloat the command surface.
+- **Option comparison**: (a) dedicated commands for each complex feature (pointer-chain read, batch, ptrscan); (b) a JSON config file as the input carrier (`mem batch read|write <file.json>`, `resolve ptrscan <file.json>`), keeping commands explicit and composable; (c) a general-purpose scripting DSL.
+- **Choice**: (b) — since v2.9.0. The JSON parser was extracted into a shared `interface/json.{h,cpp}` (v2.12.0) with a prefix-able error message; config errors exit 2 (stderr) consistently; batch output gained CSV/JSON export (`--format`, v2.10.0) for feeding other tools/AI.
+
+## ADR-17 Why the conversion layer (asm/bin/hex) lives in the CLI instead of external Linux tools
+
+- **Background**: asm→bin→hex conversions could be done with nasm/objdump/xxd under WSL, but the project already embeds Keystone/Capstone.
+- **Option comparison**: external tools (second syntax/semantics, requires WSL, inconsistent Intel-asm dialect) vs in-CLI commands reusing the embedded engines.
+- **Choice**: in-CLI. The conversion layer is pure data (no session): `asm file` (asm→bin, v2.2.0), `hex2bin` (v2.2.0), `bin2hex` (v2.13.0), `disasm file` (bin→asm via the new session-free `disasm_buffer`, v2.13.0). `disasm file`/`bin2hex`/`asm file` are excluded from the `-p` auto-attach (no session needed). The ring asm↔bin↔hex is fully closed offline.
+
+## ADR-18 Why attach permissions are surfaced via a recorded mask (session_permissions)
+
+- **Background**: attach can succeed with a *degraded* access mask (fallback rights), so later memory operations fail obscurely without a clear reason.
+- **Option comparison**: probe permissions after attach (extra syscalls) vs record the actual granted mask during attach itself (zero extra probes).
+- **Choice**: record at attach (v2.11.0) — the session stores the granted `PROCESS_*` mask; `session_permissions()` reports it and `ps attach` prints a semantic summary (`OK (permissions: read|write|...)`). Access-denied cases still surface `AccessDenied` with the original semantics.
+
 ## Known Limitations and Trade-offs
 
 - Windows x64 only; no cross-platform plans (the public header already uses standard types, preserving theoretical portability).
@@ -95,3 +131,6 @@
 - Some debug operations (hardware breakpoints/page guards) depend on x64 architecture capabilities; non-x64 targets are unsupported.
 - e2e requires a Debug build + testdll.dll; Release packaging contains only deeptrace_cli.exe (no test artifacts).
 - Debug scripts intentionally support no control flow (no conditionals/loops/variables) and no breakpoint-hit callbacks; complex debugging scenarios are scripted by the caller (e.g. an AI tool generating the JSON).
+- `.aa` script engine keywords are idempotent (enable/disable), but the engine does **not** implement control flow or conditionals either; call-type scripts run the full enable+disable cycle in one call, hook-type scripts persist until disabled.
+- `script_alloc_near` never falls back to arbitrary placement: if no free region exists within ±2 GB of the anchor it returns `Error` (the caller must pick another anchor).
+- Pointer-chain scans are heuristic: multi-target ambiguity within ±max_offset is resolved to the lowest candidate (documented), and rescan is the intended false-positive filter; `max_results` caps snapshot output by design.

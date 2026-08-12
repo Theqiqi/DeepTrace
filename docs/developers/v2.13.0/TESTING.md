@@ -7,11 +7,11 @@
 
 | Project | Level | Artifact | Content |
 |---------|-------|----------|---------|
-| deeptrace | unit | `deeptrace_unit_test.exe` | algorithm layer: hex / scan (AOB) / disasm / asm / format |
-| deeptrace | integration | `deeptrace_integration_test.exe` | real target process, chains multiple public APIs |
+| deeptrace | unit | `deeptrace_unit_test.exe` | algorithm layer: hex / scan (AOB) / pointer_scan / disasm / asm / format; infrastructure: threadpool; service: disasm_buffer |
+| deeptrace | integration | `deeptrace_integration_test.exe` | real target process, chains multiple public APIs (incl. script alloc/hook/pointer-map cases) |
 | deeptrace | target | `deeptrace_target.exe` | test target program (ASLR disabled, known values at known addresses) |
 | deeptrace | dll | `testdll.dll` | companion DLL for inject tests |
-| cli | unit | `deeptrace_cli_unit_test.exe` | three layers: parser / printer / executor |
+| cli | unit | `deeptrace_cli_unit_test.exe` | three layers: parser / printer / executor + batch locator parsing + ptrscan config validation |
 | cli | integration | `deeptrace_cli_integration_test.exe` | full chain: parse → execute → deeptrace API |
 | cli | e2e | `test_cli_e2e.py` | launches real exes and asserts command-line behavior (independent of CMake) |
 
@@ -33,7 +33,7 @@ deeptrace\out\bin\Debug\deeptrace_integration_test.exe
 cli\out\bin\Debug\deeptrace_cli_integration_test.exe
 ```
 
-> Integration tests launch `deeptrace_target.exe` (a real child process) and perform process/memory/module/thread/debug/inject operations, then clean up automatically. Do not manually run the target and leave it occupying resources.
+> Integration tests launch `deeptrace_target.exe` (a real child process) and perform process/memory/module/thread/debug/inject/script/pointer-map operations, then clean up automatically. Do not manually run the target and leave it occupying resources.
 
 ### 2.3 e2e Tests
 
@@ -43,24 +43,26 @@ python3 cli/test/e2e/test_cli_e2e.py
 
 - Requires Debug build artifacts: `deeptrace_cli.exe` + `deeptrace_target.exe` + `testdll.dll`
   (testdll.dll is copied to `cli/out/bin/Debug/` automatically by the cli integration test's POST_BUILD step).
-- Drives the real binaries and asserts stdout/exit codes (**104 checks** at v2.1.0, incl. `debug run` script-session and removed-command-rejection cases); exit code 0 if all pass, 1 if any fails.
+- Drives the real binaries and asserts stdout/exit codes (**270 checks** at v2.13.0 — incl. script run/check/status, symbol addressing, batch read/write + CSV/JSON export, ptrscan snapshot/rescan, conversion-layer roundtrips); exit code 0 if all pass, 1 if any fails.
 - Runs directly under WSL too (the script calls exes via cmd.exe, converting paths automatically).
 
-### 2.4 Debug Script Tests (fixtures)
+### 2.4 Script Fixtures
 
-`debug run` tests share real JSON script fixtures checked into the repository:
+Two families of JSON/script fixtures are checked into the repository:
 
 ```
-cli/test/scripts/
-├── debug_session.json    # positive scripted session (status/registers/read/break/clear/watch_*)
+cli/test/scripts/        # debug run JSON step fixtures
+├── debug_session.json    # positive scripted session
 ├── debug_write.json      # spaced-hex write regression ("BE BA FE CA")
 ├── debug_bad.json        # negative: unknown op
 └── debug_break_only.json # cleanup regression: break set but never cleared → byte restored on detach
+
+cli/test/scripts/*.aa     # script-engine fixtures (alloc/hook/enable blocks)
 ```
 
 - The cli integration test's POST_BUILD step copies them next to the test exe (same pattern as `testdll.dll`).
-- Scripts use a `%G_INT%` placeholder for the runtime `g_int` address; tests substitute the real address because it is only known at runtime (the fixtures stay committable and the tests still run against a live target).
-- Integration coverage: `DebugRunScriptedSession`, `DebugRunWriteSpacedHex`, `DebugRunScriptErrors`, `DebugRunSessionCleanupRestoresByte` (break set but never cleared → byte restored on detach) + removed-command rejection (`DebugSingleCommandsRejected` — exit 2 and the target stays intact).
+- Scripts use a `%G_INT%` placeholder for the runtime `g_int` address; tests substitute the real address because it is only known at runtime.
+- Integration coverage examples: `DebugRunScriptedSession`, `ScriptRunEnableDisable`, `ScriptCheckRejectsBadSyntax`, `PointerMapSnapshotFindsChain`, `BatchReadWrite`, `MemBatchExport` (CSV/JSON), `Bin2hexAndDisasmFile`.
 
 ### 2.5 Full Regression
 
@@ -72,7 +74,7 @@ cli/out/bin/Debug/deeptrace_cli_integration_test.exe
 python3 cli/test/e2e/test_cli_e2e.py
 ```
 
-Current matrix at v2.1.0 (Debug/Release both green): deeptrace **96 unit + 34 integration**, deeptrace_cli **99 unit + 24 integration**, e2e **104 checks**.
+Current matrix at v2.13.0 (Debug/Release both green): deeptrace **137 unit + 53 integration**, deeptrace_cli **207 unit + 51 integration**, e2e **270 checks**.
 
 ## 3. Test Target Program (deeptrace_target.exe)
 
@@ -81,7 +83,7 @@ Each test tree (deeptrace / cli) has its own target with the same role:
 - **Does not link deeptrace**; it is a standalone executable.
 - **ASLR disabled** (`/DYNAMICBASE:NO /HIGHENTROPYVA:NO`) so the module base and global variable addresses are deterministic and tests can assert known values at known addresses.
 - Prints a banner: `PID: <number>` line + global variable address table (`g_int`/`g_bytes` etc., `@0x...` format).
-- Provides thread (`WORKER_TID:`), memory values (e.g. `g_int` holds `0x11223344`), and other test anchors.
+- Provides thread (`WORKER_TID:`), memory values (e.g. `g_int` holds `0x11223344`), and other test anchors (incl. pointer-chain anchor values used by ptrscan integration/e2e cases).
 
 When adding integration tests, prefer adding known-value anchors to the target rather than guessing addresses in the test.
 
@@ -110,6 +112,7 @@ TEST(ParserTest, ScenarioDescription) {
 
 - Add new test files to the `add_executable` list in the corresponding `test/unit/CMakeLists.txt`.
 - Unit tests **must not launch real processes**; they only test pure logic (parsing/formatting/algorithms).
+- Pure-algorithm additions (e.g. a new pointer_scan primitive) get plain unit tests in `deeptrace/test/unit/`.
 
 ### 4.2 Integration Test Template
 
@@ -129,7 +132,7 @@ TEST(ProcessIntegrationTest, ScenarioDescription) {
 ```
 
 - Integration tests launch a real target and must clean up when finished (terminate the target).
-- For breakpoint/watch/inject cases, watch out for state file cleanup under `%TEMP%/deeptrace_<pid>/`.
+- For breakpoint/watch/inject/script/hook cases, watch out for state file cleanup under `%TEMP%/deeptrace_<pid>/`.
 
 ### 4.3 e2e Tests
 
@@ -147,3 +150,4 @@ New commands/parameters must add e2e assertions (command-line behavior is part o
 - New features must ship with tests (unit + integration or e2e), otherwise they are not merged.
 - Modifying algorithms/engines (e.g. disassembly format) requires updating unit test assertions in sync.
 - Tests must not depend on the network, fixed PIDs, or system-specific processes.
+- Threadpool consumers: the pool is exercised through pointer-scan unit tests (`ThreadPool.*` — enqueue/wait/pending semantics) and the pointer-map integration cases; no process-wide timing assertions.

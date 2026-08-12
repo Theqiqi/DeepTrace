@@ -1,7 +1,7 @@
 # Extension Guide (EXTENDING)
 
 > Audience: contributors. Explains the extension points and provides complete examples (code + expected output).
-> For function-level API details see the [API Documentation](../../api/v2.1.0/README.md); architecture conventions in [ARCHITECTURE.md](ARCHITECTURE.md); testing requirements in [TESTING.md](TESTING.md).
+> For function-level API details see the [API Documentation](../../api/v2.13.0/README.md); architecture conventions in [ARCHITECTURE.md](ARCHITECTURE.md); testing requirements in [TESTING.md](TESTING.md).
 
 ## 1. Extension Point Overview
 
@@ -11,8 +11,11 @@
 | New public API | `deeptrace/include/deeptrace.h` + `deeptrace/src/service/` | public header + service implementation (+ integration tests) |
 | New algorithm | `deeptrace/src/algorithm/` | pure-computation module + unit tests |
 | Engine replacement (assembly/disassembly) | `deeptrace/src/infrastructure/assembly|disassembly/` | infrastructure internal only, zero changes above |
+| New script keyword | `cli/src/interface/cmd_script.cpp` | keyword table + enable/disable executor branches (+ fixtures/e2e) |
+| New batch locator kind | `cli/src/interface/batch.cpp` | locator step parser + evaluator (+ unit/e2e tests) |
+| New ptrscan config field | `cli/src/interface/ptrscan.cpp` + `deeptrace/src/service/resolve.cpp` | config validation + scan semantics (+ tests) |
 
-All extensions must ship with tests (see [TESTING.md](TESTING.md)) and update the API documentation (`docs/api/v2.1.0/`) in sync.
+All extensions must ship with tests (see [TESTING.md](TESTING.md)) and update the API documentation (`docs/api/v2.13.0/`) in sync.
 
 ---
 
@@ -187,7 +190,60 @@ Principles:
 
 ---
 
-## 6. Testing Requirements (Must-Read for Extensions)
+## 6. Adding a Script Keyword (AA-style Script Engine)
+
+The script engine (`cli/src/interface/cmd_script.cpp`) parses `.aa` files with `[ENABLE]`/`[DISABLE]` blocks and executes keywords against the static library's script/hook APIs. Adding a keyword has three touch points:
+
+1. **Keyword table** (in `cmd_script.cpp`): register the keyword name and its argument shape (e.g. `alloc(name,size[,anchor])`, `registersymbol(name)`, `db <hex>`, `createThread(addr)`); parse-time validation rejects unknown keywords (exit code 2).
+2. **Executor**: add the enable-side action in `exec_enable` and the disable-side reverse in `exec_disable` — the engine's enable/disable **must stay idempotent** (repeated enable skips, repeated disable skips) so re-running a script never double-applies.
+3. **Static library backing** (when the keyword needs new capability): add the public API per section 3 (e.g. `script_alloc`/`hook_set` back `alloc`/`hook`).
+
+Expected output for a minimal script:
+
+```bat
+:: cheat.aa
+[ENABLE]
+alloc(newmem, 0x100)
+registersymbol(newmem)
+[ENABLE] block applied; symbol newmem = 0x1A2B3C4D
+[DISABLE]
+dealloc(newmem)
+[DISABLE] block applied; symbol newmem released
+```
+
+> `script check <file>` (v2.4.0) validates syntax + hook structure + assembly feasibility **without** attaching or executing — CI/editor-friendly. Always extend it in sync when adding keywords.
+
+## 7. Adding a Batch Locator Kind (mem batch)
+
+`mem batch read|write <file.json>` (v2.9.0) evaluates a list of **locators** — ordered address-resolution steps (pointer chain / module+offset / symbol+offset / absolute). Adding a new step kind:
+
+1. **Parser** (`cli/src/interface/batch.cpp`): extend the JSON step parsing + validation (unknown step kinds are rejected at parse time, exit 2).
+2. **Evaluator**: extend the locator walk (chain steps read the target's memory; offsets are signed).
+3. **Export**: if the new kind affects output, extend the printer's table/CSV/JSON rows (v2.10.0 `--format table|csv|json`).
+
+Fixture JSON (locator list shape):
+
+```json
+{ "process": "game.exe", "locators": [
+  { "name": "health", "type": "dword",
+    "steps": [ { "kind": "module", "name": "game.exe", "offset": "+0x1AF89C0" },
+                { "kind": "deref" },
+                { "kind": "add", "offset": "+0x38" } ] } ] }
+```
+
+## 8. Adding a Ptrscan Config Field (resolve ptrscan)
+
+`resolve ptrscan <file.json>` (v2.12.0) drives `pointer_map_snapshot`/`pointer_map_rescan` from a JSON config. Adding a field:
+
+1. **Config validation** (`cli/src/interface/ptrscan.cpp`): declare + validate the field (bad values exit 2 with a stderr message, consistent with `mem batch`).
+2. **Scan semantics** (`deeptrace/src/service/resolve.cpp`): extend the reverse-walk / filter logic; pure-scan primitives live in `deeptrace/src/algorithm/pointer_scan.{h,cpp}` and stay session-free (unit-testable).
+3. **Tests**: config-validation unit tests + a real-target integration/e2e case that pre-plant a pointer chain in `deeptrace_target.exe`.
+
+> Chains output by ptrscan are directly consumable as `mem batch` locators — keep that round-trip working when extending either side.
+
+---
+
+## 9. Testing Requirements (Must-Read for Extensions)
 
 | Extension | Required companion tests |
 |-----------|--------------------------|
@@ -195,5 +251,8 @@ Principles:
 | New API | integration tests (real target) |
 | New algorithm | unit tests (pure-function boundaries/conditions/groups) |
 | Engine replacement | unit test assertion updates + full regression (Debug/Release) |
+| New script keyword | script fixture + `script check` negative cases + e2e |
+| New batch locator kind | batch unit tests + e2e round-trip |
+| New ptrscan field | config unit tests + integration/e2e pre-planted chain |
 
-Full regression commands are in section 2.4 of [TESTING.md](TESTING.md).
+Full regression commands are in section 2.5 of [TESTING.md](TESTING.md).
