@@ -22,3 +22,14 @@
 - `ps attach` 成功输出 `OK (permissions: read|write|...)`;
   失败仍透出 AccessDenied(既有语义)。
 - 版本号:修改位 +1 → v2.11.0(独立小版本)。
+
+## 实现期决策(编码/测试后补充)
+
+- 权限记录零探测:attach 成功后把实际成功掩码(全权限 = PROCESS_ALL_ACCESS;
+  降级 = 有限集合)写入 Session.permissions;detach 清零。
+- `session_permissions` 用 `pid == 0` 判定无会话(与 session_pid 同约定)。
+- CLI 防御:session_permissions 异常时仅输出 OK(不掩盖 attach 结果)。
+- 降级分支(granted = kLimited)仅在受限场景触发,测试无法自然覆盖,
+  其名称映射由 FormatPermissionsFullLimitedSet 锁定。
+- 验证:CLI 单测 187(+4)、集成 48(+1);静态库 115(+0)、集成 50(+1);
+  e2e 243(+2)全绿(Debug/Release)。

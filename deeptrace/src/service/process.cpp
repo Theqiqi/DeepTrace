@@ -32,7 +32,10 @@ Result attach(uint32_t pid) {
     s.pid = pid;
     s.handle = h;
     // Record the mask the caller actually received so `ps attach` can surface
-    // the real permissions (v2.11.0). Zero extra OpenProcess probes.
+    // the real permissions (v2.11.0). Zero extra OpenProcess probes. Note:
+    // the limited fallback branch (granted = kLimited) is exercised only in
+    // access-restricted scenarios; the unit mapping for its mask is covered
+    // by FormatPermissionsFullLimitedSet (CLI printer test).
     s.permissions = granted;
     return Result::Ok;
 }
@@ -87,6 +90,9 @@ Result session_pid(uint32_t* out_pid) {
 Result session_permissions(uint32_t* out_mask) {
     if (!out_mask) return Result::InvalidArg;
     const auto& s = internal::session();
+    // pid == 0 is the canonical "no session" marker (same convention as
+    // session_pid); permissions is always nonzero after a successful attach
+    // and cleared together with pid on detach.
     if (s.pid == 0) return Result::NotAttached;
     *out_mask = s.permissions;
     return Result::Ok;
