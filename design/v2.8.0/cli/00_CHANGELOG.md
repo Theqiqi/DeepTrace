@@ -44,11 +44,23 @@
 
 ### 4. 实现期决策(代码审查后补充)
 
-- (待补充)
+- **零生产代码改动**:mem write 符号寻址链路 v2.6.0 已通,本版本仅版本字符串
+  (printer/commands)与测试;cmd_memory.cpp 未改动。
+- **dec 字节序语义**:dec 格式固定 8 字节小端——`mem write slotA 1122334455667788
+  dec` 写入 0x0003FCC1DA8C9C4C(字节 4C 9C 8C DA C1 FC 03 00),与 mem read
+  hex 输出一致;e2e 中 dec 写入会改变槽位值,故补「恢复写回」(hex 重新写回
+  原指针值)保持下游 watch 用例期望不变。
+- **审查修复(1 项)**:cli_integration_test.cpp 显式 include `<cstring>`
+  (std::memcmp 此前靠传递包含编译通过)。
+- **已知边界**:aptr fixture 线程一次性写入后退出,槽位值稳定(集成/e2e 连续
+  通过验证);若未来 fixture 改为循环写,读回断言需相应调整。
 
 ### 5. 验证
 
 - 手动(真实进程):alloc slotA → mem write slotA hex/dec → mem read 读回一致;
   未知符号 NotFound;disable 清理。
-- 单测 + 集成(真实进程 mem write <symbol> 读回) + e2e。
-- git:流程每步提交齐全,tag `v2.8.0`。
+- CLI:单元 155(+1 MemWriteSymbolShape)、集成 46(+1 SymbolAddressing
+  MemWriteRoundTrip:hex/dec 写入后经公共 API 读回字节一致、未知符号
+  NotFound、奇 hex 退出 2、disable 清理)、e2e 202(+7 mem write 用例)。
+  Debug/Release 全绿;静态库 115+49 回归全绿(无改动)。
+- git:init/idea/design/test 提交齐全,tag `v2.8.0`。
