@@ -17,6 +17,8 @@ add_library(deeptrace_cli_core STATIC
     interface/cmd_debug_run.cpp
     interface/script.h
     interface/script.cpp
+    interface/batch.h
+    interface/batch.cpp
     interface/cmd_disasm.cpp
     interface/cmd_resolve.cpp
     interface/cmd_watch.cpp

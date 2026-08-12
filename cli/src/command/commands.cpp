@@ -64,6 +64,9 @@ const std::vector<CommandSpec>& command_table() {
         cmd("mem", "readval", "mem readval <address> <type>",
             "Read a typed value (byte|word|dword|qword|float|double)",
             {req("address", "address"), req("type", "value-type")}),
+        cmd("mem", "batch", "mem batch <read|write> <file.json>",
+            "Batch read/write JSON-defined locators (pointer chains)",
+            {req("op", "batch-op"), req("file", "script-path")}),
 
         // ---- module ----
         cmd("module", "list", "module list", "List all loaded modules", {}),
@@ -195,7 +198,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.8.0\n";
+    os << "deeptrace_cli v2.9.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";
@@ -210,6 +213,8 @@ std::string build_help_text() {
     os << "  script `alloc(name,size,\"module.dll\"+off)` places the allocation\n";
     os << "  within +/-2GB of the anchor so RIP-relative jumps never overflow\n";
     os << "  (v2.7.0).\n";
+    os << "  `mem batch <read|write> <file.json>` executes JSON-defined locators\n";
+    os << "  (pointer chains: module+base / symbol / absolute + offsets; v2.9.0).\n";
 
     std::string cur_group;
     size_t max_usage = 0;

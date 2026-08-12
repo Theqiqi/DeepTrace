@@ -51,6 +51,9 @@ add_custom_command(TARGET deeptrace_cli_integration_test POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/script_aptr.aa"
         "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/script_aptr.aa"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/script_ptrchain.aa"
+        "$<TARGET_FILE_DIR:deeptrace_cli_integration_test>/script_ptrchain.aa"
     COMMENT "Copying debug-run + AA script fixtures"
 )
 

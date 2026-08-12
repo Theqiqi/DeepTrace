@@ -38,7 +38,7 @@ void print_help(const std::string& text) {
 }
 
 void print_version() {
-    std::printf("deeptrace_cli v2.8.0\n");
+    std::printf("deeptrace_cli v2.9.0\n");
 }
 
 std::string to_ascii(const std::wstring& s) {
@@ -236,6 +236,14 @@ void print_script_status(const std::vector<deeptrace::ScriptInfo>& list) {
             std::printf("  alloc   %s %s\n", a.first.c_str(),
                         format_address(a.second).c_str());
         }
+    }
+}
+
+void print_batch_read(const std::vector<BatchRow>& rows) {
+    std::printf("%-24s %-18s %s\n", "NAME", "ADDRESS", "VALUE");
+    for (const auto& r : rows) {
+        std::printf("%-24s %-18s %s\n", r.name.c_str(),
+                    format_address(r.address).c_str(), r.value.c_str());
     }
 }
 

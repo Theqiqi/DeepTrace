@@ -10,6 +10,7 @@ Run from the project root:
 All tests passing -> exit 0; any failure -> exit 1.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -123,7 +124,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.8.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.9.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -657,6 +658,167 @@ def main():
             os.remove(tmp_aa)
         code, out, _ = run_cli(["ps", "list"])
         check("target alive after near allocation", str(pid) in out,
+              repr(out[:200]))
+
+        # ---- v2.9.0: batch locator JSON (mem batch read/write) ----
+        # JSON-driven pointer chains: module+base / symbol / absolute + offsets.
+        # The fixture allocs three slots; wire values, then drive batch files.
+        pc_win = materialize_aa("script_ptrchain.aa", "ptrchain")
+        code, out, _ = run_cli(["-p", str(pid), "script", "run", pc_win])
+        check("batch script run exit 0", code == 0)
+        code, out, _ = run_cli(["-p", str(pid), "script", "status"])
+        m_p = re.search(r"alloc\s+ptr_slot\s+0x([0-9A-Fa-f]{16})", out)
+        m_d = re.search(r"alloc\s+data_slot\s+0x([0-9A-Fa-f]{16})", out)
+        m_s = re.search(r"alloc\s+str_slot\s+0x([0-9A-Fa-f]{16})", out)
+        check("batch status lists ptr_slot", bool(m_p), repr(out))
+        check("batch status lists data_slot", bool(m_d), repr(out))
+        check("batch status lists str_slot", bool(m_s), repr(out))
+        if m_p and m_d and m_s:
+            ptr_slot = int(m_p.group(1), 16)
+            data_slot = int(m_d.group(1), 16)
+            str_slot = int(m_s.group(1), 16)
+            # wire: data_slot = 0x1122334455667788, ptr_slot -> data_slot,
+            # str_slot = "hello" (no thread race; fully deterministic)
+            code, _, _ = run_cli(["-p", str(pid), "mem", "write",
+                                  f"0x{data_slot:X}", "8877665544332211", "hex"])
+            check("batch wire data_slot exit 0", code == 0)
+            # address as little-endian bytes (mem write hex stores memory order)
+            addr_hex = f"{data_slot:016X}"
+            le_hex = "".join(reversed([addr_hex[i:i + 2]
+                                        for i in range(0, 16, 2)]))
+            code, _, _ = run_cli(["-p", str(pid), "mem", "write",
+                                  f"0x{ptr_slot:X}", le_hex, "hex"])
+            check("batch wire ptr_slot exit 0", code == 0)
+            code, _, _ = run_cli(["-p", str(pid), "mem", "write",
+                                  f"0x{str_slot:X}", "68656c6c6f", "hex"])
+            check("batch wire str_slot exit 0", code == 0)
+            code, out, _ = run_cli(["-p", str(pid), "module", "base",
+                                    "deeptrace_target.exe"])
+            m_base = re.search(r"0x([0-9A-Fa-f]{16})", out)
+            g_int64 = parse_addr(lines, "g_int64")
+            if m_base and g_int64:
+                mod_off = int(g_int64, 16) - int(m_base.group(1), 16)
+                # batch read: every locator source + type
+                batch_json = os.path.join(BIN_DIR, "e2e_batch_read.json")
+                with open(batch_json, "w") as f:
+                    f.write(json.dumps({
+                        "version": 1,
+                        "process": "deeptrace_target.exe",
+                        "values": {
+                            "chain_qword": {"symbol": "ptr_slot",
+                                            "offsets": ["0x0"],
+                                            "type": "qword"},
+                            "data_direct": {"symbol": "data_slot",
+                                            "type": "qword"},
+                            "str": {"symbol": "str_slot",
+                                    "type": "string"},
+                            "buf": {"symbol": "str_slot", "type": "bytes",
+                                    "count": 5},
+                            "mod_qword": {"module": "deeptrace_target.exe",
+                                          "base": f"0x{mod_off:X}",
+                                          "type": "qword"},
+                            "abs_dword": {"base": g_int, "type": "dword"},
+                        },
+                    }))
+                code, out, _ = run_cli(["-p", str(pid), "mem", "batch", "read",
+                                        win_path(batch_json)])
+                check("batch read exit 0", code == 0, repr(out))
+                check("batch read header",
+                      "NAME" in out and "ADDRESS" in out and "VALUE" in out,
+                      repr(out))
+                check("batch read chain value",
+                      "chain_qword" in out and "0x1122334455667788" in out,
+                      repr(out))
+                check("batch read data_direct",
+                      "data_direct" in out and "0x1122334455667788" in out,
+                      repr(out))
+                check("batch read string", "str" in out and "hello" in out,
+                      repr(out))
+                check("batch read bytes",
+                      "buf" in out and "68 65 6C 6C 6F" in out, repr(out))
+                check("batch read mod_qword",
+                      "mod_qword" in out and "0x1122334455667788" in out,
+                      repr(out))
+                check("batch read abs_dword",
+                      "abs_dword" in out and "0x11223344" in out, repr(out))
+                # batch write: chain (qword), string, module+base
+                batch_w = os.path.join(BIN_DIR, "e2e_batch_write.json")
+                with open(batch_w, "w") as f:
+                    f.write(json.dumps({
+                        "values": {
+                            "chain_write": {"symbol": "ptr_slot",
+                                            "offsets": ["0x0"],
+                                            "type": "qword",
+                                            "value": "0x99AABBCCDDEEFF00"},
+                            "str_write": {"symbol": "str_slot",
+                                          "type": "string",
+                                          "value": "world"},
+                            "mod_write": {"module": "deeptrace_target.exe",
+                                          "base": f"0x{mod_off:X}",
+                                          "type": "qword",
+                                          "value": "0x8877665544332211"},
+                        },
+                    }))
+                code, out, _ = run_cli(["-p", str(pid), "mem", "batch", "write",
+                                        win_path(batch_w)])
+                check("batch write exit 0", code == 0, repr(out))
+                check("batch write OK lines",
+                      "OK chain_write" in out and "OK str_write" in out and
+                      "OK mod_write" in out, repr(out))
+                # readback: chain end (data_slot) now 0x99AABBCCDDEEFF00
+                code, out, _ = run_cli(["-p", str(pid), "mem", "read",
+                                        f"0x{data_slot:X}", "8", "hex"])
+                check("batch chain write readback",
+                      "00 FF EE DD CC BB AA 99" in out, repr(out))
+                # readback: str_slot now "world"
+                code, out, _ = run_cli(["-p", str(pid), "mem", "read",
+                                        f"0x{str_slot:X}", "8", "hex"])
+                check("batch string write readback",
+                      "77 6F 72 6C 64" in out, repr(out))
+                # readback: g_int64 now 0x8877665544332211 (module+base write)
+                code, out, _ = run_cli(["-p", str(pid), "mem", "read",
+                                        g_int64, "8", "hex"])
+                check("batch module write readback",
+                      "11 22 33 44 55 66 77 88" in out, repr(out))
+                # restore g_int64 to its original value
+                code, _, _ = run_cli(["-p", str(pid), "mem", "write", g_int64,
+                                      "8877665544332211", "hex"])
+                check("batch restore g_int64 exit 0", code == 0)
+                os.remove(batch_json)
+                os.remove(batch_w)
+                # errors: bad version -> 2; unknown symbol -> 1; mismatch -> 1
+                bad = os.path.join(BIN_DIR, "e2e_batch_bad.json")
+                with open(bad, "w") as f:
+                    f.write('{ "version": 2, "values": {} }')
+                code, _, err = run_cli(["-p", str(pid), "mem", "batch", "read",
+                                        win_path(bad)])
+                check("batch bad version exit 2", code == 2, repr(err))
+                os.remove(bad)
+                nosym = os.path.join(BIN_DIR, "e2e_batch_nosym.json")
+                with open(nosym, "w") as f:
+                    f.write('{ "values": { "x": { "symbol": "no_such_sym",'
+                            ' "type": "qword" } } }')
+                code, _, err = run_cli(["-p", str(pid), "mem", "batch", "read",
+                                        win_path(nosym)])
+                check("batch unknown symbol exit 1", code == 1)
+                check("batch unknown symbol msg", "NotFound" in err, repr(err))
+                os.remove(nosym)
+                mismatch = os.path.join(BIN_DIR, "e2e_batch_mismatch.json")
+                with open(mismatch, "w") as f:
+                    f.write('{ "process": "notepad.exe", "values": {} }')
+                code, _, err = run_cli(["-p", str(pid), "mem", "batch", "read",
+                                        win_path(mismatch)])
+                check("batch process mismatch exit 1", code == 1)
+                check("batch process mismatch msg", "process mismatch" in err,
+                      repr(err))
+                os.remove(mismatch)
+            else:
+                print("SKIP: batch module+base (module base or g_int64 missing)")
+        code, _, _ = run_cli(["-p", str(pid), "script", "disable", pc_win])
+        check("batch script disable exit 0", code == 0)
+        os.remove(os.path.join(BIN_DIR, "e2e_ptrchain.aa"))
+        code, out, _ = run_cli(["ps", "list"])
+        check("target alive after batch locators", str(pid) in out,
               repr(out[:200]))
 
         # ---- dll inject round trip (companion testdll.dll) ----

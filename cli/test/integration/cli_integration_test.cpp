@@ -25,6 +25,7 @@ namespace {
 struct TargetInfo {
     uint32_t pid = 0;
     uintptr_t g_int = 0;
+    uintptr_t g_int64 = 0;
     uintptr_t g_bytes = 0;
     uintptr_t g_flag = 0;
 };
@@ -101,6 +102,7 @@ bool spawn_target(TargetInfo& out) {
 
     out.pid = find_u32("PID:");
     out.g_int = find_addr("g_int ");
+    out.g_int64 = find_addr("g_int64");
     out.g_bytes = find_addr("g_bytes");
     out.g_flag = find_addr("g_flag");
     return out.pid != 0;
@@ -686,6 +688,49 @@ bool target_alive() {
     return alive;
 }
 
+// Recorded address of a script alloc by symbol name (0 if missing).
+uintptr_t script_alloc_addr(const std::string& script, const std::string& name) {
+    std::vector<deeptrace::ScriptInfo> list;
+    if (deeptrace::attach(g_target.pid) != deeptrace::Result::Ok) return 0;
+    if (deeptrace::script_status(list) != deeptrace::Result::Ok) {
+        deeptrace::detach();
+        return 0;
+    }
+    deeptrace::detach();
+    for (const auto& s : list) {
+        if (s.path != script) continue;
+        for (const auto& a : s.allocs) {
+            if (a.first == name) return a.second;
+        }
+    }
+    return 0;
+}
+
+// Write ad-hoc batch JSON text to a temp file; returns the path.
+std::string write_temp_json(const std::string& content, int tag) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string path = std::string(tmpname) + "_" + std::to_string(tag) + ".json";
+    std::ofstream f(path, std::ios::binary);
+    f << content;
+    f.close();
+    return path;
+}
+
+// 8 little-endian bytes as 16 hex digits without 0x: mem write hex-bytes
+// stores bytes in memory order, so the address's byte pairs must be reversed
+// (e.g. 0x0000000140020000 -> "0000020014000000").
+std::string hex8(uintptr_t v) {
+    char b[24];
+    std::snprintf(b, sizeof b, "%016llX", (unsigned long long)v);
+    std::string rev;
+    for (int i = 14; i >= 0; i -= 2) {
+        rev.push_back(b[i]);
+        rev.push_back(b[i + 1]);
+    }
+    return rev;
+}
+
 // call-type script: alloc + createThread(ret) + dealloc. Run is idempotent
 // (already enabled), disable is idempotent (already disabled). Target must
 // survive the whole round trip.
@@ -1019,6 +1064,145 @@ TEST(CliChain, SymbolAddressingMemWriteRoundTrip) {
               2);
 
     // cleanup: disable frees the slots and code buffer by name
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// v2.9.0: `mem batch <read|write>` executes JSON-defined locators (pointer
+// chains). The fixture allocs three slots; the test wires ptr_slot ->
+// data_slot and an ASCII string, then drives batch files and verifies the
+// writes landed via the public API (proving chain traversal, module+base
+// resolution and value typing). Config errors exit 2, business errors 1.
+TEST(CliChain, BatchLocatorReadWrite) {
+    std::string script = materialize_aa("script_ptrchain.aa", "", 70);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    const uintptr_t ptr_slot = script_alloc_addr(script, "ptr_slot");
+    const uintptr_t data_slot = script_alloc_addr(script, "data_slot");
+    const uintptr_t str_slot = script_alloc_addr(script, "str_slot");
+    ASSERT_NE(ptr_slot, 0u) << "ptr_slot not recorded";
+    ASSERT_NE(data_slot, 0u) << "data_slot not recorded";
+    ASSERT_NE(str_slot, 0u) << "str_slot not recorded";
+
+    // wire the chain deterministically (no thread race):
+    //   data_slot = 0x1122334455667788, ptr_slot -> data_slot, str_slot = "hello"
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write",
+                       hex(data_slot), "8877665544332211", "hex"}),
+              0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write",
+                       hex(ptr_slot), hex8(data_slot), "hex"}),
+              0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write",
+                       hex(str_slot), "68656c6c6f", "hex"}),
+              0);
+
+    // module offset of g_int64 (module+base locator target)
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::resolve_base("deeptrace_target.exe", &base),
+              deeptrace::Result::Ok);
+    deeptrace::detach();
+    ASSERT_NE(base, 0u);
+    ASSERT_NE(g_target.g_int64, 0u);
+    const uint64_t mod_off = g_target.g_int64 - base;
+
+    // ---- batch read: every locator source + type (exit 0) ----
+    char readbuf[2048];
+    std::snprintf(readbuf, sizeof readbuf,
+        "{ \"version\": 1, \"process\": \"deeptrace_target.exe\",\n"
+        "  \"values\": {\n"
+        "    \"chain_qword\": { \"symbol\": \"ptr_slot\", \"offsets\": [\"0x0\"],"
+        "                      \"type\": \"qword\" },\n"
+        "    \"data_direct\": { \"symbol\": \"data_slot\", \"type\": \"qword\" },\n"
+        "    \"str\":         { \"symbol\": \"str_slot\", \"type\": \"string\" },\n"
+        "    \"buf\":         { \"symbol\": \"str_slot\", \"type\": \"bytes\","
+        "                      \"count\": 5 },\n"
+        "    \"mod_qword\":   { \"module\": \"deeptrace_target.exe\","
+        "                      \"base\": \"0x%llX\", \"type\": \"qword\" },\n"
+        "    \"abs_dword\":   { \"base\": \"0x%llX\", \"type\": \"dword\" }\n"
+        "  } }",
+        (unsigned long long)mod_off, (unsigned long long)g_target.g_int);
+    std::string read_json = write_temp_json(readbuf, 71);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       read_json}),
+              0);
+    std::remove(read_json.c_str());
+
+    // ---- batch write: chain traversal + string + module+base ----
+    char writebuf[2048];
+    std::snprintf(writebuf, sizeof writebuf,
+        "{ \"values\": {\n"
+        "    \"chain_write\": { \"symbol\": \"ptr_slot\", \"offsets\": [\"0x0\"],"
+        "                      \"type\": \"qword\","
+        "                      \"value\": \"0x99AABBCCDDEEFF00\" },\n"
+        "    \"str_write\":   { \"symbol\": \"str_slot\", \"type\": \"string\","
+        "                      \"value\": \"world\" },\n"
+        "    \"mod_write\":   { \"module\": \"deeptrace_target.exe\","
+        "                      \"base\": \"0x%llX\", \"type\": \"qword\","
+        "                      \"value\": \"0x8877665544332211\" }\n"
+        "  } }",
+        (unsigned long long)mod_off);
+    std::string write_json = write_temp_json(writebuf, 72);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "write",
+                       write_json}),
+              0);
+    std::remove(write_json.c_str());
+
+    // verify all three writes via the public API
+    {
+        uint64_t v = 0;
+        size_t n = 0;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        // chain write landed at the chain end (data_slot)
+        EXPECT_EQ(deeptrace::memory_read(data_slot, &v, 8, &n), deeptrace::Result::Ok);
+        EXPECT_EQ(n, 8u);
+        EXPECT_EQ(v, 0x99AABBCCDDEEFF00ull) << "batch chain write mismatch";
+        // string write
+        uint8_t b[8] = {0};
+        EXPECT_EQ(deeptrace::memory_read(str_slot, b, 5, &n), deeptrace::Result::Ok);
+        EXPECT_EQ(n, 5u);
+        EXPECT_EQ(std::memcmp(b, "world", 5), 0) << "batch string write mismatch";
+        // module+base write landed at g_int64
+        EXPECT_EQ(deeptrace::memory_read(g_target.g_int64, &v, 8, &n),
+                  deeptrace::Result::Ok);
+        EXPECT_EQ(v, 0x8877665544332211ull) << "batch module+base write mismatch";
+        // restore g_int64
+        v = 0x1122334455667788ull;
+        deeptrace::memory_write(g_target.g_int64, &v, 8, &n);
+        deeptrace::detach();
+    }
+
+    // ---- error paths ----
+    // config errors (JSON) -> exit 2
+    std::string bad_json = write_temp_json(
+        "{ \"version\": 2, \"values\": {} }", 73);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       bad_json}),
+              2);
+    std::remove(bad_json.c_str());
+    // business errors: unknown symbol / process mismatch -> exit 1
+    std::string nosym_json = write_temp_json(
+        "{ \"values\": { \"x\": { \"symbol\": \"no_such_sym\","
+        "                          \"type\": \"qword\" } } }",
+        74);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       nosym_json}),
+              1);
+    std::remove(nosym_json.c_str());
+    std::string mismatch_json = write_temp_json(
+        "{ \"process\": \"notepad.exe\", \"values\": {}}", 75);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       mismatch_json}),
+              1);
+    std::remove(mismatch_json.c_str());
+    // missing file -> exit 2
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       "no_such_batch.json"}),
+              2);
+
+    // cleanup: disable frees the three slots
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
     std::remove(script.c_str());
     EXPECT_TRUE(target_alive());

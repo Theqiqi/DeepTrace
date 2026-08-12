@@ -24,6 +24,14 @@ struct ScriptInfo;
 }  // namespace deeptrace
 
 namespace deeptrace_cli {
+
+// One `mem batch read` result row (v2.9.0).
+struct BatchRow {
+    std::string name;
+    uintptr_t address = 0;
+    std::string value;
+};
+
 namespace printer {
 
 void print_error(const std::string& msg);             // "Error: <msg>" -> stderr
@@ -52,6 +60,7 @@ void print_breakpoint(const deeptrace::BreakpointInfo& bp);
 void print_injects(const std::vector<deeptrace::InjectInfo>& list);
 void print_inject(const deeptrace::InjectInfo& info);
 void print_script_status(const std::vector<deeptrace::ScriptInfo>& list);
+void print_batch_read(const std::vector<BatchRow>& rows);  // NAME ADDRESS VALUE table
 
 std::string format_address(uintptr_t a);  // "0x%016llX"
 

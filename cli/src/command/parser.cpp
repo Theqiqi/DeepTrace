@@ -167,6 +167,11 @@ bool valid_convert_type(const std::string& s) {
            s == "float" || s == "double" || s == "string" || s == "hex";
 }
 
+// mem batch sub-action (v2.9.0): read or write.
+bool valid_batch_op(const std::string& s) {
+    return s == "read" || s == "write";
+}
+
 // Value validity depends on its type; used as a cross-field check after all
 // params of `convert` are collected.
 bool valid_convert_value(const std::string& v, const std::string& type) {
@@ -225,6 +230,7 @@ bool valid_param(const ParamSpec& p, const std::string& v) {
     if (t == "pattern") return valid_pattern(v);
     if (t == "hex-bytes") return valid_hex_bytes(v);
     if (t == "convert-type") return valid_convert_type(v);
+    if (t == "batch-op") return valid_batch_op(v);
     if (t == "convert-value") return !v.empty();  // full check depends on type
     if (t == "exit-code") return valid_exit_code(v);
     if (t == "index") return valid_index(v);

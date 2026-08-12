@@ -11,7 +11,7 @@
 > 解析为锚点,落点保证在锚点 ±2GB 内,消除 RIP 相对位移超界概率);
 > v2.8.0 确认并补测 `mem write <symbol>`(脚本外直接写人造指针值,动态改
 > 指针目标;能力在 v2.6.0 已由 resolve_addr 接通,本版本补测试覆盖);
-> 版本号同步 v2.8.0;既有用例全量回归。
+> 版本号同步 v2.9.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -20,7 +20,7 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.8.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.9.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
 | 非法参数(v2.6.0:符号形状现在合法,真非法形状仍拒绝) | - | `deeptrace_cli mem read "foo bar"` / `mem read a-b` | Error | 2 |
@@ -202,6 +202,38 @@ slotA=moffs64、slotB=RIP 相对两种编码)。
 > 就近分配优先贴近锚点(集成测试实测落点距锚点约 127KB);窗口内无空闲区
 > 时分配失败退出 1,绝不静默退化为任意选址。静态库集成测试另覆盖
 > script_alloc_near 记录/符号查找/重复名/NotAttached 错误路径。
+
+## 4.11 批量定位器 JSON:mem batch read/write(v2.9.0,新增)
+
+前置:启动 deeptrace_target.exe,解析 PID、g_int/g_int64 地址与模块基址。
+`script run` 执行 script_ptrchain.aa(仅分配三槽),用 `mem write` 布线:
+data_slot = 0x1122334455667788、ptr_slot = data_slot 地址(小端字节)、
+str_slot = "hello"(68656c6c6f)。JSON 文件即定位器定义(文件即存储)。
+
+| 用例 | 操作 | 预期输出 | 退出码 |
+|------|------|----------|--------|
+| 脚本分配三槽 | `-p <pid> script run script_ptrchain.aa` → `script status` | 列出 ptr_slot/data_slot/str_slot | 0 |
+| 批量读(链) | `mem batch read <json>`:chain_qword=符号 ptr_slot+偏移 0x0 | 0x1122334455667788(链末端=data_slot) | 0 |
+| 批量读(直接符号) | data_direct=符号 data_slot | 0x1122334455667788 | 0 |
+| 批量读(string) | str=符号 str_slot,type string | hello | 0 |
+| 批量读(bytes) | buf=符号 str_slot,type bytes,count 5 | 68 65 6C 6C 6F | 0 |
+| 批量读(模块+偏移) | mod_qword=module deeptrace_target.exe + g_int64 偏移 | 0x1122334455667788 | 0 |
+| 批量读(绝对地址) | abs_dword=base g_int 地址 | 0x11223344 | 0 |
+| 批量写(链) | `mem batch write`:chain_write 符号链 value 0x99AABBCCDDEEFF00 → `mem read data_slot` | 00 FF EE DD CC BB AA 99 | 0 |
+| 批量写(string) | str_write=符号 str_slot value world → `mem read str_slot` | 77 6F 72 6C 64 | 0 |
+| 批量写(模块+偏移) | mod_write=module+base value 0x8877665544332211 → `mem read g_int64` | 11 22 33 44 55 66 77 88(后恢复) | 0 |
+| 写模式缺 value | JSON 项无 value | 退出 2 | 2 |
+| 版本非法 | `{"version": 2, ...}` | 退出 2 | 2 |
+| 未知符号(业务) | `{"values":{"x":{"symbol":"no_such_sym"}}}` | Error 含 NotFound | 1 |
+| process 不匹配 | `{"process":"notepad.exe",...}` | Error 含 process mismatch | 1 |
+| 文件不存在 | `mem batch read no_such.json` | 退出 2 | 2 |
+| 副作用:批量后目标存活 | 上例后 `ps list` | 目标 pid 仍在 | 0 |
+
+> JSON 顶层 version/process/values;values 每项三态寻址源互斥(module+base /
+> symbol / 绝对 base)+ offsets 多级偏移链;type 8 种(byte/word/dword/qword/
+> float/double/string/bytes+count)。逐条失败继续其余条目,存在失败条目最终
+> 退出 1。单测覆盖解析/校验(18 例),集成测试另覆盖 BatchLocatorReadWrite
+> (真实进程链读写 + 错误路径)。
 
 ## 5. 既有回归(引用)
 
