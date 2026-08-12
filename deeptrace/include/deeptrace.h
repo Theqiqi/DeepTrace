@@ -3,10 +3,11 @@
 // Public API header. This is the ONLY header a consumer (CLI) may include.
 // All public types use standard C++ types only (no windows.h types).
 // Detailed per-function docs (params/returns/error codes) live in
-// docs/api/v2.1.0/ (see docs/developers/v2.1.0/ for architecture).
+// docs/api/v2.13.0/ (see docs/developers/v2.13.0/ for architecture).
 
 #include "domain/types.h"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,11 @@ Result suspend_process(uint32_t pid);
 Result resume_process(uint32_t pid);
 Result terminate_process(uint32_t pid, uint32_t exit_code);
 Result session_pid(uint32_t* out_pid);
+// Query the actual process access mask granted by the last successful attach
+// (Windows PROCESS_* bits; v2.11.0). Zero extra probes: the mask is recorded
+// from attach itself. NotAttached without a session, InvalidArg for a null
+// out_mask.
+Result session_permissions(uint32_t* out_mask);
 
 // ---- memory (requires attached session) ----------------------------------
 Result memory_read(uintptr_t addr, void* buf, size_t size, size_t* out_read);
@@ -66,6 +72,11 @@ Result register_get(const std::string& name, uint64_t* out_value, uint32_t tid);
 // ---- disassembly ------------------------------------------------------------
 Result disasm_at(uintptr_t addr, uint32_t count, std::vector<Instruction>& out);
 Result disasm_range(uintptr_t start, uintptr_t end, std::vector<Instruction>& out);
+// Disassemble a local byte buffer (no session required; `disasm file`).
+// base_addr is the address shown for data[0] (0 for files); decoding stops at
+// the first undecodable byte. count 1..10000. v2.13.0.
+Result disasm_buffer(const uint8_t* data, size_t size, uintptr_t base_addr,
+                     uint32_t count, std::vector<Instruction>& out);
 
 // ---- resolve -----------------------------------------------------------------
 Result resolve_base(const std::string& name, uintptr_t* out_base);
@@ -90,6 +101,74 @@ Result asm_assemble(const std::string& code, std::vector<uint8_t>& out, std::str
 // ---- shellcode -------------------------------------------------------------------
 Result shellcode_inject(const std::vector<uint8_t>& bytes, InjectInfo& out);
 Result shellcode_inject_at(uintptr_t addr, const std::vector<uint8_t>& bytes, InjectInfo& out);
+Result shellcode_alloc(const std::vector<uint8_t>& bytes, InjectInfo& out);  // alloc+write, no execute
+Result shellcode_run(uintptr_t addr, InjectInfo& out);                     // trigger at recorded addr (repeatable)
+Result shellcode_free(uintptr_t addr);                                     // free recorded addr
 Result shellcode_status(std::vector<InjectInfo>& out);
+
+// ---- script (AA-style script engine) ----------------------------------------------
+// Allocate remote memory of given size, bind to a script symbol (persisted
+// per-PID). owner = owning script path ("" = unattached). Duplicate symbol
+// name -> InvalidArg.
+Result script_alloc(const std::string& name, size_t size, const std::string& owner,
+                    uintptr_t* out_addr);
+// Allocate within +/-2GB of an anchor (RIP-relative rel32 range), preferring
+// the free region closest to the anchor. Record/save/rollback semantics mirror
+// script_alloc. No free region in the window -> Error (never falls back to
+// arbitrary placement).
+Result script_alloc_near(const std::string& name, size_t size, uintptr_t anchor,
+                         const std::string& owner, uintptr_t* out_addr);
+// Release remote memory bound to a script symbol and remove the symbol.
+Result script_free(const std::string& name);
+// Persist script enable state (idempotent per path).
+Result script_enable(const std::string& path);
+Result script_disable(const std::string& path);
+Result script_status(std::vector<ScriptInfo>& out);
+// Look up a script symbol's recorded address by name for the current session
+// (read-only; does not modify the per-PID record). NotFound if the symbol is
+// not registered, NotAttached without a session, InvalidArg for a bad name
+// or null out_addr.
+Result script_symbol(const std::string& name, uintptr_t* out_addr);
+
+// ---- hook --------------------------------------------------------------------------
+// Patch target to `jmp newmem` (5-byte E9 rel32), save original bytes. owner
+// = owning script path ("" = unattached). Idempotent re-set keeps original
+// bytes and owner.
+Result hook_set(uintptr_t addr, uintptr_t newmem, const std::string& owner,
+                HookInfo& out);
+// Restore original bytes of a hooked target and remove its record.
+Result hook_clear(uintptr_t addr);
+
+// ---- assembly (labels) -------------------------------------------------------------
+// Assemble multi-line code with label definitions/references and external
+// symbols; base_addr used for PC-relative displacements.
+Result asm_assemble_labels(const std::string& code, uintptr_t base_addr,
+                           const std::map<std::string, uintptr_t>& symbols,
+                           std::vector<uint8_t>& out, std::string* out_text);
+
+// ---- thread (create at arbitrary address) ------------------------------------------
+Result thread_create_at(uintptr_t addr, uint32_t* out_tid);
+
+// ---- pointer-chain scan (v2.12.0) --------------------------------------------------
+// Reverse-walk from a target value address: each level finds qword slots
+// whose stored pointer lands within +/-cfg.max_offset of the current target;
+// deeper levels treat the previous level's slots as new targets, up to
+// cfg.max_level. Only chains whose outermost slot (root) lies inside the
+// anchor module (cfg.module, empty = any readable region) are emitted.
+// Output chains evaluate as: addr = root; for off in offsets:
+// addr = *(qword)addr + off  (offsets are signed).
+// NotAttached without a session, InvalidArg for zero target/max_offset/
+// max_level or out == nullptr, NotFound when cfg.module is not loaded.
+Result pointer_map_snapshot(const PointerScanConfig& cfg,
+                            std::vector<PointerChain>& out);
+// Re-evaluate previously found chains against a NEW target address (e.g.
+// after the game restarted and addresses moved). Only chains whose current
+// final address lands within +/-cfg.max_offset of new_target survive ->
+// intersects away coincidence-based false positives. cfg.target is unused
+// here; thread_count/max_offset are honored.
+Result pointer_map_rescan(const std::vector<PointerChain>& base,
+                          uintptr_t new_target,
+                          const PointerScanConfig& cfg,
+                          std::vector<PointerChain>& out);
 
 }  // namespace deeptrace

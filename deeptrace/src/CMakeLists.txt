@@ -7,6 +7,8 @@ add_library(deeptrace STATIC
     algorithm/scan.cpp
     algorithm/format.h
     algorithm/format.cpp
+    algorithm/pointer_scan.h
+    algorithm/pointer_scan.cpp
 
     infrastructure/process/process.h
     infrastructure/process/process.cpp
@@ -24,6 +26,8 @@ add_library(deeptrace STATIC
     infrastructure/disassembly/disasm.cpp
     infrastructure/assembly/asmenc.h
     infrastructure/assembly/asmenc.cpp
+    infrastructure/threadpool/threadpool.h
+    infrastructure/threadpool/threadpool.cpp
 
     service/session.h
     service/session.cpp
@@ -49,6 +53,10 @@ add_library(deeptrace STATIC
     service/inject.cpp
     service/asm.h
     service/asm.cpp
+    service/script.h
+    service/script.cpp
+    service/hook.h
+    service/hook.cpp
 )
 
 target_include_directories(deeptrace PUBLIC

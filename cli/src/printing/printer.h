@@ -19,10 +19,24 @@ struct WatchEntry;
 struct DebugStatus;
 struct BreakpointInfo;
 struct InjectInfo;
+struct ScriptInfo;
 
 }  // namespace deeptrace
 
 namespace deeptrace_cli {
+
+// One `mem batch` result row (v2.9.0; status/error fields added in v2.10.0).
+// status is "ok" or "error"; on error, value is empty and error carries the
+// message. In write mode value is always empty (only result status is
+// reported); in read mode value holds the typed read value on success.
+struct BatchRow {
+    std::string name;
+    uintptr_t address = 0;
+    std::string value;
+    std::string status = "ok";  // "ok" | "error"
+    std::string error;          // message when status == "error"
+};
+
 namespace printer {
 
 void print_error(const std::string& msg);             // "Error: <msg>" -> stderr
@@ -50,8 +64,31 @@ void print_status(const deeptrace::DebugStatus& st);
 void print_breakpoint(const deeptrace::BreakpointInfo& bp);
 void print_injects(const std::vector<deeptrace::InjectInfo>& list);
 void print_inject(const deeptrace::InjectInfo& info);
+void print_script_status(const std::vector<deeptrace::ScriptInfo>& list);
+
+// Serialize mem batch result rows into the requested format (v2.10.0).
+// format: "table" (NAME ADDRESS VALUE, unchanged from v2.9.0),
+// "csv" (header name,address,value,status,error; RFC4180 quoting) or
+// "json" (array of objects; JSON string escaping). Returns the full text
+// including trailing newline(s). Pure formatting; no I/O.
+std::string batch_rows_text(const std::vector<BatchRow>& rows,
+                            const std::string& format);
 
 std::string format_address(uintptr_t a);  // "0x%016llX"
+
+// One pointer-chain line (v2.12.0): the root rendered as "ModuleName+OFFSET"
+// when it lies inside one of `mods` (module list of the attached process),
+// else as a raw 0x... address; then one signed offset per level (" +38" /
+// " -10"). Pure formatting; module containment is decided by the caller.
+std::string format_pointer_chain(uintptr_t root,
+                                 const std::vector<int64_t>& offsets,
+                                 const std::vector<deeptrace::ModuleInfo>& mods);
+
+// Human/AI-friendly names for the process access mask bits (v2.11.0): maps
+// the Windows PROCESS_* bits of a session_permissions result to semantic
+// names (read, write, vm_operate, create_thread, ...) joined by '|'.
+// Bits without a known name are skipped. Empty mask -> "".
+std::string format_permissions(uint32_t mask);
 
 }  // namespace printer
 }  // namespace deeptrace_cli

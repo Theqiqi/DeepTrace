@@ -21,6 +21,13 @@ Result QueryRegion(void* hprocess, uintptr_t addr, MemoryRegion& out);
 Result RemoteAlloc(void* hprocess, size_t size, uint32_t protection, uintptr_t* out_addr);
 Result RemoteFree(void* hprocess, uintptr_t addr);
 
+// Allocate within +/-2GB of an anchor address (RIP-relative rel32 range),
+// preferring the free region closest to the anchor. Scans MEM_FREE regions
+// upward then downward via VirtualQueryEx. Returns Error when no free region
+// in the window fits `size` (never falls back to arbitrary placement).
+Result RemoteAllocNear(void* hprocess, size_t size, uint32_t protection,
+                       uintptr_t anchor, uintptr_t* out_addr);
+
 // VirtualProtectEx wrapper.
 Result ProtectRegion(void* hprocess, uintptr_t addr, size_t size, uint32_t new_prot, uint32_t* old_prot);
 

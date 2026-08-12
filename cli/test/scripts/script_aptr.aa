@@ -1,0 +1,21 @@
+// v2.5.0 artificial-pointer fixture: writes two known 64-bit values into two
+// 8-byte slots from a spawned thread, then rets. slotA is written via the
+// accumulator moffs64 encoding (mov [slotA],rax), slotB via the non-accumulator
+// RIP-relative encoding (mov [slotB],rcx). The integration test reads both
+// slots back and compares with the constants, proving both encodings execute
+// correctly against real runtime addresses.
+[ENABLE]
+alloc(slotA,8)
+alloc(slotB,8)
+alloc(code,128)
+code:
+mov rax,0x1122334455667788
+mov [slotA],rax
+mov rcx,0x99AABBCCDDEEFF00
+mov [slotB],rcx
+ret
+createThread(code)
+[DISABLE]
+dealloc(code)
+dealloc(slotB)
+dealloc(slotA)

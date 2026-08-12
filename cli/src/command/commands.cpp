@@ -41,7 +41,9 @@ const std::vector<CommandSpec>& command_table() {
     static const std::vector<CommandSpec> kTable = {
         // ---- ps ----
         cmd("ps", "list", "ps list", "List all processes", {}),
-        cmd("ps", "attach", "ps attach <pid>", "Attach to a process", {req("pid", "pid")}),
+        cmd("ps", "attach", "ps attach <pid>",
+            "Attach to a process (shows granted permissions)",
+            {req("pid", "pid")}),
         cmd("ps", "detach", "ps detach", "Detach from current process", {}),
         cmd("ps", "info", "ps info", "Show current process info", {}),
         cmd("ps", "suspend", "ps suspend", "Suspend the attached process", {}),
@@ -64,6 +66,11 @@ const std::vector<CommandSpec>& command_table() {
         cmd("mem", "readval", "mem readval <address> <type>",
             "Read a typed value (byte|word|dword|qword|float|double)",
             {req("address", "address"), req("type", "value-type")}),
+        cmd("mem", "batch",
+            "mem batch <read|write> <file.json> [--format table|csv|json] [--out <file>]",
+            "Batch read/write JSON-defined locators (--format csv|json exports)",
+            {req("op", "batch-op"), req("file", "script-path"),
+             opt("--format", "format-flag", ""), opt("--out", "out-flag", "")}),
 
         // ---- module ----
         cmd("module", "list", "module list", "List all loaded modules", {}),
@@ -94,12 +101,18 @@ const std::vector<CommandSpec>& command_table() {
             {req("address", "address"), opt("count", "number", "10")}),
         cmd("disasm", "range", "disasm range <start> <end>", "Disassemble memory range",
             {req("start", "address"), req("end", "address")}),
+        cmd("disasm", "file", "disasm file <file.bin> [count]",
+            "Disassemble a local binary file (no attach needed)",
+            {req("file", "script-path"), opt("count", "number", "100")}),
 
         // ---- resolve ----
         cmd("resolve", "base", "resolve base <module>", "Get base address of module",
             {req("module", "string")}),
         cmd("resolve", "scan", "resolve scan <pattern>",
             "Pattern scan (AOB, e.g. \"48 8B ?? ?? 00\")", {req("pattern", "pattern")}),
+        cmd("resolve", "ptrscan", "resolve ptrscan <file.json>",
+            "Pointer-chain scan from a target value address (JSON config)",
+            {req("file", "script-path")}),
 
         // ---- watch ----
         cmd("watch", "list", "watch list", "List all watch entries", {}),
@@ -123,6 +136,10 @@ const std::vector<CommandSpec>& command_table() {
         cmd("asm", "assemble", "asm assemble <code> [--hex] [--c-array]",
             "Assemble x64 assembly to bytes (--hex: hex bytes, --c-array: C array)",
             {req("code", "string"), opt("--hex", "flag", ""), opt("--c-array", "flag", "")}),
+        cmd("asm", "file", "asm file <path.asm> [--hex] [--c-array] [--out <path.bin>]",
+            "Assemble assembly source file to bytes (--out: write raw .bin)",
+            {req("path", "string"), opt("--hex", "flag", ""), opt("--c-array", "flag", ""),
+             opt("--out", "out-flag", "")}),
 
         // ---- shellcode ----
         cmd("shellcode", "inject", "shellcode inject <hex_bytes>", "Inject shellcode (auto-alloc)",
@@ -130,6 +147,18 @@ const std::vector<CommandSpec>& command_table() {
         cmd("shellcode", "injectat", "shellcode injectat <address> <hex_bytes>",
             "Inject shellcode at address",
             {req("address", "address"), req("hex_bytes", "hex-bytes")}),
+        cmd("shellcode", "injectfile", "shellcode injectfile <path.bin>",
+            "Read .bin file and inject (execute immediately)", {req("path", "string")}),
+        cmd("shellcode", "alloc", "shellcode alloc <source>",
+            "Allocate + write only, print address (no execute; source: hex or .bin)",
+            {req("source", "shellcode-source")}),
+        cmd("shellcode", "run", "shellcode run <address>",
+            "Trigger recorded shellcode once (repeatable)", {req("address", "address")}),
+        cmd("shellcode", "free", "shellcode free <address>",
+            "Free recorded shellcode memory + clear record", {req("address", "address")}),
+        cmd("shellcode", "exec", "shellcode exec <source>",
+            "Pipeline: convert -> write -> trigger in one call (source: hex/.bin/.asm)",
+            {req("source", "shellcode-source")}),
         cmd("shellcode", "status", "shellcode status", "Show shellcode inject status", {}),
 
         // ---- convert (standalone command, no sub-action) ----
@@ -137,6 +166,30 @@ const std::vector<CommandSpec>& command_table() {
             "Convert typed data to hex bytes "
             "(type: byte|word|dword|qword|float|double|string|hex)",
             {req("type", "convert-type"), req("value", "convert-value")}),
+
+        // ---- hex2bin (standalone command, no sub-action) ----
+        cmd("hex2bin", "", "hex2bin <hex> <output.bin>",
+            "Write hex bytes to a raw binary file",
+            {req("hex", "hex-bytes"), req("output", "string")}),
+
+        // ---- bin2hex (standalone command, no sub-action; v2.13.0) ----
+        cmd("bin2hex", "", "bin2hex <file.bin> [format]",
+            "Print a raw binary file as hex bytes "
+            "(format: hex|dec|bin|ascii|c-array)",
+            {req("file", "script-path"), opt("format", "bin2hex-format", "hex")}),
+
+        // ---- script (AA-style script engine) ----
+        cmd("script", "check", "script check <file>",
+            "Check AA script syntax and assembly only (no attach, no execute)",
+            {req("file", "script-path")}),
+        cmd("script", "run", "script run <file>",
+            "Run an AA-style script [ENABLE] block (idempotent)",
+            {req("file", "script-path")}),
+        cmd("script", "disable", "script disable <file>",
+            "Run an AA-style script [DISABLE] block (idempotent)",
+            {req("file", "script-path")}),
+        cmd("script", "status", "script status",
+            "Show enabled scripts and their hooks/allocs", {}),
     };
     return kTable;
 }
@@ -161,7 +214,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.1.0\n";
+    os << "deeptrace_cli v2.13.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";
@@ -169,6 +222,17 @@ std::string build_help_text() {
     os << "  -p, --pid <pid>    Target process ID\n";
     os << "  -h, --help         Show help\n";
     os << "  -v, --version      Show version\n";
+    os << "\n";
+    os << "Notes:\n";
+    os << "  <address> args accept a numeric address or a script symbol name\n";
+    os << "  (e.g. `mem read sunObjPtr` after `script run`; v2.6.0).\n";
+    os << "  script `alloc(name,size,\"module.dll\"+off)` places the allocation\n";
+    os << "  within +/-2GB of the anchor so RIP-relative jumps never overflow\n";
+    os << "  (v2.7.0).\n";
+    os << "  `mem batch <read|write> <file.json>` executes JSON-defined locators\n";
+    os << "  (pointer chains: module+base / symbol / absolute + offsets; v2.9.0).\n";
+    os << "  `--format csv|json` exports results for other tools/AI (v2.10.0);\n";
+    os << "  `--out <file>` writes the output to a file instead of stdout.\n";
 
     std::string cur_group;
     size_t max_usage = 0;

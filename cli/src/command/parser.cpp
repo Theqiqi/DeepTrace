@@ -55,6 +55,26 @@ bool valid_address(const std::string& s) {
     return v > 0 && v <= 0x7FFFFFFFFFFFULL;
 }
 
+// Address arguments accept either a numeric address or a script symbol name
+// (v2.6.0 symbol addressing: `mem read sunObjPtr`). Symbol shape = non-empty
+// ASCII identifier ([A-Za-z_][A-Za-z0-9_]*), matching script alloc names;
+// pure digits/0x-prefixed hex are still parsed as addresses first. Whether
+// the symbol actually exists is resolved later by the interface layer
+// (requires attach); here we only validate the shape.
+bool valid_symbol_shape(const std::string& s) {
+    if (s.empty()) return false;
+    char c0 = s[0];
+    if (!((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z') || c0 == '_'))
+        return false;
+    for (unsigned char c : s) {
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool valid_number(const std::string& s) {
     uint64_t v;
     return parse_uint(s, v);
@@ -147,6 +167,22 @@ bool valid_convert_type(const std::string& s) {
            s == "float" || s == "double" || s == "string" || s == "hex";
 }
 
+// mem batch sub-action (v2.9.0): read or write.
+bool valid_batch_op(const std::string& s) {
+    return s == "read" || s == "write";
+}
+
+// mem batch export format (v2.10.0): table (default) | csv | json.
+bool valid_batch_format(const std::string& s) {
+    return s == "table" || s == "csv" || s == "json";
+}
+
+// bin2hex output format (v2.13.0): printer::print_bytes_formatted names.
+bool valid_bin2hex_format(const std::string& s) {
+    return s == "hex" || s == "dec" || s == "bin" || s == "ascii" ||
+           s == "c-array";
+}
+
 // Value validity depends on its type; used as a cross-field check after all
 // params of `convert` are collected.
 bool valid_convert_value(const std::string& v, const std::string& type) {
@@ -194,7 +230,8 @@ bool valid_convert_value(const std::string& v, const std::string& type) {
 
 bool valid_param(const ParamSpec& p, const std::string& v) {
     const std::string& t = p.type;
-    if (t == "address") return valid_address(v);
+    if (t == "address")
+        return valid_address(v) || valid_symbol_shape(v);  // v2.6.0: number or symbol
     if (t == "number") return valid_number(v);
     if (t == "pid" || t == "tid") return valid_pid_tid(v);
     if (t == "string") return valid_string(v);
@@ -204,10 +241,13 @@ bool valid_param(const ParamSpec& p, const std::string& v) {
     if (t == "pattern") return valid_pattern(v);
     if (t == "hex-bytes") return valid_hex_bytes(v);
     if (t == "convert-type") return valid_convert_type(v);
+    if (t == "batch-op") return valid_batch_op(v);
+    if (t == "bin2hex-format") return valid_bin2hex_format(v);
     if (t == "convert-value") return !v.empty();  // full check depends on type
     if (t == "exit-code") return valid_exit_code(v);
     if (t == "index") return valid_index(v);
     if (t == "script-path") return !v.empty();  // existence/readability checked by script module
+    if (t == "shellcode-source") return !v.empty();  // hex/file resolution in interface layer
     if (t == "flag") return v == p.name;
     return true;
 }
@@ -247,7 +287,8 @@ ParseResult parse_args(int argc, char* argv[]) {
             res.req.pid_set = true;
             continue;
         }
-        if (!a.empty() && a[0] == '-' && a.size() > 1 && a != "--hex" && a != "--c-array") {
+        if (!a.empty() && a[0] == '-' && a.size() > 1 && a != "--hex" && a != "--c-array" &&
+            a != "--out" && a != "--format") {
             res.ok = false;
             res.exit_code = 2;
             res.error = "unknown option: " + a;
@@ -314,6 +355,53 @@ ParseResult parse_args(int argc, char* argv[]) {
                 ++ai;
             } else {
                 res.req.args.push_back("");  // not set
+            }
+            continue;
+        }
+        if (p.type == "format-flag") {
+            // value-bearing flag (v2.10.0): consume "--format" plus the next
+            // non-flag token; the value must be table|csv|json.
+            if (ai < args.size() && args[ai] == "--format") {
+                res.req.args.push_back(args[ai]);
+                ++ai;
+                if (ai < args.size() && !(args[ai].size() > 1 && args[ai][0] == '-')) {
+                    if (!valid_batch_format(args[ai])) {
+                        res.ok = false;
+                        res.exit_code = 2;
+                        res.error = "invalid --format: '" + args[ai] + "'";
+                        return res;
+                    }
+                    res.req.args.push_back(args[ai]);
+                    ++ai;
+                } else {
+                    res.ok = false;
+                    res.exit_code = 2;
+                    res.error = "missing argument for option: --format";
+                    return res;
+                }
+            } else {
+                res.req.args.push_back("");  // not set (two slots: flag + value)
+                res.req.args.push_back("");
+            }
+            continue;
+        }
+        if (p.type == "out-flag") {
+            // value-bearing flag: consume "--out" plus the next non-flag token
+            if (ai < args.size() && args[ai] == "--out") {
+                res.req.args.push_back(args[ai]);
+                ++ai;
+                if (ai < args.size() && !(args[ai].size() > 1 && args[ai][0] == '-')) {
+                    res.req.args.push_back(args[ai]);
+                    ++ai;
+                } else {
+                    res.ok = false;
+                    res.exit_code = 2;
+                    res.error = "missing argument for option: --out";
+                    return res;
+                }
+            } else {
+                res.req.args.push_back("");  // not set (two slots: flag + value)
+                res.req.args.push_back("");
             }
             continue;
         }

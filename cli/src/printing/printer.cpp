@@ -38,7 +38,7 @@ void print_help(const std::string& text) {
 }
 
 void print_version() {
-    std::printf("deeptrace_cli v2.1.0\n");
+    std::printf("deeptrace_cli v2.13.0\n");
 }
 
 std::string to_ascii(const std::wstring& s) {
@@ -57,6 +57,71 @@ std::string format_address(uintptr_t a) {
     char buf[32];
     std::snprintf(buf, sizeof buf, "0x%016llX", (unsigned long long)a);
     return buf;
+}
+
+namespace {
+
+// Uppercase hex without prefix or padding, e.g. 0x1AF89C0 -> "1AF89C0".
+std::string format_offset(uint64_t v) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%llX", (unsigned long long)v);
+    return buf;
+}
+
+}  // namespace
+
+std::string format_pointer_chain(uintptr_t root,
+                                 const std::vector<int64_t>& offsets,
+                                 const std::vector<deeptrace::ModuleInfo>& mods) {
+    std::string line;
+    bool anchored = false;
+    for (const auto& m : mods) {
+        if (root >= m.base && root < m.base + m.size) {
+            line = to_ascii(m.name) + "+" + format_offset(root - m.base);
+            anchored = true;
+            break;
+        }
+    }
+    if (!anchored) line = format_address(root);
+    for (int64_t off : offsets) {
+        if (off < 0) {
+            line += " -" + format_offset(static_cast<uint64_t>(-off));
+        } else {
+            line += " +" + format_offset(static_cast<uint64_t>(off));
+        }
+    }
+    return line;
+}
+
+std::string format_permissions(uint32_t mask) {
+    // Windows PROCESS_* bits, ordered by semantic usefulness for humans/AI
+    // (v2.11.0). Bits not listed are skipped.
+    struct BitName {
+        uint32_t bit;
+        const char* name;
+    };
+    static const BitName kBits[] = {
+        {0x0010, "read"},           // PROCESS_VM_READ
+        {0x0020, "write"},          // PROCESS_VM_WRITE
+        {0x0008, "vm_operate"},     // PROCESS_VM_OPERATION
+        {0x0002, "create_thread"},  // PROCESS_CREATE_THREAD
+        {0x0800, "suspend_resume"}, // PROCESS_SUSPEND_RESUME
+        {0x0400, "query"},          // PROCESS_QUERY_INFORMATION
+        {0x1000, "query_limited"},  // PROCESS_QUERY_LIMITED_INFORMATION
+        {0x0001, "terminate"},      // PROCESS_TERMINATE
+        {0x0040, "dup_handle"},     // PROCESS_DUP_HANDLE
+        {0x0080, "create_process"}, // PROCESS_CREATE_PROCESS
+        {0x0100, "set_quota"},      // PROCESS_SET_QUOTA
+        {0x0200, "set_info"},       // PROCESS_SET_INFORMATION
+    };
+    std::string out;
+    for (const auto& b : kBits) {
+        if ((mask & b.bit) != 0) {
+            if (!out.empty()) out += '|';
+            out += b.name;
+        }
+    }
+    return out;
 }
 
 void print_processes(const std::vector<deeptrace::ProcessInfo>& list) {
@@ -191,6 +256,18 @@ void print_bytes_formatted(const std::vector<uint8_t>& bytes, const std::string&
         std::printf("\n");
         return;
     }
+    if (format == "c-array") {
+        // same shape as `asm assemble --c-array` (v2.13.0)
+        std::string out;
+        for (size_t i = 0; i < bytes.size(); ++i) {
+            char b[16];
+            std::snprintf(b, sizeof b, "0x%02X, ", bytes[i]);
+            out += b;
+        }
+        if (!out.empty()) out.resize(out.size() - 2);
+        std::printf("unsigned char code[] = { %s };\n", out.c_str());
+        return;
+    }
     // hex
     for (size_t i = 0; i < bytes.size(); ++i) {
         if (i) std::printf(" ");
@@ -221,6 +298,110 @@ void print_inject(const deeptrace::InjectInfo& info) {
     std::printf("%-8s %-40s %-18s %-10u %s\n", info.kind.c_str(),
                 to_ascii(info.path).c_str(), format_address(info.remote_base).c_str(),
                 info.thread_id, info.running ? "yes" : "no");
+}
+
+void print_script_status(const std::vector<deeptrace::ScriptInfo>& list) {
+    std::printf("%-24s %s\n", "SCRIPT", "STATE");
+    for (const auto& s : list) {
+        std::printf("%-24s %s\n", s.path.c_str(), s.state.c_str());
+        for (const auto& h : s.hooks) {
+            std::printf("  hook    %s -> %s (%llu bytes)\n",
+                        format_address(h.target).c_str(),
+                        format_address(h.newmem).c_str(), (unsigned long long)h.size);
+        }
+        for (const auto& a : s.allocs) {
+            std::printf("  alloc   %s %s\n", a.first.c_str(),
+                        format_address(a.second).c_str());
+        }
+    }
+}
+
+namespace {
+
+// RFC4180-style CSV field quoting: wrap in double quotes (doubling inner
+// quotes) when the field contains a comma, quote, CR or LF.
+std::string csv_field(const std::string& s) {
+    bool need_quote = false;
+    for (char c : s) {
+        if (c == ',' || c == '"' || c == '\r' || c == '\n') {
+            need_quote = true;
+            break;
+        }
+    }
+    if (!need_quote) return s;
+    std::string out = "\"";
+    for (char c : s) {
+        if (c == '"') out += "\"\"";
+        else out += c;
+    }
+    out += "\"";
+    return out;
+}
+
+// JSON string escaping: quotes/backslash escaped, control chars as \uXXXX.
+std::string json_escape(const std::string& s) {
+    std::string out;
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20 || c == 0x7F) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof buf, "\\u%04X", c);
+                    out += buf;
+                } else {
+                    out += static_cast<char>(c);
+                }
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+std::string batch_rows_text(const std::vector<BatchRow>& rows,
+                            const std::string& format) {
+    if (format == "csv") {
+        std::string out = "name,address,value,status,error\n";
+        for (const auto& r : rows) {
+            out += csv_field(r.name) + ',' + csv_field(format_address(r.address)) +
+                   ',' + csv_field(r.value) + ',' + csv_field(r.status) + ',' +
+                   csv_field(r.error) + '\n';
+        }
+        return out;
+    }
+    if (format == "json") {
+        std::string out = "[";
+        for (size_t i = 0; i < rows.size(); ++i) {
+            const BatchRow& r = rows[i];
+            if (i) out += ",";
+            out += "{\"name\":\"" + json_escape(r.name) +
+                   "\",\"address\":\"" + format_address(r.address) +
+                   "\",\"value\":\"" + json_escape(r.value) +
+                   "\",\"status\":\"" + json_escape(r.status) +
+                   "\",\"error\":\"" + json_escape(r.error) + "\"}";
+        }
+        out += "]\n";
+        return out;
+    }
+    // table (default, unchanged from v2.9.0; error rows show "error" as VALUE)
+    std::string out;
+    char line[512];
+    std::snprintf(line, sizeof line, "%-24s %-18s %s\n", "NAME", "ADDRESS", "VALUE");
+    out += line;
+    for (const auto& r : rows) {
+        const char* value = (r.status == "error") ? "error" : r.value.c_str();
+        std::snprintf(line, sizeof line, "%-24s %-18s %s\n", r.name.c_str(),
+                      format_address(r.address).c_str(), value);
+        out += line;
+    }
+    return out;
 }
 
 }  // namespace printer

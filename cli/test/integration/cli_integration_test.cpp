@@ -12,9 +12,14 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
+
+#include <fcntl.h>
+#include <io.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -24,6 +29,7 @@ namespace {
 struct TargetInfo {
     uint32_t pid = 0;
     uintptr_t g_int = 0;
+    uintptr_t g_int64 = 0;
     uintptr_t g_bytes = 0;
     uintptr_t g_flag = 0;
 };
@@ -100,6 +106,7 @@ bool spawn_target(TargetInfo& out) {
 
     out.pid = find_u32("PID:");
     out.g_int = find_addr("g_int ");
+    out.g_int64 = find_addr("g_int64");
     out.g_bytes = find_addr("g_bytes");
     out.g_flag = find_addr("g_flag");
     return out.pid != 0;
@@ -142,12 +149,166 @@ std::string hex(uintptr_t v) {
     return b;
 }
 
+// Redirect stdout to a temp file, run fn, restore, return captured text
+// (same fd-level technique as printer_test.cpp).
+template <typename Fn>
+std::string capture_stdout(Fn fn) {
+    char tmpname[L_tmpnam] = {0};
+    if (!std::tmpnam(tmpname)) return "";
+    int out_fd = _open(tmpname, _O_CREAT | _O_TRUNC | _O_WRONLY | _O_BINARY,
+                       _S_IREAD | _S_IWRITE);
+    if (out_fd < 0) return "";
+    std::fflush(stdout);
+    int saved = _dup(_fileno(stdout));
+    _dup2(out_fd, _fileno(stdout));
+    fn();
+    std::fflush(stdout);
+    _dup2(saved, _fileno(stdout));
+    _close(saved);
+    _close(out_fd);
+    std::ifstream f(tmpname, std::ios::binary);
+    std::string s((std::istreambuf_iterator<char>(f)),
+                  std::istreambuf_iterator<char>());
+    std::remove(tmpname);
+    return s;
+}
+
 }  // namespace
 
 // ------- full chain: parse -> execute -> deeptrace API -------
 
 TEST(CliChain, PsList) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "list"}), 0);
+}
+
+// v2.11.0: `ps attach` must surface the permissions actually granted by the
+// attach (the fallback set or PROCESS_ALL_ACCESS). The exit code stays 0 and
+// the session's recorded mask matches what the static lib reports.
+TEST(CliChain, PsAttachSurfacesPermissions) {
+    std::string pid = std::to_string(g_target.pid);
+    // attach via the CLI chain (ps group manages its own session); the
+    // session stays attached until ps detach, so release it even on failure
+    struct SessionGuard {
+        ~SessionGuard() { deeptrace::detach(); }
+    } guard;
+    EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "attach", pid}), 0);
+    // verify the recorded mask matches what the static lib reports
+    uint32_t mask = 0;
+    EXPECT_EQ(deeptrace::session_permissions(&mask), deeptrace::Result::Ok);
+    EXPECT_NE(mask, 0u);
+    EXPECT_NE(mask & 0x0010u, 0u);  // PROCESS_VM_READ
+    EXPECT_NE(mask & 0x0020u, 0u);  // PROCESS_VM_WRITE
+    // failed attach is still a business error (unchanged)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "attach", "99999999"}), 1);
+}
+
+// v2.12.0: `resolve ptrscan <file.json>` runs the pointer-chain reverse walk
+// through the full CLI chain. Wire a 2-hop chain in the target heap pointing
+// at the module global g_int64, then scan with max_offset=0 (exact match);
+// the printed chain line must contain our heap root and a summary line.
+TEST(CliChain, ResolvePtrscanFindsWiredChain) {
+    std::string pid = std::to_string(g_target.pid);
+    uintptr_t slot0 = 0, slot1 = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("cli_ps_s0", 16, "test", &slot0),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("cli_ps_s1", 16, "test", &slot1),
+              deeptrace::Result::Ok);
+    size_t w = 0;
+    ASSERT_EQ(deeptrace::memory_write(slot0, &g_target.g_int64, 8, &w),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::memory_write(slot1, &slot0, 8, &w),
+              deeptrace::Result::Ok);
+    deeptrace::detach();
+
+    const char* cfg = "cli_ptrscan_test.json";
+    {
+        std::ofstream f(cfg);
+        f << "{\"version\":1,\"target\":\"" << hex(g_target.g_int64)
+          << "\",\"max_offset\":0,\"max_level\":2,\"threads\":2}";
+    }
+    std::string out = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "resolve", "ptrscan",
+                           cfg}),
+                  0);
+    });
+
+    // the 2-hop chain root=slot1 renders as a raw address (heap) + two +0
+    std::vector<deeptrace::ModuleInfo> mods;
+    deeptrace::module_list(mods);
+    std::string want =
+        deeptrace_cli::printer::format_pointer_chain(slot1, {0, 0}, mods);
+    EXPECT_NE(out.find(want), std::string::npos)
+        << "expected chain line '" << want << "' in:\n" << out;
+    EXPECT_NE(out.find("chains)"), std::string::npos) << "no summary in:\n" << out;
+
+    std::remove(cfg);
+    deeptrace::attach(g_target.pid);
+    deeptrace::script_free("cli_ps_s0");
+    deeptrace::script_free("cli_ps_s1");
+    deeptrace::detach();
+}
+
+// v2.12.0: ptrscan config errors are usage errors (exit 2); a missing target
+// process attachment is a business error (exit 1) via the -p attach path.
+TEST(CliChain, ResolvePtrscanConfigErrors) {
+    const char* bad = "cli_ptrscan_bad.json";
+    {
+        std::ofstream f(bad);
+        f << "{\"version\":1}";  // missing target
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "resolve", "ptrscan", bad}), 2);
+    std::remove(bad);
+
+    // valid config but no attach -> NotAttached (business error, exit 1)
+    const char* cfg = "cli_ptrscan_ok.json";
+    {
+        std::ofstream f(cfg);
+        f << "{\"version\":1,\"target\":\"0x1000\"}";
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "resolve", "ptrscan", cfg}), 1);
+    std::remove(cfg);
+}
+
+// v2.13.0: conversion layer - `bin2hex` round-trip and `disasm file` local
+// disassembly through the full CLI chain (pure data, no target needed).
+TEST(CliChain, Bin2hexAndDisasmFile) {
+    const char* bin = "cli_v213_test.bin";
+    {
+        std::ofstream f(bin, std::ios::binary);
+        f.write("\x48\x8B\xC3\xC3", 4);  // mov rax, rbx ; ret
+    }
+    auto h = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "bin2hex", bin}), 0);
+    });
+    EXPECT_NE(h.find("48 8B C3"), std::string::npos) << "captured: " << h;
+
+    auto d = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "disasm", "file", bin}), 0);
+    });
+    EXPECT_NE(d.find("mov rax"), std::string::npos) << "captured: " << d;
+    EXPECT_NE(d.find("ret"), std::string::npos) << "captured: " << d;
+
+    // dec/bin/ascii formats (v2.13.0)
+    auto dec = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "bin2hex", bin, "dec"}), 0);
+    });
+    EXPECT_NE(dec.find("72 139 195"), std::string::npos) << "captured: " << dec;
+    auto asc = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "bin2hex", bin, "ascii"}), 0);
+    });
+    EXPECT_NE(asc.find("..."), std::string::npos) << "captured: " << asc;  // non-printable -> '.'
+
+    // `disasm file` with -p must not require an attach (session-free)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", "99999999", "disasm", "file",
+                       bin}),
+              0);
+
+    // missing file -> usage error 2
+    EXPECT_EQ(run_cli({"deeptrace_cli", "bin2hex", "nope_v213.bin"}), 2);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "disasm", "file", "nope_v213.bin"}), 2);
+
+    std::remove(bin);
 }
 
 TEST(CliChain, AttachAndReadKnownInt) {
@@ -456,4 +617,931 @@ TEST(CliChain, ReadFaultExit) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "mem", "read",
                        "0x1", "4"}),
               1);
+}
+
+// ---- v2.2.0: asm file / hex2bin / shellcode staged ops ----
+
+// asm file: assemble a source file, optionally write .bin; the produced bytes
+// must match the inline assemble result (xor eax,eax; ret = 31 C0 C3).
+TEST(CliChain, AsmFileAssemblesAndWritesBin) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string asm_path = std::string(tmpname) + ".asm";
+    std::string bin_path = std::string(tmpname) + ".bin";
+    {
+        std::ofstream f(asm_path);
+        f << "xor eax, eax\nret\n";
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "asm", "file", asm_path, "--out", bin_path}), 0);
+    std::ifstream bin(bin_path, std::ios::binary);
+    ASSERT_TRUE(bin.good()) << "bin file not written";
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(bin)),
+                               std::istreambuf_iterator<char>());
+    ASSERT_EQ(bytes.size(), 3u);
+    EXPECT_EQ(bytes[0], 0x31);
+    EXPECT_EQ(bytes[1], 0xC0);
+    EXPECT_EQ(bytes[2], 0xC3);
+    std::remove(asm_path.c_str());
+    std::remove(bin_path.c_str());
+    // error paths
+    EXPECT_EQ(run_cli({"deeptrace_cli", "asm", "file", "no_such_file.asm"}), 2);
+}
+
+// hex2bin: hex -> raw .bin file, readable back as bytes.
+TEST(CliChain, Hex2BinWritesFile) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string bin_path = std::string(tmpname) + ".bin";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "hex2bin", "DEADBEEF", bin_path}), 0);
+    std::ifstream bin(bin_path, std::ios::binary);
+    ASSERT_TRUE(bin.good());
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(bin)),
+                               std::istreambuf_iterator<char>());
+    ASSERT_EQ(bytes.size(), 4u);
+    EXPECT_EQ(bytes[0], 0xDE);
+    EXPECT_EQ(bytes[3], 0xEF);
+    std::remove(bin_path.c_str());
+    // usage errors
+    EXPECT_EQ(run_cli({"deeptrace_cli", "hex2bin", "ABC", bin_path}), 2);
+}
+
+// shellcode staged ops through the full chain: alloc (write only) -> run
+// (trigger, repeatable) -> free (cleanup). The {0xC3} ret shellcode keeps the
+// target safe; the record must exist after alloc and be gone after free.
+TEST(CliChain, ShellcodeAllocRunFreeChain) {
+    std::string pid = std::to_string(g_target.pid);
+    // alloc: no execute, returns address. Verify the bytes landed in the target.
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "alloc", "C3"}), 0);
+    // status lists a shellcode record for this pid
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "status"}), 0);
+    // run on the recorded address: find it via the record file by scanning
+    // the status output is complex here; instead drive the public API to locate
+    // the address we just allocated (the only new one at this point).
+    std::vector<deeptrace::InjectInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    uintptr_t addr = 0;
+    for (const auto& i : list) {
+        if (i.kind == "shellcode" && i.remote_base != 0) addr = i.remote_base;
+    }
+    ASSERT_NE(addr, 0u) << "no shellcode record after alloc";
+
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "run", hex(addr)}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "run", hex(addr)}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free", hex(addr)}), 0);
+    // record gone -> run/free now fail with business error (exit 1)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "run", hex(addr)}), 1);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free", hex(addr)}), 1);
+    // side effect check: target survived the whole staged flow
+    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, g_target.pid);
+    ASSERT_NE(h, nullptr);
+    DWORD code = 0;
+    EXPECT_TRUE(::GetExitCodeProcess(h, &code));
+    EXPECT_EQ(code, STILL_ACTIVE);
+    ::CloseHandle(h);
+}
+
+// shellcode alloc with an invalid source (neither hex nor an existing file)
+// is a usage error (exit 2).
+TEST(CliChain, ShellcodeAllocBadSource) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "shellcode",
+                       "alloc", "zzzz"}),
+              2);
+}
+
+// Capability boundary (negative): alloc must NOT accept .asm source files
+// (assembly is exec-only); the raw text must not be injected as shellcode.
+TEST(CliChain, ShellcodeAllocRejectsAsmFile) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string asm_path = std::string(tmpname) + ".asm";
+    {
+        std::ofstream f(asm_path);
+        f << "ret\n";
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "shellcode",
+                       "alloc", asm_path}),
+              2);
+    std::remove(asm_path.c_str());
+}
+
+// exec with an .asm source whose assembly fails (syntax error) is a business
+// error (exit 1, BadFormat), not a usage error.
+TEST(CliChain, ShellcodeExecBadAsm) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string asm_path = std::string(tmpname) + ".asm";
+    {
+        std::ofstream f(asm_path);
+        f << "bogus rax, 1\n";
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "shellcode",
+                       "exec", asm_path}),
+              1);
+    std::remove(asm_path.c_str());
+}
+
+// shellcode exec: one invocation = complete flow (convert -> write -> trigger)
+// using a .bin file produced by hex2bin. Target must survive.
+TEST(CliChain, ShellcodeExecBinFile) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string bin_path = std::string(tmpname) + ".bin";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "hex2bin", "C3", bin_path}), 0);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "exec", bin_path}), 0);
+    std::remove(bin_path.c_str());
+    // exec produced a record; find and free it to avoid cross-test residue.
+    std::vector<deeptrace::InjectInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    for (const auto& i : list) {
+        if (i.kind == "shellcode" && i.remote_base != 0) {
+            EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free",
+                               hex(i.remote_base)}),
+                      0);
+        }
+    }
+    // invalid source is a usage error
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "exec", "zzzz"}), 2);
+}
+
+// shellcode exec with an .asm source: assembled in memory, injected, executed.
+TEST(CliChain, ShellcodeExecAsmSource) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string asm_path = std::string(tmpname) + ".asm";
+    {
+        std::ofstream f(asm_path);
+        f << "ret\n";
+    }
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "exec", asm_path}), 0);
+    std::remove(asm_path.c_str());
+    // cleanup any record created by exec
+    std::vector<deeptrace::InjectInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    for (const auto& i : list) {
+        if (i.kind == "shellcode" && i.remote_base != 0) {
+            EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free",
+                               hex(i.remote_base)}),
+                      0);
+        }
+    }
+}
+
+// ---- v2.3.0: AA-style script engine (script run/disable/status) ----
+
+// Shared temp-write for AA scripts (used by materialize_aa and
+// write_aa_script); content is written as-is.
+std::string materialize_aa_content(const std::string& content, int tag) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string path = std::string(tmpname) + "_" + std::to_string(tag) + ".aa";
+    std::ofstream f(path, std::ios::binary);
+    f << content;
+    f.close();
+    return path;
+}
+
+// Load an AA script fixture next to the test exe (deployed by POST_BUILD),
+// substitute the %HOOK_OFF% placeholder with the runtime module offset, and
+// write the materialized script to a temp file. Returns the temp path.
+std::string materialize_aa(const char* fixture, const std::string& hook_off,
+                           int tag) {
+    char buf[MAX_PATH] = {0};
+    ::GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    std::string dir(buf);
+    size_t slash = dir.find_last_of("/\\");
+    if (slash != std::string::npos) dir = dir.substr(0, slash);
+    std::ifstream in(dir + "\\" + fixture);
+    EXPECT_TRUE(in.good()) << "fixture not deployed: " << fixture;
+    std::string content((std::istreambuf_iterator<char>(in)),
+                        std::istreambuf_iterator<char>());
+    size_t p = 0;
+    constexpr size_t kPlaceholderLen = 10;  // strlen("%HOOK_OFF%")
+    while ((p = content.find("%HOOK_OFF%", p)) != std::string::npos) {
+        content.replace(p, kPlaceholderLen, hook_off);
+        p += hook_off.size();
+    }
+    return materialize_aa_content(content, tag);
+}
+
+// Write ad-hoc AA script text to a temp file (for boundary scripts that do
+// not warrant a repository fixture); returns the path.
+std::string write_aa_script(const std::string& content, int tag) {
+    return materialize_aa_content(content, tag);
+}
+
+bool target_alive() {
+    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, g_target.pid);
+    if (!h) return false;
+    DWORD code = 0;
+    bool alive = ::GetExitCodeProcess(h, &code) && code == STILL_ACTIVE;
+    ::CloseHandle(h);
+    return alive;
+}
+
+// Recorded address of a script alloc by symbol name (0 if missing).
+uintptr_t script_alloc_addr(const std::string& script, const std::string& name) {
+    std::vector<deeptrace::ScriptInfo> list;
+    if (deeptrace::attach(g_target.pid) != deeptrace::Result::Ok) return 0;
+    if (deeptrace::script_status(list) != deeptrace::Result::Ok) {
+        deeptrace::detach();
+        return 0;
+    }
+    deeptrace::detach();
+    for (const auto& s : list) {
+        if (s.path != script) continue;
+        for (const auto& a : s.allocs) {
+            if (a.first == name) return a.second;
+        }
+    }
+    return 0;
+}
+
+// Write ad-hoc batch JSON text to a temp file; returns the path.
+std::string write_temp_json(const std::string& content, int tag) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string path = std::string(tmpname) + "_" + std::to_string(tag) + ".json";
+    std::ofstream f(path, std::ios::binary);
+    f << content;
+    f.close();
+    return path;
+}
+
+// 8 little-endian bytes as 16 hex digits without 0x: mem write hex-bytes
+// stores bytes in memory order, so the address's byte pairs must be reversed
+// (e.g. 0x0000000140020000 -> "0000020014000000").
+std::string hex8(uintptr_t v) {
+    char b[24];
+    std::snprintf(b, sizeof b, "%016llX", (unsigned long long)v);
+    std::string rev;
+    for (int i = 14; i >= 0; i -= 2) {
+        rev.push_back(b[i]);
+        rev.push_back(b[i + 1]);
+    }
+    return rev;
+}
+
+// call-type script: alloc + createThread(ret) + dealloc. Run is idempotent
+// (already enabled), disable is idempotent (already disabled). Target must
+// survive the whole round trip.
+// call-type script from the real fixture cli/test/scripts/script_call.aa.
+TEST(CliChain, ScriptRunCreateThreadIdempotent) {
+    std::string script = materialize_aa("script_call.aa", "", 1);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// hook-type script: patch a module address (g_bytes data region) with a
+// 5-byte jmp, then restore on disable. Verify the patch and the restore by
+// reading the actual bytes.
+TEST(CliChain, ScriptRunHookRoundTrip) {
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::module_base("deeptrace_target.exe", &base),
+              deeptrace::Result::Ok);
+    deeptrace::detach();
+    ASSERT_NE(base, 0u);
+    uintptr_t offset = g_target.g_bytes - base;
+    char offbuf[32];
+    std::snprintf(offbuf, sizeof offbuf, "%llX", (unsigned long long)offset);
+
+    // hook-type script from the real fixture cli/test/scripts/script_hook.aa
+    // with %HOOK_OFF% substituted by the runtime module offset.
+    std::string script = materialize_aa("script_hook.aa", "0x" + std::string(offbuf), 2);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "status"}), 0);
+
+    // The hook patched the first 5 bytes of g_bytes with E9 (jmp rel32).
+    {
+        uint8_t b5[5] = {0};
+        size_t n = 0;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        EXPECT_EQ(deeptrace::memory_read(g_target.g_bytes, b5, 5, &n),
+                  deeptrace::Result::Ok);
+        deeptrace::detach();
+        EXPECT_EQ(b5[0], 0xE9) << "g_bytes must start with jmp rel32 opcode";
+    }
+
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+
+    // Original bytes restored from the saved record.
+    {
+        uint8_t b5[5] = {0};
+        size_t n = 0;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        EXPECT_EQ(deeptrace::memory_read(g_target.g_bytes, b5, 5, &n),
+                  deeptrace::Result::Ok);
+        deeptrace::detach();
+        EXPECT_EQ(b5[0], 0xDE);
+        EXPECT_EQ(b5[1], 0xAD);
+        EXPECT_EQ(b5[2], 0xBE);
+        EXPECT_EQ(b5[3], 0xEF);
+        EXPECT_EQ(b5[4], 0x48);
+    }
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// Usage errors: missing file, unknown block, missing [ENABLE]/[DISABLE]
+// blocks -> exit 2.
+TEST(CliChain, ScriptRunUsageErrors) {
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", "no_such.aa"}), 2);
+
+    // unknown block from the real fixture cli/test/scripts/script_bad.aa
+    std::string bad = materialize_aa("script_bad.aa", "", 3);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", bad}), 2);
+    std::remove(bad.c_str());
+
+    std::string noen = write_aa_script("[DISABLE]\ndealloc(a)\n", 4);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", noen}), 2);
+    std::remove(noen.c_str());
+
+    std::string nodis = write_aa_script("[ENABLE]\nalloc(a, 8)\n", 5);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", nodis}), 2);
+    std::remove(nodis.c_str());
+}
+
+// Script commands operate on a target process: without -p they must fail
+// with NotAttached (exit 1). The script file itself must be readable, so use
+// a real file (parse/validation errors would otherwise win with exit 2).
+TEST(CliChain, ScriptRequiresAttach) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "status"}), 1);
+    std::string script = write_aa_script("[ENABLE]\nalloc(a, 8)\n", 7);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "run", script}), 1);
+    std::remove(script.c_str());
+}
+
+// Mid-script failure (invalid instruction -> BadFormat) must roll back:
+// no enabled record remains and no symbol is left allocated.
+// Fixture: cli/test/scripts/script_badasm.aa.
+TEST(CliChain, ScriptRunRollbackOnFailure) {
+    std::string script = materialize_aa("script_badasm.aa", "", 6);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 1);
+    std::vector<deeptrace::ScriptInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    bool found = false;
+    for (const auto& s : list) {
+        if (s.path == script) found = true;
+    }
+    EXPECT_FALSE(found) << "enabled record must be rolled back after failure";
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// ---- v2.5.0: artificial pointer (symbol refs on any instruction) ----
+
+// The artificial-pointer fixture spawns a thread that writes two known 64-bit
+// values into two 8-byte slots: slotA via accumulator moffs64 (mov [slotA],rax)
+// and slotB via non-accumulator RIP-relative (mov [slotB],rcx). Reading both
+// slots back proves both encodings execute correctly against real runtime
+// addresses (not just assembling). Fixture: script_aptr.aa.
+TEST(CliChain, ScriptArtificialPointerRoundTrip) {
+    std::string script = materialize_aa("script_aptr.aa", "", 30);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    // Locate the two slot addresses from the script record (owner = path).
+    std::vector<deeptrace::ScriptInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    uintptr_t slotA = 0, slotB = 0;
+    for (const auto& s : list) {
+        if (s.path != script) continue;
+        for (const auto& a : s.allocs) {
+            if (a.first == "slotA") slotA = a.second;
+            else if (a.first == "slotB") slotB = a.second;
+        }
+    }
+    ASSERT_NE(slotA, 0u) << "slotA not recorded";
+    ASSERT_NE(slotB, 0u) << "slotB not recorded";
+
+    // The spawned thread wrote both values; read them back from the target.
+    uint64_t vA = 0, vB = 0;
+    size_t n = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(slotA, &vA, 8, &n), deeptrace::Result::Ok);
+    EXPECT_EQ(n, 8u);
+    EXPECT_EQ(deeptrace::memory_read(slotB, &vB, 8, &n), deeptrace::Result::Ok);
+    deeptrace::detach();
+    EXPECT_EQ(vA, 0x1122334455667788ull) << "moffs64 store wrote wrong value";
+    EXPECT_EQ(vB, 0x99AABBCCDDEEFF00ull) << "RIP-relative store wrote wrong value";
+
+    // Cleanup: disable frees the slots and the code buffer by name.
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// v2.6.0 symbol addressing: after `script run`, address args accept the
+// script symbol name directly (`mem read slotA 8`), resolved to the recorded
+// address. Read back the value the spawned thread wrote; then the same symbol
+// feeds watch add, and an unknown symbol fails with NotFound (exit 1).
+TEST(CliChain, SymbolAddressingMemReadWatchAdd) {
+    std::string script = materialize_aa("script_aptr.aa", "", 40);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    // mem read by symbol name: slotA holds 0x1122334455667788 (written by the
+    // thread). Symbol resolution happens inside the command, no manual address.
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "read", "slotA", "8",
+                       "hex"}),
+              0);
+    // readval by symbol
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "readval", "slotB",
+                       "qword"}),
+              0);
+    // disasm by symbol: the thread code buffer (mov rax, imm64 ...) is
+    // addressable by name and must disassemble without error
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "disasm", "at", "code", "2"}),
+              0);
+    // watch add by symbol, then list shows the live value
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "watch", "clear"}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "watch", "add", "aptr", "slotA",
+                       "qword"}),
+              0);
+    std::vector<deeptrace::WatchEntry> entries;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::watch_list(entries), deeptrace::Result::Ok);
+    deeptrace::detach();
+    bool found = false;
+    for (const auto& e : entries) {
+        if (e.description == "aptr") {
+            found = true;
+            EXPECT_EQ(e.value, "0x1122334455667788");
+        }
+    }
+    EXPECT_TRUE(found) << "watch entry by symbol missing";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "watch", "remove", "0"}), 0);
+
+    // unknown symbol -> NotFound (business error, exit 1)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "read", "no_such_sym",
+                       "8"}),
+              1);
+
+    // cleanup: disable frees the slots and code buffer by name
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// v2.7.0: alloc's near third argument performs a REAL near allocation within
+// +/-2GB of the anchor (module base + offset), so RIP-relative rel32
+// displacements to the allocation never overflow. The recorded symbol address
+// must lie inside the anchor window.
+TEST(CliChain, ScriptAllocNearPlacement) {
+    // anchor = module base + 0x1000 (a real, loaded target address)
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::module_base("deeptrace_target.exe", &base),
+              deeptrace::Result::Ok);
+    deeptrace::detach();
+    ASSERT_NE(base, 0u);
+    const uintptr_t anchor = base + 0x1000;
+
+    std::string script = write_aa_script(
+        "[ENABLE]\n"
+        "alloc(nearmem,64,\"deeptrace_target.exe\"+1000)\n"
+        "[DISABLE]\n"
+        "dealloc(nearmem)\n",
+        50);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    // The allocation address must be recorded under the symbol and must sit
+    // inside the +/-2GB window around the anchor.
+    std::vector<deeptrace::ScriptInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    uintptr_t nearmem = 0;
+    for (const auto& s : list) {
+        if (s.path != script) continue;
+        for (const auto& a : s.allocs) {
+            if (a.first == "nearmem") nearmem = a.second;
+        }
+    }
+    ASSERT_NE(nearmem, 0u) << "nearmem symbol not recorded";
+    uintptr_t dist = (nearmem > anchor) ? nearmem - anchor : anchor - nearmem;
+    EXPECT_LE(dist, 0x7FFFFFFFull)
+        << "near allocation landed outside the +/-2GB anchor window";
+
+    // cleanup: disable frees the near allocation by name
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// v2.8.0: `mem write <symbol>` writes an artificial-pointer slot by name
+// (dynamically retarget the pointer without re-running the script). hex and
+// dec formats write the slot and read back identically; an unknown symbol is
+// NotFound; after disable the symbol is gone.
+TEST(CliChain, SymbolAddressingMemWriteRoundTrip) {
+    std::string script = materialize_aa("script_aptr.aa", "", 60);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    // hex: write a new pointer value into slotA (8 bytes little-endian)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write", "slotA",
+                       "8877665544332211", "hex"}),
+              0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "read", "slotA", "8",
+                       "hex"}),
+              0);
+    // verify via the public API that the bytes actually landed
+    {
+        std::vector<deeptrace::ScriptInfo> list;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+        uintptr_t slotA = 0;
+        for (const auto& s : list) {
+            if (s.path != script) continue;
+            for (const auto& a : s.allocs) {
+                if (a.first == "slotA") slotA = a.second;
+            }
+        }
+        ASSERT_NE(slotA, 0u) << "slotA not recorded";
+        uint8_t b[8] = {0};
+        size_t n = 0;
+        EXPECT_EQ(deeptrace::memory_read(slotA, b, 8, &n), deeptrace::Result::Ok);
+        deeptrace::detach();
+        const uint8_t expect[8] = {0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
+        EXPECT_EQ(std::memcmp(b, expect, 8), 0) << "hex write by symbol mismatch";
+    }
+
+    // dec: fixed 8-byte little-endian; 1122334455667788 -> 4C 9C 8C DA C1 FC 03 00
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write", "slotA",
+                       "1122334455667788", "dec"}),
+              0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "read", "slotA", "8",
+                       "hex"}),
+              0);
+    {
+        std::vector<deeptrace::ScriptInfo> list;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+        uintptr_t slotA = 0;
+        for (const auto& s : list) {
+            if (s.path != script) continue;
+            for (const auto& a : s.allocs) {
+                if (a.first == "slotA") slotA = a.second;
+            }
+        }
+        uint8_t b[8] = {0};
+        size_t n = 0;
+        EXPECT_EQ(deeptrace::memory_read(slotA, b, 8, &n), deeptrace::Result::Ok);
+        deeptrace::detach();
+        const uint8_t expect[8] = {0x4C, 0x9C, 0x8C, 0xDA, 0xC1, 0xFC, 0x03, 0x00};
+        EXPECT_EQ(std::memcmp(b, expect, 8), 0) << "dec write by symbol mismatch";
+    }
+
+    // unknown symbol -> NotFound (business error, exit 1)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write", "no_such_sym",
+                       "1122334455667788", "dec"}),
+              1);
+    // value validation still applies (odd hex -> usage error, exit 2)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write", "slotA", "ABC"}),
+              2);
+
+    // cleanup: disable frees the slots and code buffer by name
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// v2.9.0: `mem batch <read|write>` executes JSON-defined locators (pointer
+// chains). The fixture allocs three slots; the test wires ptr_slot ->
+// data_slot and an ASCII string, then drives batch files and verifies the
+// writes landed via the public API (proving chain traversal, module+base
+// resolution and value typing). Config errors exit 2, business errors 1.
+TEST(CliChain, BatchLocatorReadWrite) {
+    std::string script = materialize_aa("script_ptrchain.aa", "", 70);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    const uintptr_t ptr_slot = script_alloc_addr(script, "ptr_slot");
+    const uintptr_t data_slot = script_alloc_addr(script, "data_slot");
+    const uintptr_t str_slot = script_alloc_addr(script, "str_slot");
+    ASSERT_NE(ptr_slot, 0u) << "ptr_slot not recorded";
+    ASSERT_NE(data_slot, 0u) << "data_slot not recorded";
+    ASSERT_NE(str_slot, 0u) << "str_slot not recorded";
+
+    // wire the chain deterministically (no thread race):
+    //   data_slot = 0x1122334455667788, ptr_slot -> data_slot, str_slot = "hello"
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write",
+                       hex(data_slot), "8877665544332211", "hex"}),
+              0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write",
+                       hex(ptr_slot), hex8(data_slot), "hex"}),
+              0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write",
+                       hex(str_slot), "68656c6c6f", "hex"}),
+              0);
+
+    // module offset of g_int64 (module+base locator target)
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::resolve_base("deeptrace_target.exe", &base),
+              deeptrace::Result::Ok);
+    deeptrace::detach();
+    ASSERT_NE(base, 0u);
+    ASSERT_NE(g_target.g_int64, 0u);
+    const uint64_t mod_off = g_target.g_int64 - base;
+
+    // ---- batch read: every locator source + type (exit 0) ----
+    char readbuf[2048];
+    std::snprintf(readbuf, sizeof readbuf,
+        "{ \"version\": 1, \"process\": \"deeptrace_target.exe\",\n"
+        "  \"values\": {\n"
+        "    \"chain_qword\": { \"symbol\": \"ptr_slot\", \"offsets\": [\"0x0\"],"
+        "                      \"type\": \"qword\" },\n"
+        "    \"data_direct\": { \"symbol\": \"data_slot\", \"type\": \"qword\" },\n"
+        "    \"str\":         { \"symbol\": \"str_slot\", \"type\": \"string\" },\n"
+        "    \"buf\":         { \"symbol\": \"str_slot\", \"type\": \"bytes\","
+        "                      \"count\": 5 },\n"
+        "    \"mod_qword\":   { \"module\": \"deeptrace_target.exe\","
+        "                      \"base\": \"0x%llX\", \"type\": \"qword\" },\n"
+        "    \"abs_dword\":   { \"base\": \"0x%llX\", \"type\": \"dword\" }\n"
+        "  } }",
+        (unsigned long long)mod_off, (unsigned long long)g_target.g_int);
+    std::string read_json = write_temp_json(readbuf, 71);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       read_json}),
+              0);
+
+    // ---- v2.10.0: CSV/JSON export via --format/--out ----
+    // JSON export to file: array with name/address/value/status fields; the
+    // chain value and module+base value must appear with status ok.
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string out_json = std::string(tmpname) + "_b.json";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       read_json, "--format", "json", "--out", out_json}),
+              0);
+    {
+        std::ifstream f(out_json);
+        ASSERT_TRUE(f.good()) << "json export file not written";
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("\"name\":\"chain_qword\""), std::string::npos);
+        EXPECT_NE(content.find("\"name\":\"data_direct\""), std::string::npos);
+        EXPECT_NE(content.find("\"name\":\"str\""), std::string::npos);
+        EXPECT_NE(content.find("\"value\":\"0x1122334455667788\""),
+                  std::string::npos);
+        EXPECT_NE(content.find("\"status\":\"ok\""), std::string::npos);
+        EXPECT_NE(content.find("\"error\":\"\""), std::string::npos);
+    }
+    std::remove(out_json.c_str());
+    // CSV export to file: fixed header + a data row
+    std::string out_csv = std::string(tmpname) + "_c.csv";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       read_json, "--format", "csv", "--out", out_csv}),
+              0);
+    {
+        std::ifstream f(out_csv);
+        ASSERT_TRUE(f.good()) << "csv export file not written";
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        EXPECT_EQ(content.find("name,address,value,status,error\n"), 0u);
+        EXPECT_NE(content.find("chain_qword,0x"), std::string::npos);
+        EXPECT_NE(content.find(",0x1122334455667788,ok,\n"), std::string::npos);
+    }
+    std::remove(out_csv.c_str());
+    // export on a failing batch: error rows carry status/error, exit 1
+    std::string nosym_exp = write_temp_json(
+        "{ \"values\": { \"x\": { \"symbol\": \"no_such_sym\","
+        "                          \"type\": \"qword\" } } }",
+        76);
+    std::string out_fail = std::string(tmpname) + "_f.json";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       nosym_exp, "--format", "json", "--out", out_fail}),
+              1);
+    {
+        std::ifstream f(out_fail);
+        ASSERT_TRUE(f.good()) << "fail export file not written";
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("\"status\":\"error\""), std::string::npos);
+        // error message context is the item name ("x"), not the symbol
+        EXPECT_NE(content.find("\"error\":\"NotFound(x)\""), std::string::npos);
+    }
+    std::remove(out_fail.c_str());
+    std::remove(nosym_exp.c_str());
+    // --out with an unwritable path -> business error, exit 1
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       read_json, "--format", "csv", "--out", "Z:\\:\\bad\\x.csv"}),
+              1);
+
+    std::remove(read_json.c_str());
+
+    // ---- batch write: chain traversal + string + module+base ----
+    char writebuf[2048];
+    std::snprintf(writebuf, sizeof writebuf,
+        "{ \"values\": {\n"
+        "    \"chain_write\": { \"symbol\": \"ptr_slot\", \"offsets\": [\"0x0\"],"
+        "                      \"type\": \"qword\","
+        "                      \"value\": \"0x99AABBCCDDEEFF00\" },\n"
+        "    \"str_write\":   { \"symbol\": \"str_slot\", \"type\": \"string\","
+        "                      \"value\": \"world\" },\n"
+        "    \"mod_write\":   { \"module\": \"deeptrace_target.exe\","
+        "                      \"base\": \"0x%llX\", \"type\": \"qword\","
+        "                      \"value\": \"0x8877665544332211\" }\n"
+        "  } }",
+        (unsigned long long)mod_off);
+    std::string write_json = write_temp_json(writebuf, 72);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "write",
+                       write_json}),
+              0);
+
+    // write-mode export: rows report per-item result (value empty)
+    char wtmp[L_tmpnam] = {0};
+    std::tmpnam(wtmp);
+    std::string out_w = std::string(wtmp) + "_w.json";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "write",
+                       write_json, "--format", "json", "--out", out_w}),
+              0);
+    {
+        std::ifstream f(out_w);
+        ASSERT_TRUE(f.good()) << "write export file not written";
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("\"name\":\"chain_write\""), std::string::npos);
+        EXPECT_NE(content.find("\"name\":\"str_write\""), std::string::npos);
+        EXPECT_NE(content.find("\"status\":\"ok\""), std::string::npos);
+        EXPECT_NE(content.find("\"value\":\"\""), std::string::npos);
+    }
+    std::remove(out_w.c_str());
+    std::remove(write_json.c_str());
+
+    // verify all three writes via the public API
+    {
+        uint64_t v = 0;
+        size_t n = 0;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        // chain write landed at the chain end (data_slot)
+        EXPECT_EQ(deeptrace::memory_read(data_slot, &v, 8, &n), deeptrace::Result::Ok);
+        EXPECT_EQ(n, 8u);
+        EXPECT_EQ(v, 0x99AABBCCDDEEFF00ull) << "batch chain write mismatch";
+        // string write
+        uint8_t b[8] = {0};
+        EXPECT_EQ(deeptrace::memory_read(str_slot, b, 5, &n), deeptrace::Result::Ok);
+        EXPECT_EQ(n, 5u);
+        EXPECT_EQ(std::memcmp(b, "world", 5), 0) << "batch string write mismatch";
+        // module+base write landed at g_int64
+        EXPECT_EQ(deeptrace::memory_read(g_target.g_int64, &v, 8, &n),
+                  deeptrace::Result::Ok);
+        EXPECT_EQ(v, 0x8877665544332211ull) << "batch module+base write mismatch";
+        // restore g_int64
+        v = 0x1122334455667788ull;
+        deeptrace::memory_write(g_target.g_int64, &v, 8, &n);
+        deeptrace::detach();
+    }
+
+    // ---- error paths ----
+    // config errors (JSON) -> exit 2
+    std::string bad_json = write_temp_json(
+        "{ \"version\": 2, \"values\": {} }", 73);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       bad_json}),
+              2);
+    std::remove(bad_json.c_str());
+    // business errors: unknown symbol / process mismatch -> exit 1
+    std::string nosym_json = write_temp_json(
+        "{ \"values\": { \"x\": { \"symbol\": \"no_such_sym\","
+        "                          \"type\": \"qword\" } } }",
+        74);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       nosym_json}),
+              1);
+    std::remove(nosym_json.c_str());
+    std::string mismatch_json = write_temp_json(
+        "{ \"process\": \"notepad.exe\", \"values\": {}}", 75);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       mismatch_json}),
+              1);
+    std::remove(mismatch_json.c_str());
+    // missing file -> exit 2
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       "no_such_batch.json"}),
+              2);
+
+    // cleanup: disable frees the three slots
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// script check accepts the artificial-pointer script (no attach).
+TEST(CliChain, ScriptCheckArtificialPointer) {
+    std::string script = materialize_aa("script_aptr.aa", "", 31);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", script}), 0);
+    std::remove(script.c_str());
+}
+
+// ---- v2.4.0: script check (syntax + assembly precheck, no attach) ----
+
+// script check is a pure local validation: it must work without -p, without
+// attaching, and must not touch the target process (no alloc, no write, no
+// thread). Valid scripts pass with exit 0; invalid ones fail with exit 2.
+TEST(CliChain, ScriptCheckNoAttach) {
+    std::string call = materialize_aa("script_call.aa", "", 20);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", call}), 0);
+    std::remove(call.c_str());
+
+    std::string bad = materialize_aa("script_bad.aa", "", 21);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", bad}), 2);
+    std::remove(bad.c_str());
+
+    std::string badasm = materialize_aa("script_badasm.aa", "", 22);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", badasm}), 2);
+    std::remove(badasm.c_str());
+
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", "no_such.aa"}), 2);
+    // side effect check: the target must be untouched by check (no -p at all)
+    EXPECT_TRUE(target_alive());
+}
+
+// The hook fixture materializes %HOOK_OFF% into a valid hex offset, so the
+// full hook script (target + jmp + filler) passes check with exit 0. The raw
+// fixture with the placeholder fails (invalid module offset), which is the
+// correct behavior: check validates the file exactly as given.
+TEST(CliChain, ScriptCheckHookFixture) {
+    // raw fixture (placeholder still present) -> invalid module offset
+    char buf[MAX_PATH] = {0};
+    ::GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    std::string dir(buf);
+    size_t slash = dir.find_last_of("/\\");
+    if (slash != std::string::npos) dir = dir.substr(0, slash);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check",
+                       dir + "\\script_hook.aa"}),
+              2);
+    // materialized (placeholder replaced with a hex offset) -> passes
+    std::string ok = materialize_aa("script_hook.aa", "0x1000", 23);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", ok}), 0);
+    std::remove(ok.c_str());
+}
+
+// Structural validation: a hook target without a following jmp, a jmp to an
+// undefined label, and a second instruction inside a hook block are all
+// detected statically (exit 2) without attaching.
+TEST(CliChain, ScriptCheckHookStructureErrors) {
+    std::string no_jmp = write_aa_script(
+        "[ENABLE]\n\"m.dll\"+100:\nnop 2\n", 24);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", no_jmp}), 2);
+    std::remove(no_jmp.c_str());
+
+    std::string undef = write_aa_script(
+        "[ENABLE]\n\"m.dll\"+100:\njmp nonexist\n", 25);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", undef}), 2);
+    std::remove(undef.c_str());
+
+    std::string second = write_aa_script(
+        "[ENABLE]\nalloc(n,8)\n\"m.dll\"+100:\njmp n\nmov eax,1\n", 26);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", second}), 2);
+    std::remove(second.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// shellcode injectfile: .bin file -> inject (execute immediately), then free.
+TEST(CliChain, ShellcodeInjectFile) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string bin_path = std::string(tmpname) + ".bin";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "hex2bin", "C3", bin_path}), 0);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "injectfile", bin_path}), 0);
+    std::remove(bin_path.c_str());
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "injectfile",
+                       "no_such.bin"}),
+              2);
+    // free the injected record
+    std::vector<deeptrace::InjectInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    for (const auto& i : list) {
+        if (i.kind == "shellcode" && i.remote_base != 0) {
+            EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "shellcode", "free",
+                               hex(i.remote_base)}),
+                      0);
+        }
+    }
 }

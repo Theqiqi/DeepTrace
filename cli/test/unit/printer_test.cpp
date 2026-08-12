@@ -1,5 +1,7 @@
 #include "printing/printer.h"
 
+#include "deeptrace.h"
+
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -66,6 +68,28 @@ TEST(Printer, FormatAddress) {
     EXPECT_EQ(printer::format_address(0), "0x0000000000000000");
 }
 
+TEST(Printer, FormatPermissionsReadWrite) {
+    // PROCESS_VM_READ (0x10) | PROCESS_VM_WRITE (0x20)
+    EXPECT_EQ(printer::format_permissions(0x30u), "read|write");
+}
+
+TEST(Printer, FormatPermissionsFullLimitedSet) {
+    // the attach fallback set: QUERY_INFORMATION | VM_READ | VM_WRITE |
+    // VM_OPERATION | CREATE_THREAD | SUSPEND_RESUME
+    uint32_t limited = 0x0400u | 0x0010u | 0x0020u | 0x0008u | 0x0002u | 0x0800u;
+    EXPECT_EQ(printer::format_permissions(limited),
+              "read|write|vm_operate|create_thread|suspend_resume|query");
+}
+
+TEST(Printer, FormatPermissionsZeroMask) {
+    EXPECT_EQ(printer::format_permissions(0), "");
+}
+
+TEST(Printer, FormatPermissionsIncludesTerminate) {
+    // PROCESS_TERMINATE (0x0001)
+    EXPECT_EQ(printer::format_permissions(0x0001u), "terminate");
+}
+
 TEST(Printer, PrintBytesHex) {
     std::vector<uint8_t> b = {0x48, 0x8B, 0xC3};
     auto s = capture([&] { printer::print_bytes_formatted(b, "hex"); });
@@ -111,7 +135,175 @@ TEST(Printer, PrintMessage) {
 
 TEST(Printer, Version) {
     auto s = capture([&] { printer::print_version(); });
-    EXPECT_EQ(s, "deeptrace_cli v2.1.0\n");
+    EXPECT_EQ(s, "deeptrace_cli v2.13.0\n");
+}
+
+// v2.13.0: bin2hex c-array output (same shape as `asm assemble --c-array`).
+TEST(Printer, BytesFormattedCArray) {
+    std::vector<uint8_t> bytes = {0x48, 0x8B, 0xC3};
+    auto s = capture([&] { printer::print_bytes_formatted(bytes, "c-array"); });
+    EXPECT_EQ(s, "unsigned char code[] = { 0x48, 0x8B, 0xC3 };\n");
+}
+
+// ---- v2.12.0: pointer-chain line formatting ----
+
+TEST(Printer, FormatPointerChainModuleRoot) {
+    std::vector<deeptrace::ModuleInfo> mods;
+    deeptrace::ModuleInfo m;
+    m.name = L"Game.exe";
+    m.base = 0x140000000ULL;
+    m.size = 0x2000000;
+    mods.push_back(m);
+    // root inside module: Game.exe+1AF89C0 with signed offsets
+    std::vector<int64_t> offs = {0x38, 0x104, -0x8};
+    EXPECT_EQ(printer::format_pointer_chain(0x140000000ULL + 0x1AF89C0, offs, mods),
+              "Game.exe+1AF89C0 +38 +104 -8");
+}
+
+TEST(Printer, FormatPointerChainHeapRootRawAddress) {
+    std::vector<deeptrace::ModuleInfo> mods;
+    deeptrace::ModuleInfo m;
+    m.name = L"ntdll.dll";
+    m.base = 0x7FFA00000000ULL;
+    m.size = 0x200000;
+    mods.push_back(m);
+    // heap address not inside any module -> raw padded 0x address
+    std::vector<int64_t> offs = {0};  // exact-pointer match
+    std::string s = printer::format_pointer_chain(0x1A2B3C4D5E0ULL, offs, mods);
+    EXPECT_EQ(s, "0x000001A2B3C4D5E0 +0");
+}
+
+TEST(Printer, FormatPointerChainEmptyMods) {
+    std::vector<deeptrace::ModuleInfo> mods;
+    std::vector<int64_t> offs = {0x10};
+    EXPECT_EQ(printer::format_pointer_chain(0x1234, offs, mods), "0x0000000000001234 +10");
+}
+
+TEST(Printer, FormatPointerChainNonAsciiModuleName) {
+    std::vector<deeptrace::ModuleInfo> mods;
+    deeptrace::ModuleInfo m;
+    m.name = L"G\x0101me.exe";  // non-ASCII char -> '?'
+    m.base = 0x1000;
+    m.size = 0x100;
+    mods.push_back(m);
+    std::vector<int64_t> offs;
+    EXPECT_EQ(printer::format_pointer_chain(0x1020, offs, mods), "G?me.exe+20");
+}
+
+// ---- v2.10.0: batch_rows_text serialization (table/csv/json) ----
+
+namespace {
+
+std::vector<BatchRow> sample_rows() {
+    std::vector<BatchRow> rows;
+    BatchRow ok;
+    ok.name = "player_hp";
+    ok.address = 0x7FF62A1B2100ULL;
+    ok.value = "0x3E8";
+    rows.push_back(ok);
+    BatchRow err;
+    err.name = "bad_item";
+    err.address = 0;
+    err.status = "error";
+    err.error = "NotFound(bad_item)";
+    rows.push_back(err);
+    return rows;
+}
+
+}  // namespace
+
+TEST(Printer, BatchRowsTable) {
+    std::string s = printer::batch_rows_text(sample_rows(), "table");
+    EXPECT_NE(s.find("NAME"), std::string::npos);
+    EXPECT_NE(s.find("ADDRESS"), std::string::npos);
+    EXPECT_NE(s.find("VALUE"), std::string::npos);
+    EXPECT_NE(s.find("player_hp"), std::string::npos);
+    EXPECT_NE(s.find("0x00007FF62A1B2100"), std::string::npos);
+    EXPECT_NE(s.find("0x3E8"), std::string::npos);
+    // error row keeps the v2.9.0 "error" VALUE placeholder
+    EXPECT_NE(s.find("bad_item"), std::string::npos);
+    EXPECT_NE(s.find("error"), std::string::npos);
+}
+
+TEST(Printer, BatchRowsCsvHeaderAndRows) {
+    std::string s = printer::batch_rows_text(sample_rows(), "csv");
+    EXPECT_EQ(s.find("name,address,value,status,error\n"), 0u);
+    EXPECT_NE(s.find("player_hp,0x00007FF62A1B2100,0x3E8,ok,"),
+              std::string::npos);
+    EXPECT_NE(s.find("bad_item,0x0000000000000000,,error,NotFound(bad_item)\n"),
+              std::string::npos);
+}
+
+TEST(Printer, BatchRowsCsvQuotesCommaAndQuote) {
+    std::vector<BatchRow> rows;
+    BatchRow r;
+    r.name = "str";
+    r.address = 0x1000;
+    r.value = "hello, \"world\"";
+    rows.push_back(r);
+    std::string s = printer::batch_rows_text(rows, "csv");
+    EXPECT_NE(s.find("str,0x0000000000001000,\"hello, \"\"world\"\"\",ok,\n"),
+              std::string::npos);
+}
+
+TEST(Printer, BatchRowsCsvQuotesEmbeddedNewline) {
+    // a value containing a newline must be quoted and kept on one CSV row
+    std::vector<BatchRow> rows;
+    BatchRow r;
+    r.name = "n";
+    r.address = 0x4000;
+    r.value = "a\nb";
+    rows.push_back(r);
+    std::string s = printer::batch_rows_text(rows, "csv");
+    EXPECT_NE(s.find("n,0x0000000000004000,\"a\nb\",ok,\n"), std::string::npos);
+}
+
+TEST(Printer, BatchRowsJsonShape) {
+    std::string s = printer::batch_rows_text(sample_rows(), "json");
+    EXPECT_EQ(s.front(), '[');
+    EXPECT_NE(s.find("\"name\":\"player_hp\""), std::string::npos);
+    EXPECT_NE(s.find("\"address\":\"0x00007FF62A1B2100\""), std::string::npos);
+    EXPECT_NE(s.find("\"value\":\"0x3E8\""), std::string::npos);
+    EXPECT_NE(s.find("\"status\":\"ok\""), std::string::npos);
+    EXPECT_NE(s.find("\"status\":\"error\""), std::string::npos);
+    EXPECT_NE(s.find("\"error\":\"NotFound(bad_item)\""), std::string::npos);
+}
+
+TEST(Printer, BatchRowsJsonEscapesQuoteAndSlash) {
+    std::vector<BatchRow> rows;
+    BatchRow r;
+    r.name = "q\"b";
+    r.address = 0x2000;
+    r.value = "a\\b\"c";
+    rows.push_back(r);
+    std::string s = printer::batch_rows_text(rows, "json");
+    EXPECT_NE(s.find("\"name\":\"q\\\"b\""), std::string::npos);
+    EXPECT_NE(s.find("\"value\":\"a\\\\b\\\"c\""), std::string::npos);
+}
+
+TEST(Printer, BatchRowsEmptyJson) {
+    std::vector<BatchRow> rows;
+    EXPECT_EQ(printer::batch_rows_text(rows, "json"), "[]\n");
+    EXPECT_EQ(printer::batch_rows_text(rows, "csv"),
+              "name,address,value,status,error\n");
+}
+
+TEST(Printer, BatchRowsWriteModeValueEmpty) {
+    // write mode rows carry no value; status still distinguishes ok/error
+    std::vector<BatchRow> rows;
+    BatchRow ok;
+    ok.name = "w1";
+    ok.address = 0x3000;
+    rows.push_back(ok);
+    BatchRow err;
+    err.name = "w2";
+    err.status = "error";
+    err.error = "WriteFault(w2)";
+    rows.push_back(err);
+    std::string csv = printer::batch_rows_text(rows, "csv");
+    EXPECT_NE(csv.find("w1,0x0000000000003000,,ok,"), std::string::npos);
+    EXPECT_NE(csv.find("w2,0x0000000000000000,,error,WriteFault(w2)\n"),
+              std::string::npos);
 }
 
 TEST(Printer, ErrorGoesToStderr) {

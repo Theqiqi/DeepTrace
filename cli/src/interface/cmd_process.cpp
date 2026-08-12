@@ -22,7 +22,14 @@ int cmd_ps(const CommandRequest& req) {
         uint32_t pid = internal::to_u32(req.args[0]);
         Result r = deeptrace::attach(pid);
         if (r != Result::Ok) return internal::report_error(r, req.args[0]);
-        printer::print_message("OK");
+        // v2.11.0: surface the actual permissions granted by attach so a
+        // degraded (limited-access) attach is distinguishable from a full one.
+        uint32_t mask = 0;
+        std::string msg = "OK";
+        if (deeptrace::session_permissions(&mask) == Result::Ok && mask != 0) {
+            msg += " (permissions: " + printer::format_permissions(mask) + ")";
+        }
+        printer::print_message(msg);
         return 0;
     }
     if (req.action == "detach") {

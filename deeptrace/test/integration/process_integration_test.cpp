@@ -69,6 +69,168 @@ TEST_F(DeeptraceIntegration, SessionPid) {
     EXPECT_EQ(pid, g_target.pid);
 }
 
+// v2.11.0: session_permissions reports the access mask the successful attach
+// actually received. For our own spawned target the full PROCESS_ALL_ACCESS
+// grant succeeds, so the mask must include the memory read/write bits; after
+// detach the query reports NotAttached.
+TEST_F(DeeptraceIntegration, SessionPermissions) {
+    uint32_t mask = 0;
+    EXPECT_EQ(deeptrace::session_permissions(&mask), deeptrace::Result::Ok);
+    EXPECT_NE(mask, 0u) << "attach granted no permissions";
+    // PROCESS_VM_READ (0x10) and PROCESS_VM_WRITE (0x20) must be present
+    EXPECT_NE(mask & 0x10u, 0u) << "PROCESS_VM_READ missing";
+    EXPECT_NE(mask & 0x20u, 0u) << "PROCESS_VM_WRITE missing";
+
+    // null out -> InvalidArg
+    EXPECT_EQ(deeptrace::session_permissions(nullptr), deeptrace::Result::InvalidArg);
+
+    // after detach the session is gone -> NotAttached
+    EXPECT_EQ(deeptrace::detach(), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::session_permissions(&mask), deeptrace::Result::NotAttached);
+    EXPECT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+}
+
+// ---- v2.12.0 pointer-chain reverse-walk -------------------------------------
+// Wire a 2-hop pointer chain in the target heap that *points at* the known
+// module global g_int64 (we only ever point at it, never write to it, so the
+// shared target's other tests are unaffected). The reverse walk from
+// g_int64's address must recover both hops as chains.
+TEST_F(DeeptraceIntegration, PointerMapSnapshotFindsWiredChain) {
+    const uintptr_t target = g_target.g_int64;
+    uintptr_t slot0 = 0, slot1 = 0;
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_s0", 16, "test", &slot0),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_s1", 16, "test", &slot1),
+              deeptrace::Result::Ok);
+    size_t written = 0;
+    // *(qword)slot0 = target ; *(qword)slot1 = slot0
+    ASSERT_EQ(deeptrace::memory_write(slot0, &target, sizeof(target), &written),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(written, sizeof(target));
+    ASSERT_EQ(deeptrace::memory_write(slot1, &slot0, sizeof(slot0), &written),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(written, sizeof(slot0));
+
+    deeptrace::PointerScanConfig cfg;
+    cfg.target = target;
+    cfg.max_offset = 0;  // exact-pointer match only (no false positives from offset range)
+    cfg.max_level = 2;
+    std::vector<deeptrace::PointerChain> chains;
+    ASSERT_EQ(deeptrace::pointer_map_snapshot(cfg, chains), deeptrace::Result::Ok);
+    ASSERT_FALSE(chains.empty());
+
+    bool found_2hop = false, found_1hop = false;
+    for (const auto& c : chains) {
+        if (c.root == slot1 && c.offsets.size() == 2 && c.offsets[0] == 0 &&
+            c.offsets[1] == 0)
+            found_2hop = true;
+        if (c.root == slot0 && c.offsets.size() == 1 && c.offsets[0] == 0)
+            found_1hop = true;
+    }
+    EXPECT_TRUE(found_2hop) << "2-hop chain root=slot1 offsets=[0,0] not found";
+    EXPECT_TRUE(found_1hop) << "1-hop chain root=slot0 offsets=[0] not found";
+
+    deeptrace::script_free("ptrscan_s0");
+    deeptrace::script_free("ptrscan_s1");
+}
+
+// Rescan re-evaluates snapshot chains against a NEW target and intersects away
+// chains that no longer lead there (CE rescan semantics): retarget slot0 to
+// g_int and the old chain must drop out; the rescan against the new target
+// must keep it.
+TEST_F(DeeptraceIntegration, PointerMapRescanIntersects) {
+    const uintptr_t t1 = g_target.g_int64;
+    const uintptr_t t2 = g_target.g_int;
+    uintptr_t slot0 = 0, slot1 = 0;
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_r_s0", 16, "test", &slot0),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_r_s1", 16, "test", &slot1),
+              deeptrace::Result::Ok);
+    size_t written = 0;
+    ASSERT_EQ(deeptrace::memory_write(slot1, &slot0, sizeof(slot0), &written),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::memory_write(slot0, &t1, sizeof(t1), &written),
+              deeptrace::Result::Ok);
+
+    deeptrace::PointerScanConfig cfg;
+    cfg.target = t1;
+    cfg.max_offset = 0;
+    cfg.max_level = 2;
+    std::vector<deeptrace::PointerChain> chains;
+    ASSERT_EQ(deeptrace::pointer_map_snapshot(cfg, chains), deeptrace::Result::Ok);
+    bool had_2hop = false;
+    for (const auto& c : chains) {
+        if (c.root == slot1 && c.offsets.size() == 2) had_2hop = true;
+    }
+    ASSERT_TRUE(had_2hop) << "wired 2-hop chain missing from snapshot";
+
+    // retarget: slot0 now points at g_int instead of g_int64
+    ASSERT_EQ(deeptrace::memory_write(slot0, &t2, sizeof(t2), &written),
+              deeptrace::Result::Ok);
+
+    // rescan against the OLD target: chain now evaluates to t2 -> dropped
+    std::vector<deeptrace::PointerChain> stale;
+    ASSERT_EQ(deeptrace::pointer_map_rescan(chains, t1, cfg, stale),
+              deeptrace::Result::Ok);
+    bool stale_2hop = false;
+    for (const auto& c : stale) {
+        if (c.root == slot1 && c.offsets.size() == 2) stale_2hop = true;
+    }
+    EXPECT_FALSE(stale_2hop) << "retargeted chain survived rescan against old target";
+
+    // rescan against the NEW target: chain now evaluates to t2 -> kept
+    std::vector<deeptrace::PointerChain> fresh;
+    ASSERT_EQ(deeptrace::pointer_map_rescan(chains, t2, cfg, fresh),
+              deeptrace::Result::Ok);
+    bool fresh_2hop = false;
+    for (const auto& c : fresh) {
+        if (c.root == slot1 && c.offsets.size() == 2) fresh_2hop = true;
+    }
+    EXPECT_TRUE(fresh_2hop) << "retargeted chain lost by rescan against new target";
+
+    deeptrace::script_free("ptrscan_r_s0");
+    deeptrace::script_free("ptrscan_r_s1");
+}
+
+// Module anchoring: heap-rooted chains must be filtered out; any emitted root
+// must lie inside the anchor module's address range.
+TEST_F(DeeptraceIntegration, PointerMapModuleAnchor) {
+    const uintptr_t target = g_target.g_int64;
+    uintptr_t slot0 = 0, slot1 = 0;
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_a_s0", 16, "test", &slot0),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_a_s1", 16, "test", &slot1),
+              deeptrace::Result::Ok);
+    size_t written = 0;
+    ASSERT_EQ(deeptrace::memory_write(slot0, &target, sizeof(target), &written),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::memory_write(slot1, &slot0, sizeof(slot0), &written),
+              deeptrace::Result::Ok);
+
+    deeptrace::ModuleInfo mi;
+    ASSERT_EQ(deeptrace::module_find("deeptrace_target.exe", mi), deeptrace::Result::Ok);
+
+    deeptrace::PointerScanConfig cfg;
+    cfg.target = target;
+    cfg.max_offset = 0;
+    cfg.max_level = 2;
+    cfg.module = "deeptrace_target.exe";
+    std::vector<deeptrace::PointerChain> chains;
+    ASSERT_EQ(deeptrace::pointer_map_snapshot(cfg, chains), deeptrace::Result::Ok);
+
+    bool heap_root_present = false;
+    for (const auto& c : chains) {
+        if (c.root == slot1 || c.root == slot0) heap_root_present = true;
+        EXPECT_GE(c.root, mi.base) << "chain root below anchor module base";
+        EXPECT_LT(c.root, mi.base + mi.size) << "chain root above anchor module end";
+    }
+    EXPECT_FALSE(heap_root_present)
+        << "heap-rooted chain leaked through module anchoring";
+
+    deeptrace::script_free("ptrscan_a_s0");
+    deeptrace::script_free("ptrscan_a_s1");
+}
+
 TEST_F(DeeptraceIntegration, ReadKnownInt) {
     uint32_t v = 0;
     size_t n = 0;
@@ -389,6 +551,84 @@ TEST_F(DeeptraceIntegration, ShellcodeRoundTrip) {
     EXPECT_TRUE(found);
 }
 
+// shellcode_alloc: alloc+write only (no thread), memory readable, record visible;
+// shellcode_run: creates a remote thread at the recorded addr (repeatable);
+// shellcode_free: releases memory and removes the record (second op -> NotFound).
+TEST_F(DeeptraceIntegration, ShellcodeAllocRunFree) {
+    std::vector<uint8_t> code = {0xC3};  // ret
+    deeptrace::InjectInfo info;
+    EXPECT_EQ(deeptrace::shellcode_alloc(code, info), deeptrace::Result::Ok);
+    EXPECT_EQ(info.kind, "shellcode");
+    EXPECT_NE(info.remote_base, 0u);
+    EXPECT_EQ(info.thread_id, 0u);
+    EXPECT_FALSE(info.running);
+
+    // written bytes are readable back (no execution side effect)
+    std::vector<uint8_t> out;
+    EXPECT_EQ(deeptrace::memory_dump(info.remote_base, 1, out), deeptrace::Result::Ok);
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0], 0xC3);
+
+    // record visible via status (running=no)
+    std::vector<deeptrace::InjectInfo> list;
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    bool found = false;
+    for (const auto& i : list) {
+        if (i.remote_base == info.remote_base) found = true;
+    }
+    EXPECT_TRUE(found);
+
+    // run: creates one remote thread at addr (ret completes immediately)
+    deeptrace::InjectInfo run_info;
+    EXPECT_EQ(deeptrace::shellcode_run(info.remote_base, run_info), deeptrace::Result::Ok);
+    EXPECT_EQ(run_info.remote_base, info.remote_base);
+    EXPECT_NE(run_info.thread_id, 0u);
+    EXPECT_TRUE(run_info.running);
+
+    // repeatable (re-trigger semantics)
+    deeptrace::InjectInfo run2;
+    EXPECT_EQ(deeptrace::shellcode_run(info.remote_base, run2), deeptrace::Result::Ok);
+    EXPECT_NE(run2.thread_id, 0u);
+
+    // {0xC3} (ret) exits immediately: status must eventually report the
+    // record as not running (locks the real exit state, not the optimistic
+    // `running=true` that run reports right after creating the thread).
+    bool exited = false;
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+        for (const auto& i : list) {
+            if (i.remote_base == info.remote_base && !i.running) exited = true;
+        }
+        if (exited) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    EXPECT_TRUE(exited);
+
+    // free: memory released + record removed -> later ops NotFound
+    EXPECT_EQ(deeptrace::shellcode_free(info.remote_base), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::shellcode_run(info.remote_base, run_info),
+              deeptrace::Result::NotFound);
+    EXPECT_EQ(deeptrace::shellcode_free(info.remote_base), deeptrace::Result::NotFound);
+    EXPECT_EQ(deeptrace::shellcode_status(list), deeptrace::Result::Ok);
+    for (const auto& i : list) {
+        EXPECT_NE(i.remote_base, info.remote_base);
+    }
+}
+
+TEST_F(DeeptraceIntegration, ShellcodeAllocEmpty) {
+    deeptrace::InjectInfo info;
+    EXPECT_EQ(deeptrace::shellcode_alloc({}, info), deeptrace::Result::InvalidArg);
+}
+
+TEST_F(DeeptraceIntegration, ShellcodeRunNotFound) {
+    deeptrace::InjectInfo info;
+    EXPECT_EQ(deeptrace::shellcode_run(0x12345678, info), deeptrace::Result::NotFound);
+}
+
+TEST_F(DeeptraceIntegration, ShellcodeFreeNotFound) {
+    EXPECT_EQ(deeptrace::shellcode_free(0x12345678), deeptrace::Result::NotFound);
+}
+
 TEST_F(DeeptraceIntegration, AsmAssemble) {
     std::vector<uint8_t> bytes;
     std::string text;
@@ -405,3 +645,317 @@ TEST_F(DeeptraceIntegration, AsmAssembleBad) {
     EXPECT_EQ(deeptrace::asm_assemble("bogus rax, 1", bytes, nullptr),
               deeptrace::Result::BadFormat);
 }
+
+// ---- v2.3.0: script engine primitives ----
+
+TEST_F(DeeptraceIntegration, ScriptAllocFree) {
+    uintptr_t addr = 0;
+    EXPECT_EQ(deeptrace::script_alloc("testmem", 64, "", &addr), deeptrace::Result::Ok);
+    EXPECT_NE(addr, 0u);
+
+    // duplicate symbol -> InvalidArg
+    uintptr_t addr2 = 0;
+    EXPECT_EQ(deeptrace::script_alloc("testmem", 64, "", &addr2), deeptrace::Result::InvalidArg);
+
+    // free releases and removes the symbol; second free -> NotFound
+    EXPECT_EQ(deeptrace::script_free("testmem"), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_free("testmem"), deeptrace::Result::NotFound);
+
+    // invalid args
+    EXPECT_EQ(deeptrace::script_alloc("", 64, "", &addr), deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_alloc("ok", 0, "", &addr), deeptrace::Result::InvalidArg);
+    // v2.6.0: digit-leading names are rejected so a symbol can never shadow
+    // a numeric address in CLI address arguments.
+    EXPECT_EQ(deeptrace::script_alloc("100", 64, "", &addr), deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_alloc("1slot", 64, "", &addr), deeptrace::Result::InvalidArg);
+}
+
+TEST_F(DeeptraceIntegration, ScriptSymbolLookup) {
+    // v2.6.0: script_symbol resolves a registered symbol to its recorded address.
+    uintptr_t addr = 0;
+    ASSERT_EQ(deeptrace::script_alloc("symlookup", 64, "", &addr), deeptrace::Result::Ok);
+    ASSERT_NE(addr, 0u);
+
+    uintptr_t found = 0;
+    EXPECT_EQ(deeptrace::script_symbol("symlookup", &found), deeptrace::Result::Ok);
+    EXPECT_EQ(found, addr);
+
+    // unregistered symbol -> NotFound
+    EXPECT_EQ(deeptrace::script_symbol("no_such_sym", &found), deeptrace::Result::NotFound);
+
+    // invalid args
+    EXPECT_EQ(deeptrace::script_symbol("", &found), deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_symbol("bad name!", &found), deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_symbol("symlookup", nullptr), deeptrace::Result::InvalidArg);
+
+    // after free the symbol is gone -> NotFound
+    EXPECT_EQ(deeptrace::script_free("symlookup"), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_symbol("symlookup", &found), deeptrace::Result::NotFound);
+}
+
+// v2.7.0: script_alloc_near lands within +/-2GB of the anchor (RIP-relative
+// rel32 range), mirrors script_alloc's record/save/rollback semantics, and
+// never silently falls back to arbitrary placement.
+TEST_F(DeeptraceIntegration, ScriptAllocNear) {
+    // anchor: the target module base (a real, loaded address)
+    uintptr_t anchor = 0;
+    ASSERT_EQ(deeptrace::module_base("deeptrace_target.exe", &anchor),
+              deeptrace::Result::Ok);
+    ASSERT_NE(anchor, 0u);
+
+    uintptr_t addr = 0;
+    EXPECT_EQ(deeptrace::script_alloc_near("nearmem", 64, anchor, "", &addr),
+              deeptrace::Result::Ok);
+    ASSERT_NE(addr, 0u);
+
+    // landing point must be inside the +/-2GB window around the anchor
+    uintptr_t dist = (addr > anchor) ? addr - anchor : anchor - addr;
+    EXPECT_LE(dist, 0x7FFFFFFFull);
+
+    // symbol record consistent with script_symbol (same lookup path)
+    uintptr_t found = 0;
+    EXPECT_EQ(deeptrace::script_symbol("nearmem", &found), deeptrace::Result::Ok);
+    EXPECT_EQ(found, addr);
+
+    // duplicate symbol -> InvalidArg (same as script_alloc)
+    uintptr_t addr2 = 0;
+    EXPECT_EQ(deeptrace::script_alloc_near("nearmem", 64, anchor, "", &addr2),
+              deeptrace::Result::InvalidArg);
+
+    // free releases and removes; second free -> NotFound
+    EXPECT_EQ(deeptrace::script_free("nearmem"), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_free("nearmem"), deeptrace::Result::NotFound);
+
+    // invalid args
+    EXPECT_EQ(deeptrace::script_alloc_near("", 64, anchor, "", &addr),
+              deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_alloc_near("ok2", 0, anchor, "", &addr),
+              deeptrace::Result::InvalidArg);
+
+    // no session -> NotAttached
+    EXPECT_EQ(deeptrace::detach(), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_alloc_near("ok3", 64, anchor, "", &addr),
+              deeptrace::Result::NotAttached);
+    EXPECT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+}
+
+namespace {
+// Case-insensitive substring match. Capstone renders absolute targets in
+// lowercase hex (e.g. "jmp 0x7ff6..."), so comparing against uppercase hex
+// is flaky whenever the address contains letters A-F.
+bool text_contains_ci(const std::string& haystack, const std::string& needle) {
+    if (needle.empty()) return true;
+    auto lower = [](char c) -> char {
+        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    };
+    for (size_t i = 0; i + needle.size() <= haystack.size(); ++i) {
+        size_t j = 0;
+        for (; j < needle.size(); ++j) {
+            if (lower(haystack[i + j]) != lower(needle[j])) break;
+        }
+        if (j == needle.size()) return true;
+    }
+    return false;
+}
+std::string hex_upper(uintptr_t v) {
+    char buf[32];
+    snprintf(buf, sizeof buf, "%llX", (unsigned long long)v);
+    return buf;
+}
+}  // namespace
+
+TEST_F(DeeptraceIntegration, AsmAssembleLabels) {
+    // label defined and referenced within one stream. Write the assembled code
+    // into real remote memory and disassemble it to verify the jump target
+    // equals the label address (robust against short/long jump form choice).
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::script_alloc("labtest", 64, "", &base), deeptrace::Result::Ok);
+
+    std::map<std::string, uintptr_t> syms;
+    std::vector<uint8_t> bytes;
+    EXPECT_EQ(deeptrace::asm_assemble_labels(
+                  "start:\n"
+                  "  xor eax, eax\n"
+                  "  jmp start\n"
+                  "  nop\n",
+                  base, syms, bytes, nullptr),
+              deeptrace::Result::Ok);
+    // xor eax,eax (2) + jmp (2 or 5) + nop (1) = 5 (short) or 8 (near)
+    ASSERT_TRUE(bytes.size() == 5u || bytes.size() == 8u);
+
+    size_t n = 0;
+    EXPECT_EQ(deeptrace::memory_write(base, bytes.data(), bytes.size(), &n),
+              deeptrace::Result::Ok);
+
+    std::vector<deeptrace::Instruction> insns;
+    EXPECT_EQ(deeptrace::disasm_at(base, 3, insns), deeptrace::Result::Ok);
+    ASSERT_EQ(insns.size(), 3u);
+    EXPECT_EQ(insns[0].text, "xor eax, eax");
+    // jump target must resolve to the label address (base); compare hex
+    // case-insensitively (Capstone renders lowercase)
+    EXPECT_TRUE(text_contains_ci(insns[1].text, "0x" + hex_upper(base)));
+    EXPECT_EQ(insns[2].text, "nop");
+
+    EXPECT_EQ(deeptrace::script_free("labtest"), deeptrace::Result::Ok);
+}
+
+TEST_F(DeeptraceIntegration, AsmAssembleLabelsExternalSymbol) {
+    // jmp to an external symbol address; verify by disassembling real memory.
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::script_alloc("exttest", 64, "", &base), deeptrace::Result::Ok);
+    uintptr_t target = base + 0x1000;  // far enough for near jmp
+
+    std::map<std::string, uintptr_t> syms;
+    syms["hook_target"] = target;
+    std::vector<uint8_t> bytes;
+    EXPECT_EQ(deeptrace::asm_assemble_labels("jmp hook_target", base, syms,
+                                             bytes, nullptr),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(bytes.size(), 5u);
+    EXPECT_EQ(bytes[0], 0xE9);
+
+    size_t n = 0;
+    EXPECT_EQ(deeptrace::memory_write(base, bytes.data(), bytes.size(), &n),
+              deeptrace::Result::Ok);
+
+    std::vector<deeptrace::Instruction> insns;
+    EXPECT_EQ(deeptrace::disasm_at(base, 1, insns), deeptrace::Result::Ok);
+    ASSERT_EQ(insns.size(), 1u);
+    EXPECT_TRUE(text_contains_ci(insns[0].text, hex_upper(target)));
+
+    EXPECT_EQ(deeptrace::script_free("exttest"), deeptrace::Result::Ok);
+}
+
+TEST_F(DeeptraceIntegration, AsmAssembleLabelsUndefined) {
+    std::map<std::string, uintptr_t> syms;
+    std::vector<uint8_t> bytes;
+    EXPECT_EQ(deeptrace::asm_assemble_labels("jmp missing_label", 0x1000, syms,
+                                             bytes, nullptr),
+              deeptrace::Result::BadFormat);
+}
+
+TEST_F(DeeptraceIntegration, ThreadCreateAt) {
+    // allocate an executable buffer, write {0xC3} (ret), create a thread there
+    uintptr_t addr = 0;
+    ASSERT_EQ(deeptrace::script_alloc("tcat", 16, "", &addr), deeptrace::Result::Ok);
+    std::vector<uint8_t> code = {0xC3};
+    size_t n = 0;
+    EXPECT_EQ(deeptrace::memory_write(addr, code.data(), code.size(), &n),
+              deeptrace::Result::Ok);
+    uint32_t tid = 0;
+    EXPECT_EQ(deeptrace::thread_create_at(addr, &tid), deeptrace::Result::Ok);
+    EXPECT_NE(tid, 0u);
+    EXPECT_EQ(deeptrace::script_free("tcat"), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::thread_create_at(0, &tid), deeptrace::Result::InvalidArg);
+}
+
+TEST_F(DeeptraceIntegration, HookSetClear) {
+    // target = g_bytes[8..13] is 5 nops (0x90) -> patch to jmp elsewhere
+    uintptr_t target = g_target.g_bytes + 8;
+    uintptr_t newmem = 0x6000;
+
+    std::vector<uint8_t> before;
+    ASSERT_EQ(deeptrace::memory_dump(target, 5, before), deeptrace::Result::Ok);
+    ASSERT_EQ(before.size(), 5u);
+    EXPECT_EQ(before[0], 0x90);  // nop
+
+    deeptrace::HookInfo info;
+    EXPECT_EQ(deeptrace::hook_set(target, newmem, "", info), deeptrace::Result::Ok);
+    EXPECT_EQ(info.target, target);
+    EXPECT_EQ(info.newmem, newmem);
+    EXPECT_EQ(info.size, 5u);
+    ASSERT_EQ(info.orig_bytes.size(), 5u);
+    EXPECT_EQ(info.orig_bytes, before);
+
+    // target now starts with E9 jmp
+    std::vector<uint8_t> after;
+    ASSERT_EQ(deeptrace::memory_dump(target, 5, after), deeptrace::Result::Ok);
+    EXPECT_EQ(after[0], 0xE9);
+
+    // idempotent re-set: original bytes must be preserved (not re-read from
+    // the patched target), and clear still restores the true original.
+    deeptrace::HookInfo info2;
+    EXPECT_EQ(deeptrace::hook_set(target, newmem, "", info2), deeptrace::Result::Ok);
+    EXPECT_EQ(info2.orig_bytes, before);
+
+    // clear restores the original bytes exactly
+    EXPECT_EQ(deeptrace::hook_clear(target), deeptrace::Result::Ok);
+    std::vector<uint8_t> restored;
+    ASSERT_EQ(deeptrace::memory_dump(target, 5, restored), deeptrace::Result::Ok);
+    EXPECT_EQ(restored, before);
+
+    // second clear -> NotFound
+    EXPECT_EQ(deeptrace::hook_clear(target), deeptrace::Result::NotFound);
+}
+
+TEST_F(DeeptraceIntegration, HookClearNotFound) {
+    EXPECT_EQ(deeptrace::hook_clear(0x12345678), deeptrace::Result::NotFound);
+}
+
+TEST_F(DeeptraceIntegration, ScriptEnableDisableIdempotent) {
+    const std::string path = "C:\\tmp\\test_script.aa";
+    EXPECT_EQ(deeptrace::script_enable(path), deeptrace::Result::Ok);
+    // idempotent: second enable is a no-op success
+    EXPECT_EQ(deeptrace::script_enable(path), deeptrace::Result::Ok);
+
+    std::vector<deeptrace::ScriptInfo> list;
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    bool found = false;
+    for (const auto& s : list) {
+        if (s.path == path && s.state == "enabled") found = true;
+    }
+    EXPECT_TRUE(found);
+
+    EXPECT_EQ(deeptrace::script_disable(path), deeptrace::Result::Ok);
+    // idempotent: second disable is a no-op success
+    EXPECT_EQ(deeptrace::script_disable(path), deeptrace::Result::Ok);
+
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    for (const auto& s : list) {
+        EXPECT_NE(s.path, path);
+    }
+}
+
+// Ownership: hooks and alloc symbols created with a script owner must only
+// appear under that script in status, not under every enabled script.
+TEST_F(DeeptraceIntegration, ScriptStatusOwnershipFilter) {
+    const std::string p1 = "C:\\tmp\\script_a.aa";
+    const std::string p2 = "C:\\tmp\\script_b.aa";
+    EXPECT_EQ(deeptrace::script_enable(p1), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_enable(p2), deeptrace::Result::Ok);
+
+    // a's allocation and hook
+    uintptr_t addr = 0;
+    EXPECT_EQ(deeptrace::script_alloc("sym_a", 32, p1, &addr), deeptrace::Result::Ok);
+    uintptr_t target = g_target.g_bytes + 8;
+    uintptr_t newmem = 0x7000;
+    deeptrace::HookInfo hi;
+    EXPECT_EQ(deeptrace::hook_set(target, newmem, p1, hi), deeptrace::Result::Ok);
+
+    std::vector<deeptrace::ScriptInfo> list;
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    for (const auto& s : list) {
+        if (s.path == p1) {
+            bool has_sym = false, has_hook = false;
+            for (const auto& a : s.allocs) {
+                if (a.first == "sym_a") has_sym = true;
+            }
+            for (const auto& h : s.hooks) {
+                if (h.target == target) has_hook = true;
+            }
+            EXPECT_TRUE(has_sym);
+            EXPECT_TRUE(has_hook);
+        } else if (s.path == p2) {
+            // b must not see a's records
+            for (const auto& a : s.allocs) EXPECT_NE(a.first, "sym_a");
+            for (const auto& h : s.hooks) EXPECT_NE(h.target, target);
+        }
+    }
+
+    // cleanup
+    EXPECT_EQ(deeptrace::script_free("sym_a"), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::hook_clear(target), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_disable(p1), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_disable(p2), deeptrace::Result::Ok);
+}
+

@@ -2,8 +2,8 @@
   <img src="https://img.shields.io/badge/platform-Windows%20x64-blue" alt="Platform: Windows x64"/>
   <img src="https://img.shields.io/badge/language-C%2B%2B20-yellowgreen" alt="C++20"/>
   <img src="https://img.shields.io/badge/build-CMake%20%2B%20Ninja%20%2B%20MSVC-informational" alt="CMake + Ninja + MSVC"/>
-  <img src="https://img.shields.io/badge/version-v2.1.0-blueviolet" alt="v2.1.0"/>
-  <img src="https://img.shields.io/badge/API-56%20functions-green" alt="56 API functions"/>
+  <img src="https://img.shields.io/badge/version-v2.13.0-blueviolet" alt="v2.13.0"/>
+  <img src="https://img.shields.io/badge/API-74%20functions-green" alt="74 API functions"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License"/>
 </p>
 
@@ -13,7 +13,7 @@
 
 Read this in: [English](README.md) | [简体中文](README.zh-CN.md)
 
-DeepTrace lets you enumerate processes, read/write process memory, inspect modules and exports, control threads, set breakpoints and single-step under a debugger, disassemble code, assemble instructions, scan for byte patterns (AOB), watch variables, and inject DLLs or shellcode — all from a single portable executable.
+DeepTrace lets you enumerate processes, read/write process memory, inspect modules and exports, control threads, set breakpoints and single-step under a debugger, disassemble code, assemble instructions, scan for byte patterns (AOB), watch variables, run Cheat-Engine-style scripts, and inject DLLs or shellcode — all from a single portable executable.
 
 ```
 deeptrace_cli -p 1234 mem read 0x14000D000 4 hex
@@ -22,27 +22,33 @@ deeptrace_cli -p 1234 mem read 0x14000D000 4 hex
 
 ## Features
 
-**`deeptrace` — static library (C++20, 56 public APIs)**
+**`deeptrace` — static library (C++20, 74 public APIs)**
 
-- **Process** — enumerate / attach / detach / suspend / resume / terminate
+- **Process** — enumerate / attach (with granted-permissions summary) / detach / suspend / resume / terminate
 - **Memory** — read / write / dump / regions / typed value reads (byte…double)
 - **Module** — list / find / base / exports / dump
-- **Thread** — list / suspend / resume / terminate
+- **Thread** — list / suspend / resume / terminate / create a remote thread at an address
 - **Debug** — attach / pause / resume / step into & over, software + hardware + page-guard breakpoints, registers
-- **Disassembly & Assembly** — x64 disassembly (Capstone), x64 assembly (Keystone)
-- **Resolve** — module base, AOB pattern scanning (`??` wildcards)
+- **Disassembly & Assembly** — x64 disassembly (Capstone), x64 assembly (Keystone, incl. label-based multi-line assembly)
+- **Resolve** — module base, AOB pattern scanning (`??` wildcards), pointer-chain scan (reverse scan from a value, with rescan to filter false positives)
 - **Watch** — persistent variable watches with live values
-- **Injection** — DLL and shellcode injection with status tracking
-- **State persistence** — watches / injection records survive across CLI invocations (`%TEMP%\deeptrace_<pid>\`); debug breakpoints exist only inside a `debug run` session and are restored when it ends
+- **Script engine** — Cheat-Engine-style `.aa` scripts (alloc / registersymbol / createThread / hooks), idempotent enable–disable, `script check` for offline validation
+- **Hooks** — patch target code to jump into your bytes, restore originals on disable
+- **Injection** — DLL and shellcode with status tracking; shellcode `alloc → run → free` lifecycle (write-only, trigger on demand, release)
+- **State persistence** — watches / injection / script / hook records survive across CLI invocations (`%TEMP%\deeptrace_<pid>\`); debug breakpoints exist only inside a `debug run` session and are restored when it ends
 
-**`deeptrace_cli` — command-line tool (40 commands across 12 groups, pure ASCII output)**
+**`deeptrace_cli` — command-line tool (55 commands across 15 groups, pure ASCII output)**
 
 ```
-ps, mem, module, thread, debug, disasm, resolve, convert, watch, dll, asm, shellcode
+ps, mem, module, thread, debug, disasm, resolve, convert, watch, dll, asm, shellcode, script, hex2bin, bin2hex
 ```
 
 - One-shot commands with stable exit codes (`0` success / `1` failure / `2` usage error)
 - Non-interactive, script-friendly, fixed-width tables
+- **Symbol addressing** — any `<address>` argument accepts a script symbol (e.g. `mem read sunObjPtr` after `script run`, v2.6.0)
+- **`mem batch`** — read/write JSON pointer-chain locators in bulk, `--format csv|json` exports results for other tools/AI
+- **`resolve ptrscan`** — pointer-chain scan whose output plugs directly into `mem batch` (search → verify loop)
+- **Conversion ring (offline)** — `asm file` → `hex2bin` → `bin2hex` / `disasm file` → `shellcode injectfile` (asm↔bin↔hex, no target process needed)
 - Scripted debug sessions — `debug run <script.json>` is the single debug entry (v2.1.0): one invocation = one complete session (breakpoints/page-guards auto-restored)
 
 ## Quick Start
@@ -50,6 +56,8 @@ ps, mem, module, thread, debug, disasm, resolve, convert, watch, dll, asm, shell
 ### Download
 
 Grab a release zip (`deeptrace_cli-<version>-win64.zip`) — it contains a single portable `deeptrace_cli.exe` (static runtime, no DLLs needed).
+
+> ⚠️ Releases lag behind the repo: the latest published zip is **v2.1.0** while the repo code is **v2.13.0**. The v2.13.0 features (script engine, `mem batch`, `resolve ptrscan`, conversion layer) exist only in the source build — build from source if you need them (see [Building](#building)).
 
 Or build from source (see [Building](#building)).
 
@@ -73,6 +81,18 @@ deeptrace_cli -p 1234 mem readval 0x14000D000 dword
 :: assemble instructions to bytes
 deeptrace_cli asm assemble "nop; ret"
 90C3
+
+:: check an AA script offline (syntax + assembly, no target needed)
+:: my_script.aa:
+::   [ENABLE]
+::   alloc(newmem,0x100)
+::   newmem:
+::   mov rax,1
+::   ret
+::   [DISABLE]
+::   dealloc(newmem)
+deeptrace_cli script check my_script.aa
+OK (5 steps: 1 alloc, 2 asm, 0 hook, 0 createThread, 0 db)
 ```
 
 > The address `0x14000D000` and value `0x11223344` above come from the test target `deeptrace_target.exe` (ASLR disabled, fixed base). The test target ships only in the Debug build (`cli/out/bin/Debug/`) — practice on it before touching real programs.
@@ -93,7 +113,7 @@ deeptrace\script\build_release.bat
 cli\script\build_release.bat
 
 :: package a zip into cli\out\dist\
-cli\script\package.bat v2.1.0
+cli\script\package.bat v2.13.0
 ```
 
 On WSL use the matching `*_wsl.sh` scripts (they bridge to `cmd.exe`).
@@ -101,11 +121,11 @@ On WSL use the matching `*_wsl.sh` scripts (they bridge to `cmd.exe`).
 ## Testing
 
 ```bat
-deeptrace\out\bin\Debug\deeptrace_unit_test.exe          :: 96 unit tests (hex/scan/disasm/asm/format)
-deeptrace\out\bin\Debug\deeptrace_integration_test.exe   :: real-target integration
-cli\out\bin\Debug\deeptrace_cli_unit_test.exe            :: parser/printer/executor
-cli\out\bin\Debug\deeptrace_cli_integration_test.exe     :: full CLI pipeline
-python3 cli/test/e2e/test_cli_e2e.py                     :: 104 end-to-end checks
+deeptrace\out\bin\Debug\deeptrace_unit_test.exe          :: 137 unit tests (hex/scan/disasm/asm/script/hook/pointer-scan)
+deeptrace\out\bin\Debug\deeptrace_integration_test.exe   :: 53 real-target integration cases
+cli\out\bin\Debug\deeptrace_cli_unit_test.exe            :: 207 parser/printer/executor unit tests
+cli\out\bin\Debug\deeptrace_cli_integration_test.exe     :: 51 full-CLI-pipeline integration cases
+python3 cli/test/e2e/test_cli_e2e.py                     :: 270 end-to-end checks
 ```
 
 ## Repository Layout
@@ -113,8 +133,8 @@ python3 cli/test/e2e/test_cli_e2e.py                     :: 104 end-to-end check
 ```
 deeptrace/   static library (domain / algorithm / infrastructure / service) + include/deeptrace.h
 cli/         command-line tool (command / interface / printing layers)
-design/      design documents (v1.0.0 … v2.1.0)
-docs/        api reference, developer docs, user manual (v2.1.0)
+design/      design documents (v1.0.0 … v2.13.0)
+docs/        api reference, developer docs, user manual (v2.13.0)
 agents/      AI-agent setup guide (agents/README.md) + two skills (agents/deeptrace-cli-install.md, agents/deeptrace-cli-usage.md)
 sandbox/     experiments (not part of the deliverable)
 ```
@@ -123,9 +143,9 @@ sandbox/     experiments (not part of the deliverable)
 
 | Doc | Audience | Content |
 |-----|----------|---------|
-| [API Reference](docs/api/v2.1.0/README.md) | Developers integrating the library | All 56 functions, types, error codes |
-| [Developer Docs](docs/developers/v2.1.0/README.md) | Contributors / maintainers | Architecture, building, testing, extending, ADRs |
-| [User Manual](docs/users/v2.1.0/README.md) | End users | Getting started, command reference, FAQ, troubleshooting |
+| [API Reference](docs/api/v2.13.0/README.md) | Developers integrating the library | All 74 functions, types, error codes |
+| [Developer Docs](docs/developers/v2.13.0/README.md) | Contributors / maintainers | Architecture, building, testing, extending, ADRs |
+| [User Manual](docs/users/v2.13.0/README.md) | End users | Getting started, command reference, FAQ, troubleshooting |
 
 ## AI / Agent Usage Guide
 
@@ -133,13 +153,13 @@ sandbox/     experiments (not part of the deliverable)
 
 **Step 1 — Read the agent doc.** [agents/README.md](agents/README.md) is the setup guide for AI agents (written in English): project overview, key facts, and the two setup actions — install `deeptrace_cli` into your working directory and download the skill into `.agents/`.
 
-**Step 2 — Install the tool into your working directory (prefer the release download).** This repo is a Windows x64 C++20 process-memory tool. Download `deeptrace_cli-v2.1.0-win64.zip` from the [v2.0.0 release](https://github.com/Theqiqi/DeepTrace/releases/tag/v2.0.0) (single exe, no dependencies) and extract it into the **current directory** so `deeptrace_cli.exe` is available; build from source only when no release is available (build order: `deeptrace` library first, then `deeptrace_cli`). Details: [agents/README.md](agents/README.md) or the install skill [deeptrace-cli-install.md](agents/deeptrace-cli-install.md).
+**Step 2 — Install the tool into your working directory (prefer the release download).** This repo is a Windows x64 C++20 process-memory tool. Download `deeptrace_cli-v2.1.0-win64.zip` from the [v2.1.0 release](https://github.com/Theqiqi/DeepTrace/releases/tag/v2.1.0) (single exe, no dependencies) and extract it into the **current directory** so `deeptrace_cli.exe` is available; build from source when no release is available **or when you need the v2.13.0 features** (build order: `deeptrace` library first, then `deeptrace_cli`). Details: [agents/README.md](agents/README.md) or the install skill [deeptrace-cli-install.md](agents/deeptrace-cli-install.md).
 
 **Step 3 — Download the skills into `.agents/`.** Copy the two skills into `.agents/` in your current directory: `agents/deeptrace-cli-install.md` (install/build) and `agents/deeptrace-cli-usage.md` (usage), both written in Chinese.
 
-**Step 4 — Use the skill to call the tool.** The agent can run commands such as `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex`. Key facts: exit codes `0`/`1`/`2` (success / failure / usage error); addresses are `0x`-prefixed hex; state (watches/injections) persists in `%TEMP%\deeptrace_<pid>\`; debug is scripted via the single entry `debug run <script.json>` (v2.1.0); test target `deeptrace_target.exe` has ASLR disabled with known values at fixed addresses (e.g. `0x14000D000` = `0x11223344`).
+**Step 4 — Use the skill to call the tool.** The agent can run commands such as `deeptrace_cli -p <pid> mem read 0x14000D000 4 hex`. Key facts: exit codes `0`/`1`/`2` (success / failure / usage error); addresses are `0x`-prefixed hex **or script symbol names** (`mem read sunObjPtr`); state (watches/injections/scripts/hooks) persists in `%TEMP%\deeptrace_<pid>\`; debug is scripted via the single entry `debug run <script.json>` (v2.1.0); scripts are CE-style `.aa` files run with `script run <file.aa>` (idempotent); test target `deeptrace_target.exe` has ASLR disabled with known values at fixed addresses (e.g. `0x14000D000` = `0x11223344`).
 
-Additional references: [User Manual](docs/users/v2.1.0/USER_MANUAL.md) (full command reference), [API Reference](docs/api/v2.1.0/README.md) (library API for code integration).
+Additional references: [User Manual](docs/users/v2.13.0/USER_MANUAL.md) (full command reference), [API Reference](docs/api/v2.13.0/README.md) (library API for code integration).
 
 ## License
 

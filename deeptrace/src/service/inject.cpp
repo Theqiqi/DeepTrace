@@ -263,6 +263,109 @@ Result shellcode_inject_at(uintptr_t addr, const std::vector<uint8_t>& bytes,
     return Result::Ok;
 }
 
+Result shellcode_alloc(const std::vector<uint8_t>& bytes, InjectInfo& out) {
+    auto& s = internal::session();
+    if (!s.handle) return Result::NotAttached;
+    if (bytes.empty()) return Result::InvalidArg;
+
+    uintptr_t remote = 0;
+    Result r = internal::RemoteAlloc(s.handle, bytes.size(), PAGE_EXECUTE_READWRITE,
+                                     &remote);
+    if (r != Result::Ok) return r;
+
+    Result err;
+    size_t n = internal::WriteRemoteMemory(s.handle, remote, bytes.data(), bytes.size(),
+                                           &err);
+    if (err != Result::Ok || n != bytes.size()) {
+        internal::RemoteFree(s.handle, remote);
+        return err != Result::Ok ? err : Result::WriteFault;
+    }
+
+    out.kind = "shellcode";
+    out.remote_base = remote;
+    out.thread_id = 0;
+    out.running = false;
+    out.size = bytes.size();
+
+    auto recs = internal::load_injects(s.pid);
+    recs.push_back(internal::InjectRecord{
+        "shellcode", internal::hex_encode(bytes.data(), bytes.size()), remote, 0});
+    if (!internal::save_injects(s.pid, recs)) {
+        // avoid an untrackable allocation: roll back on record-save failure
+        internal::RemoteFree(s.handle, remote);
+        return Result::Error;
+    }
+    return Result::Ok;
+}
+
+Result shellcode_run(uintptr_t addr, InjectInfo& out) {
+    auto& s = internal::session();
+    if (!s.handle) return Result::NotAttached;
+    if (addr == 0) return Result::InvalidArg;
+
+    auto recs = internal::load_injects(s.pid);
+    internal::InjectRecord* rec = nullptr;
+    for (auto& r : recs) {
+        if (r.kind == "shellcode" && r.address == addr) {
+            rec = &r;
+            break;
+        }
+    }
+    if (!rec) return Result::NotFound;
+
+    uint32_t tid = 0;
+    Result r = internal::CreateRemoteThreadEx(s.handle, addr, 0, &tid);
+    if (r != Result::Ok) return r;
+
+    rec->thread_id = tid;
+    internal::save_injects(s.pid, recs);
+
+    out.kind = "shellcode";
+    out.remote_base = addr;
+    out.thread_id = tid;
+    out.running = true;
+    out.size = rec->path.size() / 2;
+    return Result::Ok;
+}
+
+Result shellcode_free(uintptr_t addr) {
+    auto& s = internal::session();
+    if (!s.handle) return Result::NotAttached;
+    if (addr == 0) return Result::InvalidArg;
+
+    auto recs = internal::load_injects(s.pid);
+    const internal::InjectRecord* rec = nullptr;
+    for (const auto& r : recs) {
+        if (r.kind == "shellcode" && r.address == addr) {
+            rec = &r;
+            break;
+        }
+    }
+    if (!rec) return Result::NotFound;
+
+    // Freeing memory while a thread is still executing on it crashes the
+    // target: wait for the recorded thread first (mirrors dll_eject).
+    if (rec->thread_id != 0) {
+        uint32_t code = 0;
+        Result w = internal::WaitRemoteThread(s.handle, rec->thread_id, 5000, &code);
+        if (w == Result::Timeout) return Result::Timeout;
+        // Error here means OpenThread failed because the thread object is gone
+        // (thread already exited) -> treat as finished and proceed to free.
+        if (w != Result::Ok && w != Result::Error) return w;
+    }
+
+    // Remove the record (and persist) before releasing memory, so a failed
+    // save can never leave a record pointing at freed memory.
+    std::vector<internal::InjectRecord> rest;
+    for (const auto& r : recs) {
+        if (r.kind == "shellcode" && r.address == addr) continue;
+        rest.push_back(r);
+    }
+    if (!internal::save_injects(s.pid, rest)) return Result::Error;
+
+    return internal::RemoteFree(s.handle, addr);
+}
+
 Result shellcode_status(std::vector<InjectInfo>& out) {
     out.clear();
     auto& s = internal::session();

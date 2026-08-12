@@ -116,7 +116,7 @@ TEST(Parser, MissingSubcommand) {
 TEST(Parser, AllGroupsKnown) {
     const char* groups[] = {"ps", "mem", "module", "thread", "debug",
                             "disasm", "resolve", "watch", "dll", "asm",
-                            "shellcode", "convert"};
+                            "shellcode", "convert", "hex2bin"};
     for (const char* g : groups) {
         EXPECT_TRUE(is_group(g)) << g;
     }
@@ -131,11 +131,42 @@ TEST(Parser, MissingRequiredArg) {
     EXPECT_NE(r.error.find("missing argument: address"), std::string::npos);
 }
 
+// v2.6.0: address args accept a numeric address OR a script symbol name
+// (symbol addressing). Symbol-shaped tokens now parse; only tokens that are
+// neither a valid number nor a valid symbol shape are rejected at parse time.
 TEST(Parser, InvalidAddress) {
-    auto r = parse({"deeptrace_cli", "mem", "read", "not_an_addr"});
-    EXPECT_FALSE(r.ok);
-    EXPECT_EQ(r.exit_code, 2);
-    EXPECT_NE(r.error.find("invalid address"), std::string::npos);
+    auto bad = parse({"deeptrace_cli", "mem", "read", "foo bar"});  // space
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
+    EXPECT_NE(bad.error.find("invalid address"), std::string::npos);
+    auto bad2 = parse({"deeptrace_cli", "mem", "read", "a-b"});  // '-' not identifier
+    EXPECT_FALSE(bad2.ok);
+    EXPECT_EQ(bad2.exit_code, 2);
+    auto bad3 = parse({"deeptrace_cli", "mem", "read", "0xZZ"});  // neither number nor shape
+    EXPECT_FALSE(bad3.ok);
+    EXPECT_EQ(bad3.exit_code, 2);
+}
+
+TEST(Parser, AddressAcceptsSymbolShape) {
+    // v2.6.0 symbol addressing: symbol-shaped tokens pass the parser; actual
+    // existence is resolved later by the interface layer (requires attach).
+    auto r = parse({"deeptrace_cli", "mem", "read", "sunObjPtr"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[0], "sunObjPtr");
+    auto w = parse({"deeptrace_cli", "watch", "add", "desc", "slotA", "qword"});
+    ASSERT_TRUE(w.ok);
+    EXPECT_EQ(w.req.args[1], "slotA");
+    auto d = parse({"deeptrace_cli", "disasm", "at", "code_newmem"});
+    ASSERT_TRUE(d.ok);
+    EXPECT_EQ(d.req.args[0], "code_newmem");
+    auto s = parse({"deeptrace_cli", "shellcode", "run", "slotB"});
+    ASSERT_TRUE(s.ok);
+    EXPECT_EQ(s.req.args[0], "slotB");
+    // v2.8.0: mem write accepts the symbol shape too (write artificial pointer)
+    auto w2 = parse({"deeptrace_cli", "mem", "write", "sunObjPtr", "1122334455667788",
+                     "dec"});
+    ASSERT_TRUE(w2.ok);
+    EXPECT_EQ(w2.req.args[0], "sunObjPtr");
 }
 
 TEST(Parser, AddressHexAndDec) {
@@ -173,6 +204,28 @@ TEST(Parser, MemWriteHexBytes) {
     ASSERT_TRUE(r.ok);
     EXPECT_EQ(r.req.args[1], "DEADBEEF");
     EXPECT_EQ(r.req.args[2], "hex");
+}
+
+// v2.8.0: `mem write <symbol>` (write an artificial-pointer slot by name)
+// parses through the same address rule as mem read - the symbol shape is
+// accepted here and resolved to the recorded address later by the interface
+// layer (requires attach).
+TEST(Parser, MemWriteSymbolShape) {
+    auto r = parse({"deeptrace_cli", "mem", "write", "sunObjPtr",
+                    "8877665544332211", "hex"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[0], "sunObjPtr");
+    EXPECT_EQ(r.req.args[1], "8877665544332211");
+    EXPECT_EQ(r.req.args[2], "hex");
+    auto d = parse({"deeptrace_cli", "mem", "write", "slotA", "1122334455667788",
+                    "dec"});
+    ASSERT_TRUE(d.ok);
+    EXPECT_EQ(d.req.args[0], "slotA");
+    EXPECT_EQ(d.req.args[2], "dec");
+    // value validation still applies regardless of the address form
+    auto bad = parse({"deeptrace_cli", "mem", "write", "slotA", "ABC"});
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
 }
 
 TEST(Parser, MemWriteOddHex) {
@@ -423,6 +476,192 @@ TEST(Parser, ShellcodeHexBytes) {
     EXPECT_EQ(r.req.args[0], "4831C0C3");
     auto bad = parse({"deeptrace_cli", "shellcode", "inject", "4831C0C"});
     EXPECT_FALSE(bad.ok);
+}
+
+// ---- v2.2.0: asm file / hex2bin / shellcode staged ops ----
+
+TEST(Parser, AsmFileBasic) {
+    auto r = parse({"deeptrace_cli", "asm", "file", "code.asm"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "asm");
+    EXPECT_EQ(r.req.action, "file");
+    EXPECT_EQ(r.req.args[0], "code.asm");
+    EXPECT_EQ(r.req.args[1], "");  // --hex unset
+    EXPECT_EQ(r.req.args[2], "");  // --c-array unset
+    EXPECT_EQ(r.req.args[3], "");  // --out unset
+    EXPECT_EQ(r.req.args[4], "");  // --out value unset
+}
+
+TEST(Parser, AsmFileWithFlags) {
+    auto r = parse({"deeptrace_cli", "asm", "file", "code.asm", "--hex"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[1], "--hex");
+    auto r2 = parse({"deeptrace_cli", "asm", "file", "code.asm", "--c-array"});
+    ASSERT_TRUE(r2.ok);
+    EXPECT_EQ(r2.req.args[2], "--c-array");
+}
+
+TEST(Parser, AsmFileOutFlag) {
+    auto r = parse({"deeptrace_cli", "asm", "file", "code.asm", "--out", "code.bin"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[3], "--out");
+    EXPECT_EQ(r.req.args[4], "code.bin");
+    auto missing = parse({"deeptrace_cli", "asm", "file", "code.asm", "--out"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+    EXPECT_NE(missing.error.find("missing argument for option: --out"),
+              std::string::npos);
+}
+
+TEST(Parser, AsmFileMissingPath) {
+    auto r = parse({"deeptrace_cli", "asm", "file"});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.error.find("missing argument: path"), std::string::npos);
+}
+
+TEST(Parser, Hex2BinParses) {
+    auto r = parse({"deeptrace_cli", "hex2bin", "DEADBEEF", "out.bin"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "hex2bin");
+    EXPECT_EQ(r.req.action, "");  // standalone command
+    EXPECT_EQ(r.req.args[0], "DEADBEEF");
+    EXPECT_EQ(r.req.args[1], "out.bin");
+    auto bad = parse({"deeptrace_cli", "hex2bin", "ABC", "out.bin"});  // odd
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
+    auto bad2 = parse({"deeptrace_cli", "hex2bin", "DEADGG", "out.bin"});
+    EXPECT_FALSE(bad2.ok);
+    auto missing = parse({"deeptrace_cli", "hex2bin", "DEADBEEF"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+}
+
+TEST(Parser, ShellcodeInjectFile) {
+    auto r = parse({"deeptrace_cli", "shellcode", "injectfile", "code.bin"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[0], "code.bin");
+    auto missing = parse({"deeptrace_cli", "shellcode", "injectfile"});
+    EXPECT_FALSE(missing.ok);
+}
+
+TEST(Parser, ShellcodeAllocRunFreeExec) {
+    auto alloc = parse({"deeptrace_cli", "shellcode", "alloc", "4831C0C3"});
+    ASSERT_TRUE(alloc.ok);
+    EXPECT_EQ(alloc.req.args[0], "4831C0C3");
+    auto run = parse({"deeptrace_cli", "shellcode", "run", "0x1000"});
+    ASSERT_TRUE(run.ok);
+    EXPECT_EQ(run.req.args[0], "0x1000");
+    auto free = parse({"deeptrace_cli", "shellcode", "free", "0x1000"});
+    ASSERT_TRUE(free.ok);
+    auto exec = parse({"deeptrace_cli", "shellcode", "exec", "code.bin"});
+    ASSERT_TRUE(exec.ok);
+    EXPECT_EQ(exec.req.args[0], "code.bin");
+    // address validation: must be a valid address or symbol shape (v2.6.0);
+    // a shape with a space is rejected at parse time
+    auto bad = parse({"deeptrace_cli", "shellcode", "run", "foo bar"});
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
+}
+
+TEST(Parser, ShellcodeSourceNonEmpty) {
+    auto r = parse({"deeptrace_cli", "shellcode", "alloc", ""});
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.exit_code, 2);
+    auto r2 = parse({"deeptrace_cli", "shellcode", "exec"});
+    EXPECT_FALSE(r2.ok);
+    EXPECT_EQ(r2.exit_code, 2);
+}
+
+TEST(Parser, HelpTextListsNewCommands) {
+    std::string help = build_help_text();
+    EXPECT_NE(help.find("asm file"), std::string::npos);
+    EXPECT_NE(help.find("hex2bin"), std::string::npos);
+    EXPECT_NE(help.find("shellcode alloc"), std::string::npos);
+    EXPECT_NE(help.find("shellcode run"), std::string::npos);
+    EXPECT_NE(help.find("shellcode free"), std::string::npos);
+    EXPECT_NE(help.find("shellcode exec"), std::string::npos);
+    EXPECT_NE(help.find("shellcode injectfile"), std::string::npos);
+    EXPECT_NE(help.find("script check"), std::string::npos);
+    EXPECT_NE(help.find("script run"), std::string::npos);
+    EXPECT_NE(help.find("script disable"), std::string::npos);
+    EXPECT_NE(help.find("script status"), std::string::npos);
+    EXPECT_NE(help.find("mem batch"), std::string::npos);
+    EXPECT_NE(help.find("--format table|csv|json"), std::string::npos);
+    EXPECT_NE(help.find("resolve ptrscan"), std::string::npos);
+    EXPECT_NE(help.find("disasm file"), std::string::npos);
+    EXPECT_NE(help.find("bin2hex"), std::string::npos);
+    EXPECT_NE(help.find("deeptrace_cli v2.13.0"), std::string::npos);
+}
+
+TEST(Parser, Bin2hexFormatValidated) {
+    // valid formats parse fine
+    auto ok = parse({"deeptrace_cli", "bin2hex", "payload.bin"});
+    ASSERT_TRUE(ok.ok);
+    EXPECT_EQ(ok.req.args[1], "hex");  // default format slot
+    auto c = parse({"deeptrace_cli", "bin2hex", "payload.bin", "c-array"});
+    ASSERT_TRUE(c.ok);
+    EXPECT_EQ(c.req.args[1], "c-array");
+    // unknown format -> usage error
+    auto bad = parse({"deeptrace_cli", "bin2hex", "payload.bin", "yaml"});
+    ASSERT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
+}
+
+TEST(Parser, BatchFormatFlagDefaultAndSet) {
+    // default: --format/--out both unset -> empty slot pairs
+    auto d = parse({"deeptrace_cli", "mem", "batch", "read", "paths.json"});
+    ASSERT_TRUE(d.ok);
+    EXPECT_EQ(d.req.args[2], "");   // --format flag slot
+    EXPECT_EQ(d.req.args[3], "");   // --format value slot
+    EXPECT_EQ(d.req.args[4], "");   // --out flag slot
+    EXPECT_EQ(d.req.args[5], "");   // --out value slot
+
+    auto f = parse({"deeptrace_cli", "mem", "batch", "read", "paths.json",
+                    "--format", "csv"});
+    ASSERT_TRUE(f.ok);
+    EXPECT_EQ(f.req.args[2], "--format");
+    EXPECT_EQ(f.req.args[3], "csv");
+
+    auto j = parse({"deeptrace_cli", "mem", "batch", "write", "paths.json",
+                    "--format", "json"});
+    ASSERT_TRUE(j.ok);
+    EXPECT_EQ(j.req.args[3], "json");
+
+    auto o = parse({"deeptrace_cli", "mem", "batch", "read", "paths.json",
+                    "--format", "table", "--out", "out.csv"});
+    ASSERT_TRUE(o.ok);
+    EXPECT_EQ(o.req.args[3], "table");
+    EXPECT_EQ(o.req.args[4], "--out");
+    EXPECT_EQ(o.req.args[5], "out.csv");
+}
+
+TEST(Parser, BatchFormatFlagRejectsInvalid) {
+    auto bad = parse({"deeptrace_cli", "mem", "batch", "read", "p.json",
+                      "--format", "yaml"});
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
+    EXPECT_NE(bad.error.find("invalid --format"), std::string::npos);
+
+    auto missing = parse({"deeptrace_cli", "mem", "batch", "read", "p.json",
+                          "--format"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+    EXPECT_NE(missing.error.find("missing argument for option: --format"),
+              std::string::npos);
+}
+
+TEST(Parser, ScriptCheckParses) {
+    auto r = parse({"deeptrace_cli", "script", "check", "x.aa"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "script");
+    EXPECT_EQ(r.req.action, "check");
+    EXPECT_EQ(r.req.args.size(), 1u);
+    EXPECT_EQ(r.req.args[0], "x.aa");
+    auto missing = parse({"deeptrace_cli", "script", "check"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+    EXPECT_NE(missing.error.find("missing argument: file"), std::string::npos);
 }
 
 TEST(Parser, WatchAddTypes) {

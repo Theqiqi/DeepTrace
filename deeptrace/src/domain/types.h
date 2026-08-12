@@ -116,4 +116,40 @@ struct InjectInfo {
     size_t size = 0;
 };
 
+// hook record: target patched to jump to newmem, original bytes saved.
+struct HookInfo {
+    uintptr_t target = 0;
+    uintptr_t newmem = 0;
+    std::vector<uint8_t> orig_bytes;  // original bytes that were overwritten
+    size_t size = 0;                  // patch region length (bytes)
+};
+
+// script enable record (per script path).
+struct ScriptInfo {
+    std::string path;                  // script file path (identity)
+    std::string state;                 // "enabled" | "disabled"
+    std::vector<HookInfo> hooks;       // hooks registered by this script
+    std::vector<std::pair<std::string, uintptr_t>> allocs;  // symbol -> addr
+};
+
+// Pointer-chain scan configuration (v2.12.0). Reverse-walk from a target
+// value address: each level finds qword pointers whose value lands within
+// +/-max_offset of the current target address.
+struct PointerScanConfig {
+    uintptr_t target = 0;        // value address to reverse-walk from
+    uint32_t max_offset = 2048;  // pointer value within target +/- this counts
+    uint32_t max_level = 5;      // max chain depth (number of offset levels)
+    uint32_t max_results = 10000;  // snapshot output cap (anti false-positive)
+    std::string module;          // anchor module name; empty = no anchoring
+    uint32_t thread_count = 0;   // 0 = hardware_concurrency
+};
+
+// One pointer chain: root address + offset sequence (signed, may be
+// negative for pointers stored above the matched field).
+// Evaluate: addr = root; for off in offsets: addr = *(qword)addr + off.
+struct PointerChain {
+    uintptr_t root = 0;
+    std::vector<int64_t> offsets;
+};
+
 }  // namespace deeptrace

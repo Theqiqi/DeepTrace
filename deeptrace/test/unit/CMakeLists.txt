@@ -3,8 +3,12 @@ find_package(GTest CONFIG REQUIRED)
 add_executable(deeptrace_unit_test
     hex_test.cpp
     scan_test.cpp
+    pointer_scan_test.cpp
+    threadpool_test.cpp
     disasm_test.cpp
+    service_disasm_test.cpp
     asm_test.cpp
+    service_asm_test.cpp
     format_test.cpp
 )
 

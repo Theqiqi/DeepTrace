@@ -1,0 +1,13 @@
+// v2.9.0 batch-locator fixture: three remote slots consumed by `mem batch`
+// tests. ptr_slot holds the address of data_slot (a one-level pointer chain),
+// str_slot holds an ASCII string. The tests wire the values themselves via
+// `mem write` (deterministic, no thread race), so this script only allocates;
+// disable frees the slots by name.
+[ENABLE]
+alloc(ptr_slot, 8)
+alloc(data_slot, 8)
+alloc(str_slot, 16)
+[DISABLE]
+dealloc(ptr_slot)
+dealloc(data_slot)
+dealloc(str_slot)
