@@ -33,14 +33,34 @@
 ### 3. 能力边界(新增)
 
 - 符号寻址仅作用于「地址型参数」(address 类型),不作用于字符串/模块名等参数。
-- 解析顺序固定:数字优先。若符号名恰好是纯数字/纯十六进制形状(如 `alloc(100,8)`),
-  将被当作地址解析,不按符号处理(记录在案,不鼓励这种命名)。
+- 解析顺序固定:数字优先。纯数字/0x 前缀十六进制先按地址解析;数字解析不出
+  的标识符形状才查符号。
+- **符号名形状统一收紧(审查修复)**:符号名首字符必须为字母或下划线。数字开头
+  的符号名(如 `alloc(100,8)`)在脚本解析层(CLI aa 解析器)与静态库
+  `script_symbol/script_alloc` 均拒绝——彻底杜绝「符号名恰好是数字 → CLI 静默
+  当地址解析」的影子歧义。
 - 符号必须已由脚本 `alloc` 注册(per-PID 记录存在);未注册 → NotFound。
 - 目标进程需已 attach(地址命令本就要求 -p);无 session → NotAttached。
 
-### 4. 验证
+### 4. 实现期决策(代码审查后补充)
 
-- 静态库:单元 + 集成(script_symbol 查找/NotFound/NotAttached/InvalidArg)。
-- CLI:parser 单测(符号形状地址通过)、集成(script run 后 mem read <符号> 读回
-  真实值)、e2e(真实进程符号寻址全链路)。
-- git:流程每步提交齐全,tag `v2.6.0`。
+- **resolve_addr 数字判定**:以首字符分派——数字开头走数字路径(显式进制解析,
+  避免 strtoull base-0 八进制陷阱如 `010`→8),字母/下划线开头走
+  `deeptrace::script_symbol`。与解析器 valid_address/valid_symbol_shape 完全对齐。
+- **审查修复(2 项)**:
+  1. 数字开头符号名影子歧义:CLI aa 解析器与静态库 valid_symbol_name 均要求
+     首字符字母/下划线,`alloc(100,8)` 类脚本 check/run 报「invalid symbol
+     name」(静态库 script_alloc 直接 InvalidArg),不会在 mem read 时静默错编。
+  2. 补 `disasm at <符号>` 集成正例(aptr 脚本的 code 符号可反汇编)。
+- **顺带修复预存 flaky 测试**:AsmAssembleLabels/ExternalSymbol 用大写 hex 与
+  Capstone 反汇编文本比对,地址含 A-F 时偶发失败;改为大小写不敏感匹配。
+
+### 5. 验证
+
+- 静态库:单元 115 + 集成 48(含 script_symbol 查找/NotFound/InvalidArg、
+  数字开头符号名拒绝)。
+- CLI:单元 154(parser 符号形状通过 + resolve_addr 数字/符号分派 + aa 数字开头
+  符号名拒绝)、集成 44(script run 后 mem read <符号> 读回真实值 + disasm at
+  <符号>)、e2e 186(真实进程符号寻址全链路:mem read/readval/watch add 按符号、
+  未知符号 NotFound、disable 后失效)。Debug/Release 全绿。
+- git:feat + fix(review findings)提交齐全,tag `v2.6.0`。
