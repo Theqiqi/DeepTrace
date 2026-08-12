@@ -24,7 +24,17 @@
 - 执行语义(用户提出幂等方案):**enable/disable 幂等** — 不管执行开启命令多少次、关闭多少次,只要各执行一次必然符合「开」或「关」状态,从而天然无状态;call 型脚本一次调用跑完 enable+disable 完整流程,hook 型脚本 enable 后持续存在、disable 单独触发。
 - 脚本文件含 [ENABLE]/[DISABLE] 双块;hook 状态需跨调用可判定(enable 重复执行跳过、disable 重复执行跳过),hook 记录持久化方案在需求分析中确定。
 
-### 3. 变更范围(初稿)
+### 3. 实现期决策补充(与 15_异常设计 同步)
+
+- `alloc` 的 near 第三参数(如 `alloc(newmem,2048,"game.dll"+7D5778)`)接受为
+  **放置提示**:解析并校验表达式(模块必须已加载,否则 NotFound 退出 1),但
+  分配位置由 OS(VirtualAllocEx)决定,不保证就近放置。
+- hook 目标后仅支持 `jmp <label>` 与 CE 填充行(`nop N`/`db`/标签),其余语句
+  报脚本错误退出 1;hook 覆盖固定 5 字节(jmp rel32)。
+- 已知边界:汇编块内未定义符号引用可能被 Keystone 静默编码(以 0 地址),
+  hook 的 `jmp <label>` 例外——label 必须存在于脚本符号表,否则 BadFormat。
+
+### 4. 变更范围(初稿)
 
 | 位置 | 变更 |
 |------|------|
