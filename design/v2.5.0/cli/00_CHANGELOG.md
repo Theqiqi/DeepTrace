@@ -41,4 +41,28 @@
 
 ### 4. 实现期决策(代码审查后补充)
 
-(待补充)
+- **编码方案落地**:内存操作数 `[sym]` 重写 `[rip+disp32]` 两遍汇编(占位定长 →
+  算位移 → 回填),长度不一致防御性报错;`mov <acc>,[sym]`(rax/eax/ax)自编码
+  moffs64(A1/A3,不受 ±2GB 限制);立即数替换地址字面量后 Keystone 编码 + Capstone
+  重解码校验(防静默截断)。
+- **审查修复(3 项)**:
+  1. imm 长度守卫:值 > 0xFFFFFFFF 时必须编码为 ≥9 字节(64 位立即数),否则
+     BadFormat——堵住 imm32 sign-extension 复现内核地址的假阳性。
+  2. classify 精确括号匹配:仅 `[name]` 走内存路径;`[ name ]`/`[rsp+name]`/
+     `[name+4]` 落到立即数路径(替换+校验,安全编码或显式 BadFormat)。
+  3. nop/db 写入目标守卫:`[ENABLE]\nnop\n`(裸 nop = NopFill 1,CE hook 填充)
+     无目标时 check 报错(退出 2)与 run 报错(退出 1)一致,不再往地址 0 写。
+- **顺带修复预存 bug**:`save_enabled_scripts` 重写 scripts.dat 时丢弃符号 owner
+  字段,导致 `script_enable` 后所有符号在 status 中归入 (unowned);已保留 owner,
+  由集成测试 ScriptArtificialPointerRoundTrip 锁定。
+- **能力边界补充**:`jmp [sym]` 仍按直接跳转(rel32 到符号地址)自编码(既有行为,
+  非间接跳转),不在本次范围。
+
+### 5. 验证
+
+- 静态库:单元 115(含 AsmLabels 19 个编码/截断用例)+ 集成 47;CLI:单元 150 +
+  集成 43 + e2e 174;Debug/Release 全绿。
+- 真实进程验证:script_aptr.aa 线程写入双槽位,moffs64 与 RIP 相对两种编码的
+  值读回一致;disable 按名释放;目标存活。
+- 用户示例脚本(人造指针 + hook + 裸 nop)`script check` 通过。
+- git:`feat: artificial pointer` + `fix: review findings` 提交齐全,tag `v2.5.0`。
