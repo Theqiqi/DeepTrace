@@ -112,7 +112,16 @@ private:
             ++i_;
             JVal v;
             if (!parse_value(v, err)) return false;
-            out.obj.emplace_back(std::move(key), std::move(v));
+            // Duplicate keys: last occurrence wins (JSON semantics).
+            bool replaced = false;
+            for (auto& kv : out.obj) {
+                if (kv.first == key) {
+                    kv.second = std::move(v);
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) out.obj.emplace_back(std::move(key), std::move(v));
             skip_ws();
             char c = peek();
             if (c == ',') {

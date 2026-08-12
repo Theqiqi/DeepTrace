@@ -64,11 +64,38 @@
 
 ### 4. 实现期决策(代码审查后补充)
 
-- (待补充)
+- JSON 解析器:极简递归下降(顶层对象 + 字符串/裸数字/数组/嵌套),
+  错误带行/列定位(`batch parse error at line N col M: ...`)。
+- 三态寻址源互斥校验在解析期完成;base 可选(缺省 0),仅当既无 module
+  也无 symbol 时必填(绝对地址)。重复键按 JSON 语义后置生效。
+- 类型:整型/浮点复用 memory_readval(与 watch 展示一致);string 按 32
+  字节块增量读取(短串在可读区边界也能解析),遇 NUL 停、上限 256;
+  bytes 读 count 字节输出 hex 列表。
+- 写模式 value 校验在解析期完成(数值范围/浮点禁 hex/bytes 长度==count/
+  string 仅可打印 ASCII),执行期 typed_bytes 分支为防御性。
+- process 校验:进程名小写不敏感、取 exe 基名;不匹配 `process mismatch`
+  退出 1。
+- 逐条失败继续:单条目失败打印 `Error: <Result>(<name>)` 并继续,表格中
+  以 `error` 占位,存在失败条目最终退出 1,全成退出 0。
+- 命令参数:`mem batch <read|write> <file.json>`(batch-op 解析校验 read/
+  write);帮助文本新增条目与 Note。
+- 测试布线:指针链用 `mem write` 写地址小端字节(hex8 反转字节对),
+  避免线程竞争(确定性)。
 
 ### 5. 验证
 
-- 单测(batch JSON 解析器:合法/非法/三态/类型映射)+ 集成(真实进程:
-  module+base 链、符号+偏移链、绝对地址、string、bytes、批量写后读回)+
-  e2e。
+- 单测 173(+18 batch 解析/校验)+ 集成 47(+1 BatchLocatorReadWrite:真实
+  进程 module+base/符号+偏移/绝对地址链、string/bytes 类型、批量写经公共
+  API 读回、错误路径 2/1)+ e2e 230(+28);Debug/Release 全绿。
+- 代码审查修复:①string 一次性读 256 字节 → 32 字节块增量读(边界短串);
+  ②JSON 重复键后置生效;③设计文档错误前缀统一为 `item '<name>': ...`。
+  (valid_type_value 与 convert 校验逻辑重复因分层边界保留,记录为后续
+  优化项)。
 - git:流程每步提交齐全,tag `v2.9.0`。
+
+### 6. 后续优化项(记录,不在本期)
+
+- attach 权限检测:检测附加后实际拥有的权限(OpenProcess 降权探测),
+  AccessDenied 明确透出(用户定稿方向,独立小版本处理)。
+- valid_type_value 与 convert 命令校验逻辑可提取共享校验器。
+- 指针链搜索(从目标值反推指针链)作为独立后续版本。

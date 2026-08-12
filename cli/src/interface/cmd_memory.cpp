@@ -69,16 +69,33 @@ deeptrace::Result read_typed_value(uintptr_t addr, const batch::OffsetPath& it,
                                    std::string& out_text) {
     using deeptrace::Result;
     if (it.type == "string") {
-        uint8_t buf[256];
-        size_t n = 0;
-        Result r = deeptrace::memory_read(addr, buf, sizeof(buf), &n);
-        if (r != Result::Ok) return r;
-        if (n == 0) return Result::ReadFault;
+        // Read incrementally in small chunks so a short string near the end of
+        // a readable region still resolves (a full 256-byte read would fault).
+        // Stop at NUL or the 256-byte cap.
+        uint8_t chunk[32];
         std::string s;
-        for (size_t i = 0; i < n; ++i) {
-            if (buf[i] == 0) break;
-            char c = static_cast<char>(buf[i]);
-            s.push_back((c >= 0x20 && c < 0x7F) ? c : '.');
+        for (;;) {
+            size_t n = 0;
+            Result r = deeptrace::memory_read(addr + s.size(), chunk, sizeof(chunk),
+                                              &n);
+            if (r != Result::Ok) {
+                if (s.empty()) return r;  // nothing readable at the start
+                break;                    // partial: return what we already have
+            }
+            if (n == 0) {
+                if (s.empty()) return Result::ReadFault;
+                break;
+            }
+            bool stop = false;
+            for (size_t i = 0; i < n; ++i) {
+                if (chunk[i] == 0) {
+                    stop = true;
+                    break;
+                }
+                char c = static_cast<char>(chunk[i]);
+                s.push_back((c >= 0x20 && c < 0x7F) ? c : '.');
+            }
+            if (stop || s.size() >= 256) break;
         }
         out_text = s;
         return Result::Ok;

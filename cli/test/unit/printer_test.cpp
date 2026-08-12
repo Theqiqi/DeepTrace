@@ -111,7 +111,7 @@ TEST(Printer, PrintMessage) {
 
 TEST(Printer, Version) {
     auto s = capture([&] { printer::print_version(); });
-    EXPECT_EQ(s, "deeptrace_cli v2.8.0\n");
+    EXPECT_EQ(s, "deeptrace_cli v2.9.0\n");
 }
 
 TEST(Printer, ErrorGoesToStderr) {
