@@ -20,13 +20,13 @@ Windows x64 C++20 process-memory tool, two parts:
 Download the release zip and extract it **into the current directory**:
 
 ```bash
-curl -fL -o deeptrace_cli-v2.1.0-win64.zip \
-  "https://github.com/Theqiqi/DeepTrace/releases/download/v2.1.0/deeptrace_cli-v2.1.0-win64.zip"
-unzip -o deeptrace_cli-v2.1.0-win64.zip       # -> deeptrace_cli.exe in the current directory
-./deeptrace_cli.exe -v                        # -> deeptrace_cli v2.1.0 (latest published release)
+curl -fL -o deeptrace_cli-v2.13.0-win64.zip \
+  "https://github.com/Theqiqi/DeepTrace/releases/download/v2.13.0/deeptrace_cli-v2.13.0-win64.zip"
+unzip -o deeptrace_cli-v2.13.0-win64.zip       # -> deeptrace_cli.exe in the current directory
+./deeptrace_cli.exe -v                        # -> deeptrace_cli v2.13.0
 ```
 
-> ⚠️ Releases lag behind the repo: the latest published zip is **v2.1.0**, while the repo code is **v2.13.0**. The v2.13.0 features (AA script engine `script run`, `mem batch`, `resolve ptrscan`, `hex2bin`/`bin2hex` conversion layer) exist only in the source build. For the full feature set, build from source (Windows + VS2022/MSVC + CMake ≥ 3.24 + Ninja + vcpkg; from WSL use the `*_wsl.sh` scripts). See the install skill: [deeptrace-cli-install.md](deeptrace-cli-install.md).
+> v2.13.0 is the latest published release and matches the repo code — full feature set (`script run`, `mem batch`, `resolve ptrscan`, `hex2bin`/`bin2hex` conversion layer) included. Build from source only when you need a feature newer than the latest release (Windows + VS2022/MSVC + CMake ≥ 3.24 + Ninja + vcpkg; from WSL use the `*_wsl.sh` scripts). See the install skill: [deeptrace-cli-install.md](deeptrace-cli-install.md).
 
 ### ② Download the skills into `.agents/`
 
