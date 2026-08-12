@@ -1,5 +1,7 @@
 #include "printing/printer.h"
 
+#include "deeptrace.h"
+
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -133,7 +135,52 @@ TEST(Printer, PrintMessage) {
 
 TEST(Printer, Version) {
     auto s = capture([&] { printer::print_version(); });
-    EXPECT_EQ(s, "deeptrace_cli v2.11.0\n");
+    EXPECT_EQ(s, "deeptrace_cli v2.12.0\n");
+}
+
+// ---- v2.12.0: pointer-chain line formatting ----
+
+TEST(Printer, FormatPointerChainModuleRoot) {
+    std::vector<deeptrace::ModuleInfo> mods;
+    deeptrace::ModuleInfo m;
+    m.name = L"Game.exe";
+    m.base = 0x140000000ULL;
+    m.size = 0x2000000;
+    mods.push_back(m);
+    // root inside module: Game.exe+1AF89C0 with signed offsets
+    std::vector<int64_t> offs = {0x38, 0x104, -0x8};
+    EXPECT_EQ(printer::format_pointer_chain(0x140000000ULL + 0x1AF89C0, offs, mods),
+              "Game.exe+1AF89C0 +38 +104 -8");
+}
+
+TEST(Printer, FormatPointerChainHeapRootRawAddress) {
+    std::vector<deeptrace::ModuleInfo> mods;
+    deeptrace::ModuleInfo m;
+    m.name = L"ntdll.dll";
+    m.base = 0x7FFA00000000ULL;
+    m.size = 0x200000;
+    mods.push_back(m);
+    // heap address not inside any module -> raw padded 0x address
+    std::vector<int64_t> offs = {0};  // exact-pointer match
+    std::string s = printer::format_pointer_chain(0x1A2B3C4D5E0ULL, offs, mods);
+    EXPECT_EQ(s, "0x000001A2B3C4D5E0 +0");
+}
+
+TEST(Printer, FormatPointerChainEmptyMods) {
+    std::vector<deeptrace::ModuleInfo> mods;
+    std::vector<int64_t> offs = {0x10};
+    EXPECT_EQ(printer::format_pointer_chain(0x1234, offs, mods), "0x0000000000001234 +10");
+}
+
+TEST(Printer, FormatPointerChainNonAsciiModuleName) {
+    std::vector<deeptrace::ModuleInfo> mods;
+    deeptrace::ModuleInfo m;
+    m.name = L"G\x0101me.exe";  // non-ASCII char -> '?'
+    m.base = 0x1000;
+    m.size = 0x100;
+    mods.push_back(m);
+    std::vector<int64_t> offs;
+    EXPECT_EQ(printer::format_pointer_chain(0x1020, offs, mods), "G?me.exe+20");
 }
 
 // ---- v2.10.0: batch_rows_text serialization (table/csv/json) ----

@@ -14,8 +14,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
+
+#include <fcntl.h>
+#include <io.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -145,6 +149,30 @@ std::string hex(uintptr_t v) {
     return b;
 }
 
+// Redirect stdout to a temp file, run fn, restore, return captured text
+// (same fd-level technique as printer_test.cpp).
+template <typename Fn>
+std::string capture_stdout(Fn fn) {
+    char tmpname[L_tmpnam] = {0};
+    if (!std::tmpnam(tmpname)) return "";
+    int out_fd = _open(tmpname, _O_CREAT | _O_TRUNC | _O_WRONLY | _O_BINARY,
+                       _S_IREAD | _S_IWRITE);
+    if (out_fd < 0) return "";
+    std::fflush(stdout);
+    int saved = _dup(_fileno(stdout));
+    _dup2(out_fd, _fileno(stdout));
+    fn();
+    std::fflush(stdout);
+    _dup2(saved, _fileno(stdout));
+    _close(saved);
+    _close(out_fd);
+    std::ifstream f(tmpname, std::ios::binary);
+    std::string s((std::istreambuf_iterator<char>(f)),
+                  std::istreambuf_iterator<char>());
+    std::remove(tmpname);
+    return s;
+}
+
 }  // namespace
 
 // ------- full chain: parse -> execute -> deeptrace API -------
@@ -172,6 +200,74 @@ TEST(CliChain, PsAttachSurfacesPermissions) {
     EXPECT_NE(mask & 0x0020u, 0u);  // PROCESS_VM_WRITE
     // failed attach is still a business error (unchanged)
     EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "attach", "99999999"}), 1);
+}
+
+// v2.12.0: `resolve ptrscan <file.json>` runs the pointer-chain reverse walk
+// through the full CLI chain. Wire a 2-hop chain in the target heap pointing
+// at the module global g_int64, then scan with max_offset=0 (exact match);
+// the printed chain line must contain our heap root and a summary line.
+TEST(CliChain, ResolvePtrscanFindsWiredChain) {
+    std::string pid = std::to_string(g_target.pid);
+    uintptr_t slot0 = 0, slot1 = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("cli_ps_s0", 16, "test", &slot0),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("cli_ps_s1", 16, "test", &slot1),
+              deeptrace::Result::Ok);
+    size_t w = 0;
+    ASSERT_EQ(deeptrace::memory_write(slot0, &g_target.g_int64, 8, &w),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::memory_write(slot1, &slot0, 8, &w),
+              deeptrace::Result::Ok);
+    deeptrace::detach();
+
+    const char* cfg = "cli_ptrscan_test.json";
+    {
+        std::ofstream f(cfg);
+        f << "{\"version\":1,\"target\":\"" << hex(g_target.g_int64)
+          << "\",\"max_offset\":0,\"max_level\":2,\"threads\":2}";
+    }
+    std::string out = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "resolve", "ptrscan",
+                           cfg}),
+                  0);
+    });
+
+    // the 2-hop chain root=slot1 renders as a raw address (heap) + two +0
+    std::vector<deeptrace::ModuleInfo> mods;
+    deeptrace::module_list(mods);
+    std::string want =
+        deeptrace_cli::printer::format_pointer_chain(slot1, {0, 0}, mods);
+    EXPECT_NE(out.find(want), std::string::npos)
+        << "expected chain line '" << want << "' in:\n" << out;
+    EXPECT_NE(out.find("chains)"), std::string::npos) << "no summary in:\n" << out;
+
+    std::remove(cfg);
+    deeptrace::attach(g_target.pid);
+    deeptrace::script_free("cli_ps_s0");
+    deeptrace::script_free("cli_ps_s1");
+    deeptrace::detach();
+}
+
+// v2.12.0: ptrscan config errors are usage errors (exit 2); a missing target
+// process attachment is a business error (exit 1) via the -p attach path.
+TEST(CliChain, ResolvePtrscanConfigErrors) {
+    const char* bad = "cli_ptrscan_bad.json";
+    {
+        std::ofstream f(bad);
+        f << "{\"version\":1}";  // missing target
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "resolve", "ptrscan", bad}), 2);
+    std::remove(bad);
+
+    // valid config but no attach -> NotAttached (business error, exit 1)
+    const char* cfg = "cli_ptrscan_ok.json";
+    {
+        std::ofstream f(cfg);
+        f << "{\"version\":1,\"target\":\"0x1000\"}";
+    }
+    EXPECT_EQ(run_cli({"deeptrace_cli", "resolve", "ptrscan", cfg}), 1);
+    std::remove(cfg);
 }
 
 TEST(CliChain, AttachAndReadKnownInt) {

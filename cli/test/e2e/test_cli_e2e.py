@@ -124,7 +124,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.11.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.12.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -256,6 +256,81 @@ def main():
         code, _, err = run_cli(["-p", str(pid), "resolve", "scan", "48 8B", "dword"])
         check("resolve scan typed syntax rejected exit 2", code == 2)
         check("resolve scan typed syntax msg", "too many arguments" in err, repr(err))
+
+        # ---- v2.12.0: pointer-chain scan (resolve ptrscan) ----
+        # Wire a heap slot (script symbol psym) holding a qword pointer to the
+        # known module global g_int64, then reverse-walk from g_int64's address
+        # with max_offset=0 (exact-pointer match). The chain line must contain
+        # psym's padded address + " +0".
+        g_int64 = parse_addr(lines, "g_int64")
+        check("ptrscan g_int64 parsed", g_int64 is not None, repr(g_int64))
+        ptr_aa = os.path.join(BIN_DIR, "e2e_ptrscan.aa")
+        with open(ptr_aa, "w") as f:
+            f.write("[ENABLE]\nalloc(psym,16)\nregistersymbol(psym)\n\n"
+                    "[DISABLE]\ndealloc(psym)\nunregistersymbol(psym)\n")
+        code, out, _ = run_cli(["-p", str(pid), "script", "run", win_path(ptr_aa)])
+        check("ptrscan script run exit 0", code == 0, repr(out))
+        code, out, _ = run_cli(["-p", str(pid), "script", "status"])
+        check("ptrscan script status exit 0", code == 0)
+        m = re.search(r"alloc\s+psym\s+(0x[0-9A-Fa-f]+)", out)
+        check("ptrscan symbol psym allocated", m is not None, repr(out))
+        psym = m.group(1)
+        # slot holds the qword pointer value g_int64; mem write hex consumes
+        # bytes in stored (little-endian) order -> emit LE byte hex string
+        _ptrv = int(g_int64, 16)
+        ptr_bytes = "".join("%02x" % ((_ptrv >> (8 * i)) & 0xFF) for i in range(8))
+        code, out, _ = run_cli(["-p", str(pid), "mem", "write", "psym", ptr_bytes, "hex"])
+        check("ptrscan mem write psym exit 0", code == 0, repr(out))
+
+        scan_json = os.path.join(BIN_DIR, "e2e_ptrscan.json")
+        with open(scan_json, "w") as f:
+            f.write('{"version":1,"target":"%s","max_offset":0,'
+                    '"max_level":2,"threads":2}' % g_int64)
+        code, out, _ = run_cli(["-p", str(pid), "resolve", "ptrscan", win_path(scan_json)])
+        check("ptrscan snapshot exit 0", code == 0, repr(out))
+        want_line = "0x" + format(int(psym, 16), "016X") + " +0"
+        check("ptrscan finds wired chain", want_line in out, repr(out))
+        check("ptrscan snapshot summary", "chains)" in out, repr(out))
+
+        # rescan keeps chains still leading to the (new) target: retarget the
+        # slot to g_int and rescan against g_int -> chain survives.
+        _intv = int(g_int, 16)
+        code, _, _ = run_cli(["-p", str(pid), "mem", "write", "psym",
+                              "".join("%02x" % ((_intv >> (8 * i)) & 0xFF)
+                                       for i in range(8)), "hex"])
+        rescan_json = os.path.join(BIN_DIR, "e2e_ptrscan_rescan.json")
+        with open(rescan_json, "w") as f:
+            f.write('{"version":1,"target":"%s","max_offset":0,'
+                    '"max_level":2,"threads":2,"rescan":{"target":"%s"}}'
+                    % (g_int, g_int))
+        code, out, _ = run_cli(["-p", str(pid), "resolve", "ptrscan",
+                                win_path(rescan_json)])
+        check("ptrscan rescan keep exit 0", code == 0, repr(out))
+        check("ptrscan rescan keeps chain", want_line in out, repr(out))
+        check("ptrscan rescan summary", "after rescan" in out, repr(out))
+
+        # rescan against a different target intersects the chain away.
+        rescan2_json = os.path.join(BIN_DIR, "e2e_ptrscan_rescan2.json")
+        with open(rescan2_json, "w") as f:
+            f.write('{"version":1,"target":"%s","max_offset":0,'
+                    '"max_level":2,"threads":2,"rescan":{"target":"%s"}}'
+                    % (g_int, g_int64))
+        code, out, _ = run_cli(["-p", str(pid), "resolve", "ptrscan",
+                                win_path(rescan2_json)])
+        check("ptrscan rescan drop exit 0", code == 0, repr(out))
+        check("ptrscan rescan drops chain", "No chains found" in out, repr(out))
+
+        # config errors: bad version -> exit 2 (no attach needed)
+        bad_json = os.path.join(BIN_DIR, "e2e_ptrscan_bad.json")
+        with open(bad_json, "w") as f:
+            f.write('{"version":9,"target":"0x10"}')
+        code, _, err = run_cli(["resolve", "ptrscan", win_path(bad_json)])
+        check("ptrscan bad version exit 2", code == 2)
+        check("ptrscan bad version msg", "invalid version" in err, repr(err))
+
+        run_cli(["-p", str(pid), "script", "disable", win_path(ptr_aa)])
+        for tmp in (ptr_aa, scan_json, rescan_json, rescan2_json, bad_json):
+            os.remove(tmp)
 
         # ---- thread ----
         code, out, _ = run_cli(["-p", str(pid), "thread", "list"])

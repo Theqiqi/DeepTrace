@@ -15,7 +15,9 @@
 > 符号+偏移/绝对地址,8 种类型,文件即存储);v2.10.0 新增 batch 导出
 > (--format csv|json + --out,供其他工具/AI 消费,含 status/error 字段);
 > v2.11.0 ps attach 输出实际权限摘要(语义化名列表,read|write|...);
-> 版本号同步 v2.11.0;既有用例全量回归。
+> v2.12.0 新增 resolve ptrscan(指针链反向搜索:JSON 配置 + 模块锚定 +
+> 快照/重扫,链格式兼容 mem batch 定位器;堆内链输出裸地址 + 带符号偏移);
+> 版本号同步 v2.12.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -24,7 +26,7 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.11.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.12.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
 | attach 权限透出(v2.11.0) | 目标已启动 | `deeptrace_cli ps attach <pid>` | OK (permissions: read\|write\|...) 含 read/write | 0 |
@@ -77,6 +79,15 @@
 | AOB 模式扫描(既有回归) | `resolve scan "DE AD BE EF"` | 命中地址含 g_bytes | 0 |
 | convert 输出喂给 scan(链式) | `convert dword 287454020` → 取输出 `44 33 22 11` → `resolve scan "44 33 22 11"` | 命中地址含 g_int | 0 |
 | 旧类型语法已移除(回归) | `resolve scan 100 dword` | stderr 含 too many arguments | 2 |
+
+## 4.12 resolve ptrscan(指针链搜索,v2.12.0)
+
+| 用例 | 操作 | 预期输出 | 退出码 |
+|------|------|----------|--------|
+| 预埋链快照 | `script run ptr.aa`(alloc psym+registersymbol) → `mem write psym <LE 8字节> hex` → `resolve ptrscan scan.json`(target=g_int64,max_offset=0) | 输出含 `0x<psym> +0` 与 chains) 汇总 | 0 |
+| 重扫保留 | 改 psym 指向 g_int → `resolve ptrscan`(target=g_int,rescan.target=g_int) | 输出含 psym 链 + "after rescan" | 0 |
+| 重扫交集掉 | `resolve ptrscan`(target=g_int,rescan.target=g_int64) | No chains found | 0 |
+| 配置错误 | `resolve ptrscan`(version=9) | stderr 含 invalid version | 2 |
 
 ## 4.5 asm file / hex2bin / shellcode 分阶段(v2.2.0,新增)
 

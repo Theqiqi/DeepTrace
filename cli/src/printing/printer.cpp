@@ -38,7 +38,7 @@ void print_help(const std::string& text) {
 }
 
 void print_version() {
-    std::printf("deeptrace_cli v2.11.0\n");
+    std::printf("deeptrace_cli v2.12.0\n");
 }
 
 std::string to_ascii(const std::wstring& s) {
@@ -57,6 +57,40 @@ std::string format_address(uintptr_t a) {
     char buf[32];
     std::snprintf(buf, sizeof buf, "0x%016llX", (unsigned long long)a);
     return buf;
+}
+
+namespace {
+
+// Uppercase hex without prefix or padding, e.g. 0x1AF89C0 -> "1AF89C0".
+std::string format_offset(uint64_t v) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%llX", (unsigned long long)v);
+    return buf;
+}
+
+}  // namespace
+
+std::string format_pointer_chain(uintptr_t root,
+                                 const std::vector<int64_t>& offsets,
+                                 const std::vector<deeptrace::ModuleInfo>& mods) {
+    std::string line;
+    bool anchored = false;
+    for (const auto& m : mods) {
+        if (root >= m.base && root < m.base + m.size) {
+            line = to_ascii(m.name) + "+" + format_offset(root - m.base);
+            anchored = true;
+            break;
+        }
+    }
+    if (!anchored) line = format_address(root);
+    for (int64_t off : offsets) {
+        if (off < 0) {
+            line += " -" + format_offset(static_cast<uint64_t>(-off));
+        } else {
+            line += " +" + format_offset(static_cast<uint64_t>(off));
+        }
+    }
+    return line;
 }
 
 std::string format_permissions(uint32_t mask) {

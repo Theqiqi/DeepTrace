@@ -107,6 +107,9 @@ const std::vector<CommandSpec>& command_table() {
             {req("module", "string")}),
         cmd("resolve", "scan", "resolve scan <pattern>",
             "Pattern scan (AOB, e.g. \"48 8B ?? ?? 00\")", {req("pattern", "pattern")}),
+        cmd("resolve", "ptrscan", "resolve ptrscan <file.json>",
+            "Pointer-chain scan from a target value address (JSON config)",
+            {req("file", "script-path")}),
 
         // ---- watch ----
         cmd("watch", "list", "watch list", "List all watch entries", {}),
@@ -202,7 +205,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.11.0\n";
+    os << "deeptrace_cli v2.12.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

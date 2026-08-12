@@ -76,6 +76,14 @@ std::string batch_rows_text(const std::vector<BatchRow>& rows,
 
 std::string format_address(uintptr_t a);  // "0x%016llX"
 
+// One pointer-chain line (v2.12.0): the root rendered as "ModuleName+OFFSET"
+// when it lies inside one of `mods` (module list of the attached process),
+// else as a raw 0x... address; then one signed offset per level (" +38" /
+// " -10"). Pure formatting; module containment is decided by the caller.
+std::string format_pointer_chain(uintptr_t root,
+                                 const std::vector<int64_t>& offsets,
+                                 const std::vector<deeptrace::ModuleInfo>& mods);
+
 // Human/AI-friendly names for the process access mask bits (v2.11.0): maps
 // the Windows PROCESS_* bits of a session_permissions result to semantic
 // names (read, write, vm_operate, create_thread, ...) joined by '|'.

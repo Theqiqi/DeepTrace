@@ -7,6 +7,7 @@ add_executable(deeptrace_cli_unit_test
     script_test.cpp
     aa_script_test.cpp
     batch_test.cpp
+    ptrscan_test.cpp
 )
 
 target_include_directories(deeptrace_cli_unit_test PRIVATE
