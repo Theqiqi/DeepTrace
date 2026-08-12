@@ -19,6 +19,7 @@ struct WatchEntry;
 struct DebugStatus;
 struct BreakpointInfo;
 struct InjectInfo;
+struct ScriptInfo;
 
 }  // namespace deeptrace
 
@@ -50,6 +51,7 @@ void print_status(const deeptrace::DebugStatus& st);
 void print_breakpoint(const deeptrace::BreakpointInfo& bp);
 void print_injects(const std::vector<deeptrace::InjectInfo>& list);
 void print_inject(const deeptrace::InjectInfo& info);
+void print_script_status(const std::vector<deeptrace::ScriptInfo>& list);
 
 std::string format_address(uintptr_t a);  // "0x%016llX"
 

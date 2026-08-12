@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.2.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.3.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -419,6 +419,44 @@ def main():
         check("debug run unknown op exit 2", code == 2)
         check("debug run unknown op msg", "unknown op" in err, repr(err))
         os.remove(os.path.join(BIN_DIR, "e2e_bad.json"))
+
+        # ---- v2.3.0: AA-style script engine (script run/disable/status) ----
+        script_aa = os.path.join(BIN_DIR, "e2e_script.aa")
+        with open(script_aa, "w") as f:
+            f.write("[ENABLE]\n"
+                    "alloc(newmem, 64)\n"
+                    "createThread(newmem)\n"
+                    "newmem:\n"
+                    "ret\n"
+                    "[DISABLE]\n"
+                    "dealloc(newmem)\n")
+        script_aa_win = win_path(script_aa)
+        code, out, _ = run_cli(["-p", str(pid), "script", "run", script_aa_win])
+        check("script run exit 0", code == 0)
+        check("script run alloc summary", "alloc newmem" in out, repr(out))
+        check("script run createThread", "createThread" in out, repr(out))
+        code, out, _ = run_cli(["-p", str(pid), "script", "run", script_aa_win])
+        check("script run idempotent exit 0", code == 0)
+        check("script run already enabled", "already enabled" in out, repr(out))
+        code, out, _ = run_cli(["-p", str(pid), "script", "status"])
+        check("script status exit 0", code == 0)
+        check("script status lists script", "e2e_script.aa" in out, repr(out))
+        code, out, _ = run_cli(["-p", str(pid), "script", "disable", script_aa_win])
+        check("script disable exit 0", code == 0)
+        check("script disable dealloc", "dealloc newmem" in out, repr(out))
+        check("script disable OK", "OK" in out, repr(out))
+        code, out, _ = run_cli(["-p", str(pid), "script", "disable", script_aa_win])
+        check("script disable idempotent exit 0", code == 0)
+        check("script disable already disabled", "already disabled" in out, repr(out))
+        # parse error -> exit 2
+        with open(script_aa, "w") as f:
+            f.write("[FOO]\n")
+        code, _, err = run_cli(["-p", str(pid), "script", "run", script_aa_win])
+        check("script run bad block exit 2", code == 2)
+        check("script run bad block msg", "unknown block" in err, repr(err))
+        os.remove(script_aa)
+        code, out, _ = run_cli(["ps", "list"])
+        check("target alive after script ops", str(pid) in out, repr(out[:200]))
 
         # ---- dll inject round trip (companion testdll.dll) ----
         # The path must be a Windows path: it is written into the target and

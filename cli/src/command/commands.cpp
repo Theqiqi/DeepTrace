@@ -158,6 +158,16 @@ const std::vector<CommandSpec>& command_table() {
         cmd("hex2bin", "", "hex2bin <hex> <output.bin>",
             "Write hex bytes to a raw binary file",
             {req("hex", "hex-bytes"), req("output", "string")}),
+
+        // ---- script (AA-style script engine) ----
+        cmd("script", "run", "script run <file>",
+            "Run an AA-style script [ENABLE] block (idempotent)",
+            {req("file", "script-path")}),
+        cmd("script", "disable", "script disable <file>",
+            "Run an AA-style script [DISABLE] block (idempotent)",
+            {req("file", "script-path")}),
+        cmd("script", "status", "script status",
+            "Show enabled scripts and their hooks/allocs", {}),
     };
     return kTable;
 }
@@ -182,7 +192,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.2.0\n";
+    os << "deeptrace_cli v2.3.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

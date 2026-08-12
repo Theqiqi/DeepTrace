@@ -27,6 +27,7 @@ int cmd_asm(const CommandRequest& req);
 int cmd_shellcode(const CommandRequest& req);
 int cmd_convert(const CommandRequest& req);
 int cmd_hex2bin(const CommandRequest& req);
+int cmd_script(const CommandRequest& req);  // AA-style script engine (run/disable/status)
 
 namespace internal {
 
@@ -68,6 +69,42 @@ bool write_binary_file(const std::string& path, const std::vector<uint8_t>& byte
 // asm_ok controls whether .asm/.s files are accepted (exec yes, alloc no).
 deeptrace::Result resolve_source(const std::string& source, bool asm_ok,
                                  std::vector<uint8_t>& out);
+
+// ---- AA-style script parser (interface layer, testable) ----
+namespace aa {
+
+// One parsed line of an AA-style script ([ENABLE]/[DISABLE] blocks).
+enum class StepKind {
+    Alloc,             // alloc(name, size)
+    LabelDecl,         // label(name) - explicit label declaration
+    LabelDef,          // name: label definition
+    RegisterSymbol,    // registersymbol(name)
+    UnregisterSymbol,  // unregistersymbol(name)
+    CreateThread,      // createThread(name)
+    Dealloc,           // dealloc(name)
+    Db,                // db <hex bytes>
+    Asm,               // bare x64 assembly line
+    NopFill,           // nop <count> (CE multi-byte nop)
+    HookTarget         // "module"+offset: (module base + offset label)
+};
+
+struct Step {
+    StepKind kind = StepKind::Asm;
+    std::string name;    // symbol name (alloc/label/createthread/dealloc/...)
+    size_t size = 0;     // alloc size / nop count
+    std::string text;    // asm line / db hex / "module"+offset expression
+    std::string module;  // hook target module name ("" otherwise)
+    uint64_t offset = 0; // hook target offset (resolved in the executor)
+    uintptr_t hook_addr = 0;  // resolved module base + offset (executor fills)
+    size_t line = 0;     // 1-based source line
+};
+
+// Parse AA script text into [ENABLE] and [DISABLE] step lists (pure text;
+// no session required). Returns false and fills err on syntax errors.
+bool aa_parse_text(const std::string& text, std::vector<Step>& enable,
+                   std::vector<Step>& disable, std::string& err);
+
+}  // namespace aa
 
 }  // namespace internal
 }  // namespace deeptrace_cli

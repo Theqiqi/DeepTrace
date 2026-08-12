@@ -25,6 +25,7 @@ add_library(deeptrace_cli_core STATIC
     interface/cmd_shellcode.cpp
     interface/cmd_convert.cpp
     interface/cmd_hex2bin.cpp
+    interface/cmd_script.cpp
 
     printing/printer.h
     printing/printer.cpp

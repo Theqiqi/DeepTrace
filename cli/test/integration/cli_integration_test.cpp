@@ -633,6 +633,166 @@ TEST(CliChain, ShellcodeExecAsmSource) {
     }
 }
 
+// ---- v2.3.0: AA-style script engine (script run/disable/status) ----
+
+// Write AA script text to a temp file next to the test exe; returns the path.
+std::string write_aa_script(const std::string& content, int tag) {
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string path = std::string(tmpname) + "_" + std::to_string(tag) + ".aa";
+    std::ofstream f(path, std::ios::binary);
+    f << content;
+    f.close();
+    return path;
+}
+
+bool target_alive() {
+    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, g_target.pid);
+    if (!h) return false;
+    DWORD code = 0;
+    bool alive = ::GetExitCodeProcess(h, &code) && code == STILL_ACTIVE;
+    ::CloseHandle(h);
+    return alive;
+}
+
+// call-type script: alloc + createThread(ret) + dealloc. Run is idempotent
+// (already enabled), disable is idempotent (already disabled). Target must
+// survive the whole round trip.
+TEST(CliChain, ScriptRunCreateThreadIdempotent) {
+    std::string script = write_aa_script(
+        "[ENABLE]\n"
+        "alloc(newmem, 64)\n"
+        "createThread(newmem)\n"
+        "newmem:\n"
+        "ret\n"
+        "[DISABLE]\n"
+        "dealloc(newmem)\n",
+        1);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// hook-type script: patch a module address (g_bytes data region) with a
+// 5-byte jmp, then restore on disable. Verify the patch and the restore by
+// reading the actual bytes.
+TEST(CliChain, ScriptRunHookRoundTrip) {
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::module_base("deeptrace_target.exe", &base),
+              deeptrace::Result::Ok);
+    deeptrace::detach();
+    ASSERT_NE(base, 0u);
+    uintptr_t offset = g_target.g_bytes - base;
+    char offbuf[32];
+    std::snprintf(offbuf, sizeof offbuf, "%llX", (unsigned long long)offset);
+
+    std::string script = write_aa_script(
+        std::string("[ENABLE]\n") +
+        "alloc(newmem, 64)\n" +
+        "newmem:\n" +
+        "ret\n" +
+        "\"deeptrace_target.exe\"+0x" + offbuf + ":\n" +
+        "jmp newmem\n" +
+        "[DISABLE]\n" +
+        "\"deeptrace_target.exe\"+0x" + offbuf + ":\n" +
+        "db DE AD BE EF 48 8B 45 08 90 90 90 90 CC C3 90 90\n" +
+        "dealloc(newmem)\n",
+        2);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "status"}), 0);
+
+    // The hook patched the first 5 bytes of g_bytes with E9 (jmp rel32).
+    {
+        uint8_t b5[5] = {0};
+        size_t n = 0;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        EXPECT_EQ(deeptrace::memory_read(g_target.g_bytes, b5, 5, &n),
+                  deeptrace::Result::Ok);
+        deeptrace::detach();
+        EXPECT_EQ(b5[0], 0xE9) << "g_bytes must start with jmp rel32 opcode";
+    }
+
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+
+    // Original bytes restored from the saved record.
+    {
+        uint8_t b5[5] = {0};
+        size_t n = 0;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        EXPECT_EQ(deeptrace::memory_read(g_target.g_bytes, b5, 5, &n),
+                  deeptrace::Result::Ok);
+        deeptrace::detach();
+        EXPECT_EQ(b5[0], 0xDE);
+        EXPECT_EQ(b5[1], 0xAD);
+        EXPECT_EQ(b5[2], 0xBE);
+        EXPECT_EQ(b5[3], 0xEF);
+        EXPECT_EQ(b5[4], 0x48);
+    }
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// Usage errors: missing file, unknown block, missing [ENABLE]/[DISABLE]
+// blocks -> exit 2.
+TEST(CliChain, ScriptRunUsageErrors) {
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", "no_such.aa"}), 2);
+
+    std::string bad = write_aa_script("[FOO]\n", 3);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", bad}), 2);
+    std::remove(bad.c_str());
+
+    std::string noen = write_aa_script("[DISABLE]\ndealloc(a)\n", 4);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", noen}), 2);
+    std::remove(noen.c_str());
+
+    std::string nodis = write_aa_script("[ENABLE]\nalloc(a, 8)\n", 5);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", nodis}), 2);
+    std::remove(nodis.c_str());
+}
+
+// Script commands operate on a target process: without -p they must fail
+// with NotAttached (exit 1). The script file itself must be readable, so use
+// a real file (parse/validation errors would otherwise win with exit 2).
+TEST(CliChain, ScriptRequiresAttach) {
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "status"}), 1);
+    std::string script = write_aa_script("[ENABLE]\nalloc(a, 8)\n", 7);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "run", script}), 1);
+    std::remove(script.c_str());
+}
+
+// Mid-script failure (invalid instruction -> BadFormat) must roll back:
+// no enabled record remains and no symbol is left allocated.
+TEST(CliChain, ScriptRunRollbackOnFailure) {
+    std::string script = write_aa_script(
+        "[ENABLE]\n"
+        "alloc(newmem, 64)\n"
+        "newmem:\n"
+        "bogus rax, 1\n"
+        "[DISABLE]\n"
+        "dealloc(newmem)\n",
+        6);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 1);
+    std::vector<deeptrace::ScriptInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    bool found = false;
+    for (const auto& s : list) {
+        if (s.path == script) found = true;
+    }
+    EXPECT_FALSE(found) << "enabled record must be rolled back after failure";
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
 // shellcode injectfile: .bin file -> inject (execute immediately), then free.
 TEST(CliChain, ShellcodeInjectFile) {
     char tmpname[L_tmpnam] = {0};

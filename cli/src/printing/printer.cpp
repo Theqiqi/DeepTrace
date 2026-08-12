@@ -38,7 +38,7 @@ void print_help(const std::string& text) {
 }
 
 void print_version() {
-    std::printf("deeptrace_cli v2.2.0\n");
+    std::printf("deeptrace_cli v2.3.0\n");
 }
 
 std::string to_ascii(const std::wstring& s) {
@@ -221,6 +221,22 @@ void print_inject(const deeptrace::InjectInfo& info) {
     std::printf("%-8s %-40s %-18s %-10u %s\n", info.kind.c_str(),
                 to_ascii(info.path).c_str(), format_address(info.remote_base).c_str(),
                 info.thread_id, info.running ? "yes" : "no");
+}
+
+void print_script_status(const std::vector<deeptrace::ScriptInfo>& list) {
+    std::printf("%-24s %s\n", "SCRIPT", "STATE");
+    for (const auto& s : list) {
+        std::printf("%-24s %s\n", s.path.c_str(), s.state.c_str());
+        for (const auto& h : s.hooks) {
+            std::printf("  hook    %s -> %s (%llu bytes)\n",
+                        format_address(h.target).c_str(),
+                        format_address(h.newmem).c_str(), (unsigned long long)h.size);
+        }
+        for (const auto& a : s.allocs) {
+            std::printf("  alloc   %s %s\n", a.first.c_str(),
+                        format_address(a.second).c_str());
+        }
+    }
 }
 
 }  // namespace printer
