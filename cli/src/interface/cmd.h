@@ -67,6 +67,8 @@ bool read_text_file(const std::string& path, std::string& out);
 bool read_binary_file(const std::string& path, std::vector<uint8_t>& out);
 // Write raw bytes to a file; returns false on open/write failure.
 bool write_binary_file(const std::string& path, const std::vector<uint8_t>& bytes);
+// Write ASCII text to a file; returns false on open/write failure (v2.10.0).
+bool write_text_file(const std::string& path, const std::string& text);
 
 // Resolve a shellcode source argument into bytes:
 //  - valid hex string (0x prefix or even hex digits)  -> hex bytes

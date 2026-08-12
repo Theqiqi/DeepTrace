@@ -1128,6 +1128,70 @@ TEST(CliChain, BatchLocatorReadWrite) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
                        read_json}),
               0);
+
+    // ---- v2.10.0: CSV/JSON export via --format/--out ----
+    // JSON export to file: array with name/address/value/status fields; the
+    // chain value and module+base value must appear with status ok.
+    char tmpname[L_tmpnam] = {0};
+    std::tmpnam(tmpname);
+    std::string out_json = std::string(tmpname) + "_b.json";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       read_json, "--format", "json", "--out", out_json}),
+              0);
+    {
+        std::ifstream f(out_json);
+        ASSERT_TRUE(f.good()) << "json export file not written";
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("\"name\":\"chain_qword\""), std::string::npos);
+        EXPECT_NE(content.find("\"name\":\"data_direct\""), std::string::npos);
+        EXPECT_NE(content.find("\"name\":\"str\""), std::string::npos);
+        EXPECT_NE(content.find("\"value\":\"0x1122334455667788\""),
+                  std::string::npos);
+        EXPECT_NE(content.find("\"status\":\"ok\""), std::string::npos);
+        EXPECT_NE(content.find("\"error\":\"\""), std::string::npos);
+    }
+    std::remove(out_json.c_str());
+    // CSV export to file: fixed header + a data row
+    std::string out_csv = std::string(tmpname) + "_c.csv";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       read_json, "--format", "csv", "--out", out_csv}),
+              0);
+    {
+        std::ifstream f(out_csv);
+        ASSERT_TRUE(f.good()) << "csv export file not written";
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        EXPECT_EQ(content.find("name,address,value,status,error\n"), 0u);
+        EXPECT_NE(content.find("chain_qword,0x"), std::string::npos);
+        EXPECT_NE(content.find(",0x1122334455667788,ok,\n"), std::string::npos);
+    }
+    std::remove(out_csv.c_str());
+    // export on a failing batch: error rows carry status/error, exit 1
+    std::string nosym_exp = write_temp_json(
+        "{ \"values\": { \"x\": { \"symbol\": \"no_such_sym\","
+        "                          \"type\": \"qword\" } } }",
+        76);
+    std::string out_fail = std::string(tmpname) + "_f.json";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       nosym_exp, "--format", "json", "--out", out_fail}),
+              1);
+    {
+        std::ifstream f(out_fail);
+        ASSERT_TRUE(f.good()) << "fail export file not written";
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("\"status\":\"error\""), std::string::npos);
+        // error message context is the item name ("x"), not the symbol
+        EXPECT_NE(content.find("\"error\":\"NotFound(x)\""), std::string::npos);
+    }
+    std::remove(out_fail.c_str());
+    std::remove(nosym_exp.c_str());
+    // --out with an unwritable path -> business error, exit 1
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "read",
+                       read_json, "--format", "csv", "--out", "Z:\\:\\bad\\x.csv"}),
+              1);
+
     std::remove(read_json.c_str());
 
     // ---- batch write: chain traversal + string + module+base ----
@@ -1148,6 +1212,25 @@ TEST(CliChain, BatchLocatorReadWrite) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "write",
                        write_json}),
               0);
+
+    // write-mode export: rows report per-item result (value empty)
+    char wtmp[L_tmpnam] = {0};
+    std::tmpnam(wtmp);
+    std::string out_w = std::string(wtmp) + "_w.json";
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "batch", "write",
+                       write_json, "--format", "json", "--out", out_w}),
+              0);
+    {
+        std::ifstream f(out_w);
+        ASSERT_TRUE(f.good()) << "write export file not written";
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("\"name\":\"chain_write\""), std::string::npos);
+        EXPECT_NE(content.find("\"name\":\"str_write\""), std::string::npos);
+        EXPECT_NE(content.find("\"status\":\"ok\""), std::string::npos);
+        EXPECT_NE(content.find("\"value\":\"\""), std::string::npos);
+    }
+    std::remove(out_w.c_str());
     std::remove(write_json.c_str());
 
     // verify all three writes via the public API

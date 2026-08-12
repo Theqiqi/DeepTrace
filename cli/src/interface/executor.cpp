@@ -166,6 +166,13 @@ bool write_binary_file(const std::string& path, const std::vector<uint8_t>& byte
     return static_cast<bool>(f);
 }
 
+bool write_text_file(const std::string& path, const std::string& text) {
+    std::ofstream f(path, std::ios::trunc);
+    if (!f.is_open()) return false;
+    f << text;
+    return static_cast<bool>(f);
+}
+
 bool is_hex_string(const std::string& s) {
     size_t start = 0;
     if (s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) start = 2;

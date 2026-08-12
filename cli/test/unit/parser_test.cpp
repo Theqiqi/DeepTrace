@@ -587,7 +587,51 @@ TEST(Parser, HelpTextListsNewCommands) {
     EXPECT_NE(help.find("script disable"), std::string::npos);
     EXPECT_NE(help.find("script status"), std::string::npos);
     EXPECT_NE(help.find("mem batch"), std::string::npos);
-    EXPECT_NE(help.find("deeptrace_cli v2.9.0"), std::string::npos);
+    EXPECT_NE(help.find("--format table|csv|json"), std::string::npos);
+    EXPECT_NE(help.find("deeptrace_cli v2.10.0"), std::string::npos);
+}
+
+TEST(Parser, BatchFormatFlagDefaultAndSet) {
+    // default: --format/--out both unset -> empty slot pairs
+    auto d = parse({"deeptrace_cli", "mem", "batch", "read", "paths.json"});
+    ASSERT_TRUE(d.ok);
+    EXPECT_EQ(d.req.args[2], "");   // --format flag slot
+    EXPECT_EQ(d.req.args[3], "");   // --format value slot
+    EXPECT_EQ(d.req.args[4], "");   // --out flag slot
+    EXPECT_EQ(d.req.args[5], "");   // --out value slot
+
+    auto f = parse({"deeptrace_cli", "mem", "batch", "read", "paths.json",
+                    "--format", "csv"});
+    ASSERT_TRUE(f.ok);
+    EXPECT_EQ(f.req.args[2], "--format");
+    EXPECT_EQ(f.req.args[3], "csv");
+
+    auto j = parse({"deeptrace_cli", "mem", "batch", "write", "paths.json",
+                    "--format", "json"});
+    ASSERT_TRUE(j.ok);
+    EXPECT_EQ(j.req.args[3], "json");
+
+    auto o = parse({"deeptrace_cli", "mem", "batch", "read", "paths.json",
+                    "--format", "table", "--out", "out.csv"});
+    ASSERT_TRUE(o.ok);
+    EXPECT_EQ(o.req.args[3], "table");
+    EXPECT_EQ(o.req.args[4], "--out");
+    EXPECT_EQ(o.req.args[5], "out.csv");
+}
+
+TEST(Parser, BatchFormatFlagRejectsInvalid) {
+    auto bad = parse({"deeptrace_cli", "mem", "batch", "read", "p.json",
+                      "--format", "yaml"});
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
+    EXPECT_NE(bad.error.find("invalid --format"), std::string::npos);
+
+    auto missing = parse({"deeptrace_cli", "mem", "batch", "read", "p.json",
+                          "--format"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+    EXPECT_NE(missing.error.find("missing argument for option: --format"),
+              std::string::npos);
 }
 
 TEST(Parser, ScriptCheckParses) {

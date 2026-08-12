@@ -11,7 +11,10 @@
 > 解析为锚点,落点保证在锚点 ±2GB 内,消除 RIP 相对位移超界概率);
 > v2.8.0 确认并补测 `mem write <symbol>`(脚本外直接写人造指针值,动态改
 > 指针目标;能力在 v2.6.0 已由 resolve_addr 接通,本版本补测试覆盖);
-> 版本号同步 v2.9.0;既有用例全量回归。
+> v2.9.0 新增批量定位器 JSON(mem batch read/write,指针链/模块+偏移/
+> 符号+偏移/绝对地址,8 种类型,文件即存储);v2.10.0 新增 batch 导出
+> (--format csv|json + --out,供其他工具/AI 消费,含 status/error 字段);
+> 版本号同步 v2.10.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -20,7 +23,7 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.9.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.10.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
 | 非法参数(v2.6.0:符号形状现在合法,真非法形状仍拒绝) | - | `deeptrace_cli mem read "foo bar"` / `mem read a-b` | Error | 2 |
@@ -223,6 +226,13 @@ str_slot = "hello"(68656c6c6f)。JSON 文件即定位器定义(文件即存储)�
 | 批量写(string) | str_write=符号 str_slot value world → `mem read str_slot` | 77 6F 72 6C 64 | 0 |
 | 批量写(模块+偏移) | mod_write=module+base value 0x8877665544332211 → `mem read g_int64` | 11 22 33 44 55 66 77 88(后恢复) | 0 |
 | 写模式缺 value | JSON 项无 value | 退出 2 | 2 |
+| JSON 导出(读) | `mem batch read <json> --format json` | stdout 为可 json.loads 的数组(6 项,status=ok,链值=0x99AABBCCDDEEFF00,写后链端) | 0 |
+| CSV 导出落盘 | `mem batch read <json> --format csv --out out.csv` | 文件首行 name,address,value,status,error;含 chain_qword,0x...行 | 0 |
+| JSON 导出(失败项) | `mem batch read <bad> --format json` | 数组含 status=error + error 含 NotFound | 1 |
+| 写模式 JSON 导出 | `mem batch write <json> --format json --out out.json` | 文件含 chain_write/str_write 且 status=ok | 0 |
+| --format 非法值 | `mem batch read x.json --format yaml` | Error 含 invalid --format | 2 |
+| --format 缺值 | `mem batch read x.json --format` | Error 含 missing argument | 2 |
+| --out 写失败 | `mem batch read <json> --format csv --out Z:\\:\\bad\\x.csv` | Error 含 cannot write file | 1 |
 | 版本非法 | `{"version": 2, ...}` | 退出 2 | 2 |
 | 未知符号(业务) | `{"values":{"x":{"symbol":"no_such_sym"}}}` | Error 含 NotFound | 1 |
 | process 不匹配 | `{"process":"notepad.exe",...}` | Error 含 process mismatch | 1 |

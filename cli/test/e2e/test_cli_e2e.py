@@ -124,7 +124,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.9.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.10.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -784,6 +784,73 @@ def main():
                 code, _, _ = run_cli(["-p", str(pid), "mem", "write", g_int64,
                                       "8877665544332211", "hex"])
                 check("batch restore g_int64 exit 0", code == 0)
+                # ---- v2.10.0: CSV/JSON export (--format/--out) ----
+                # JSON export to stdout is parseable and carries status/error
+                code, out, _ = run_cli(["-p", str(pid), "mem", "batch", "read",
+                                        win_path(batch_json), "--format", "json"])
+                check("batch json export exit 0", code == 0, repr(out[:200]))
+                try:
+                    rows = json.loads(out)
+                    # note: batch write above retargeted the chain end to
+                    # 0x99AABBCCDDEEFF00, so the exported chain value is that
+                    ok = isinstance(rows, list) and len(rows) == 6 and \
+                         all(r.get("status") == "ok" for r in rows) and \
+                         any(r.get("name") == "chain_qword" and
+                             r.get("value") == "0x99AABBCCDDEEFF00" for r in rows)
+                    check("batch json export parseable", ok, repr(out[:400]))
+                except Exception as e:
+                    check("batch json export parseable", False, repr(e))
+                # CSV export to file: header + data row + status column
+                exp_csv = os.path.join(BIN_DIR, "e2e_batch_export.csv")
+                code, _, _ = run_cli(["-p", str(pid), "mem", "batch", "read",
+                                      win_path(batch_json), "--format", "csv",
+                                      "--out", win_path(exp_csv)])
+                check("batch csv export exit 0", code == 0)
+                if os.path.isfile(exp_csv):
+                    with open(exp_csv, "r") as f:
+                        csv_content = f.read()
+                    check("batch csv header",
+                          csv_content.startswith("name,address,value,status,error"),
+                          repr(csv_content[:200]))
+                    check("batch csv ok status", "ok" in csv_content,
+                          repr(csv_content[:400]))
+                    check("batch csv chain row",
+                          "chain_qword,0x" in csv_content and
+                          ",0x99AABBCCDDEEFF00,ok," in csv_content,
+                          repr(csv_content[:400]))
+                    os.remove(exp_csv)
+                # JSON export includes error rows with messages (exit 1)
+                exp_bad = os.path.join(BIN_DIR, "e2e_batch_export_bad.json")
+                with open(exp_bad, "w") as f:
+                    f.write('{ "values": { "x": { "symbol": "no_such_sym",'
+                            ' "type": "qword" } } }')
+                code, out, _ = run_cli(["-p", str(pid), "mem", "batch", "read",
+                                        win_path(exp_bad), "--format", "json"])
+                check("batch json export error exit 1", code == 1, repr(out[:200]))
+                try:
+                    rows = json.loads(out)
+                    err = rows[0].get("error", "") if rows else ""
+                    ok = len(rows) == 1 and rows[0].get("status") == "error" and \
+                         "NotFound" in err
+                    check("batch json export error row", ok, repr(out[:300]))
+                except Exception as e:
+                    check("batch json export error row", False, repr(e))
+                os.remove(exp_bad)
+                # write-mode export: per-item result rows (value empty)
+                exp_w = os.path.join(BIN_DIR, "e2e_batch_write_export.json")
+                code, _, _ = run_cli(["-p", str(pid), "mem", "batch", "write",
+                                      win_path(batch_w), "--format", "json",
+                                      "--out", win_path(exp_w)])
+                check("batch write export exit 0", code == 0)
+                if os.path.isfile(exp_w):
+                    with open(exp_w, "r") as f:
+                        wcontent = f.read()
+                    check("batch write export rows",
+                          "chain_write" in wcontent and "str_write" in wcontent,
+                          repr(wcontent[:300]))
+                    check("batch write export ok status", "\"status\":\"ok\"" in wcontent,
+                          repr(wcontent[:300]))
+                    os.remove(exp_w)
                 os.remove(batch_json)
                 os.remove(batch_w)
                 # errors: bad version -> 2; unknown symbol -> 1; mismatch -> 1

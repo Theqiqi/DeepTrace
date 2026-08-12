@@ -64,9 +64,11 @@ const std::vector<CommandSpec>& command_table() {
         cmd("mem", "readval", "mem readval <address> <type>",
             "Read a typed value (byte|word|dword|qword|float|double)",
             {req("address", "address"), req("type", "value-type")}),
-        cmd("mem", "batch", "mem batch <read|write> <file.json>",
-            "Batch read/write JSON-defined locators (pointer chains)",
-            {req("op", "batch-op"), req("file", "script-path")}),
+        cmd("mem", "batch",
+            "mem batch <read|write> <file.json> [--format table|csv|json] [--out <file>]",
+            "Batch read/write JSON-defined locators (--format csv|json exports)",
+            {req("op", "batch-op"), req("file", "script-path"),
+             opt("--format", "format-flag", ""), opt("--out", "out-flag", "")}),
 
         // ---- module ----
         cmd("module", "list", "module list", "List all loaded modules", {}),
@@ -198,7 +200,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.9.0\n";
+    os << "deeptrace_cli v2.10.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";
@@ -215,6 +217,8 @@ std::string build_help_text() {
     os << "  (v2.7.0).\n";
     os << "  `mem batch <read|write> <file.json>` executes JSON-defined locators\n";
     os << "  (pointer chains: module+base / symbol / absolute + offsets; v2.9.0).\n";
+    os << "  `--format csv|json` exports results for other tools/AI (v2.10.0);\n";
+    os << "  `--out <file>` writes the output to a file instead of stdout.\n";
 
     std::string cur_group;
     size_t max_usage = 0;

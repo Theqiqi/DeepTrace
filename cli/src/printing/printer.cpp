@@ -38,7 +38,7 @@ void print_help(const std::string& text) {
 }
 
 void print_version() {
-    std::printf("deeptrace_cli v2.9.0\n");
+    std::printf("deeptrace_cli v2.10.0\n");
 }
 
 std::string to_ascii(const std::wstring& s) {
@@ -239,12 +239,92 @@ void print_script_status(const std::vector<deeptrace::ScriptInfo>& list) {
     }
 }
 
-void print_batch_read(const std::vector<BatchRow>& rows) {
-    std::printf("%-24s %-18s %s\n", "NAME", "ADDRESS", "VALUE");
-    for (const auto& r : rows) {
-        std::printf("%-24s %-18s %s\n", r.name.c_str(),
-                    format_address(r.address).c_str(), r.value.c_str());
+namespace {
+
+// RFC4180-style CSV field quoting: wrap in double quotes (doubling inner
+// quotes) when the field contains a comma, quote, CR or LF.
+std::string csv_field(const std::string& s) {
+    bool need_quote = false;
+    for (char c : s) {
+        if (c == ',' || c == '"' || c == '\r' || c == '\n') {
+            need_quote = true;
+            break;
+        }
     }
+    if (!need_quote) return s;
+    std::string out = "\"";
+    for (char c : s) {
+        if (c == '"') out += "\"\"";
+        else out += c;
+    }
+    out += "\"";
+    return out;
+}
+
+// JSON string escaping: quotes/backslash escaped, control chars as \uXXXX.
+std::string json_escape(const std::string& s) {
+    std::string out;
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof buf, "\\u%04X", c);
+                    out += buf;
+                } else {
+                    out += static_cast<char>(c);
+                }
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+std::string batch_rows_text(const std::vector<BatchRow>& rows,
+                            const std::string& format) {
+    if (format == "csv") {
+        std::string out = "name,address,value,status,error\n";
+        for (const auto& r : rows) {
+            out += csv_field(r.name) + ',' + csv_field(format_address(r.address)) +
+                   ',' + csv_field(r.value) + ',' + csv_field(r.status) + ',' +
+                   csv_field(r.error) + '\n';
+        }
+        return out;
+    }
+    if (format == "json") {
+        std::string out = "[";
+        for (size_t i = 0; i < rows.size(); ++i) {
+            const BatchRow& r = rows[i];
+            if (i) out += ",";
+            out += "{\"name\":\"" + json_escape(r.name) +
+                   "\",\"address\":\"" + format_address(r.address) +
+                   "\",\"value\":\"" + json_escape(r.value) +
+                   "\",\"status\":\"" + json_escape(r.status) +
+                   "\",\"error\":\"" + json_escape(r.error) + "\"}";
+        }
+        out += "]\n";
+        return out;
+    }
+    // table (default, unchanged from v2.9.0; error rows show "error" as VALUE)
+    std::string out;
+    char line[512];
+    std::snprintf(line, sizeof line, "%-24s %-18s %s\n", "NAME", "ADDRESS", "VALUE");
+    out += line;
+    for (const auto& r : rows) {
+        const char* value = (r.status == "error") ? "error" : r.value.c_str();
+        std::snprintf(line, sizeof line, "%-24s %-18s %s\n", r.name.c_str(),
+                      format_address(r.address).c_str(), value);
+        out += line;
+    }
+    return out;
 }
 
 }  // namespace printer

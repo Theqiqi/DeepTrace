@@ -135,6 +135,21 @@ int cmd_mem_batch(const CommandRequest& req) {
     using deeptrace::Result;
     const bool write_mode = (req.args[0] == "write");
 
+    // v2.10.0 export options: --format table|csv|json (default table) and
+    // --out <file> (default stdout). Both are optional value-bearing flags
+    // parsed by the command layer into (flag, value) argument pairs; scan
+    // them position-independently.
+    std::string format = "table";
+    std::string out_path;
+    for (size_t i = 0; i + 1 < req.args.size(); ++i) {
+        if (req.args[i] == "--format" && !req.args[i + 1].empty()) {
+            format = req.args[i + 1];
+        } else if (req.args[i] == "--out" && !req.args[i + 1].empty()) {
+            out_path = req.args[i + 1];
+        }
+    }
+    const bool export_mode = (format != "table" || !out_path.empty());
+
     batch::File file;
     std::string err;
     if (!batch::parse_file(req.args[1], write_mode, file, err)) {
@@ -160,16 +175,28 @@ int cmd_mem_batch(const CommandRequest& req) {
 
     // Per-item: resolve -> read value (read mode) or write value (write
     // mode). A failing item reports its error and the rest continue; the
-    // final exit code reflects whether any item failed (design R8).
+    // final exit code reflects whether any item failed (design R8). Rows
+    // carry status/error so exports keep per-item outcome (v2.10.0).
     std::vector<BatchRow> rows;
     bool any_failed = false;
+    // name is the row key; ctx may differ (e.g. "<name> value" for a value
+    // validation failure) so they are kept separate.
+    auto fail = [&](Result r, const std::string& name, const std::string& ctx,
+                    uintptr_t addr) {
+        any_failed = true;
+        internal::report_error(r, ctx);
+        BatchRow row;
+        row.name = name;
+        row.address = addr;
+        row.status = "error";
+        row.error = deeptrace::result_message(r) + (ctx.empty() ? "" : "(" + ctx + ")");
+        rows.push_back(std::move(row));
+    };
     for (const auto& it : file.items) {
         uintptr_t addr = 0;
         Result r = resolve_locator(it, addr);
         if (r != Result::Ok) {
-            any_failed = true;
-            internal::report_error(r, it.name);
-            if (!write_mode) rows.push_back({it.name, 0, "error"});
+            fail(r, it.name, it.name, 0);
             continue;
         }
         if (write_mode) {
@@ -177,32 +204,55 @@ int cmd_mem_batch(const CommandRequest& req) {
             if (it.type == "bytes") {
                 data = bytes_value(it.value);
             } else if (!internal::typed_bytes(it.value, it.type, data)) {
-                any_failed = true;
-                internal::report_error(Result::InvalidArg, it.name + " value");
+                fail(Result::InvalidArg, it.name, it.name + " value", 0);
                 continue;
             }
             size_t n = 0;
             r = deeptrace::memory_write(addr, data.data(), data.size(), &n);
             if (r != Result::Ok || n != data.size()) {
-                any_failed = true;
-                internal::report_error(r != Result::Ok ? r : Result::WriteFault,
-                                       it.name);
+                fail(r != Result::Ok ? r : Result::WriteFault, it.name, it.name,
+                     addr);
                 continue;
             }
-            printer::print_message("OK " + it.name);
+            BatchRow row;
+            row.name = it.name;
+            row.address = addr;
+            rows.push_back(std::move(row));
             continue;
         }
         std::string text;
         r = read_typed_value(addr, it, text);
         if (r != Result::Ok) {
-            any_failed = true;
-            internal::report_error(r, it.name);
-            rows.push_back({it.name, 0, "error"});
+            fail(r, it.name, it.name, addr);
             continue;
         }
-        rows.push_back({it.name, addr, text});
+        BatchRow row;
+        row.name = it.name;
+        row.address = addr;
+        row.value = text;
+        rows.push_back(std::move(row));
     }
-    if (!write_mode) printer::print_batch_read(rows);
+
+    // Output: default (table, stdout) keeps the v2.9.0 behavior for both
+    // modes (write mode prints per-item "OK <name>"); --format/--out route
+    // through the printer serializer instead.
+    if (!export_mode) {
+        if (write_mode) {
+            for (const auto& r : rows) {
+                if (r.status == "ok") printer::print_message("OK " + r.name);
+            }
+        } else {
+            std::printf("%s", printer::batch_rows_text(rows, "table").c_str());
+        }
+    } else {
+        std::string text = printer::batch_rows_text(rows, format);
+        if (out_path.empty()) {
+            std::printf("%s", text.c_str());
+        } else if (!internal::write_text_file(out_path, text)) {
+            printer::print_error("cannot write file: " + out_path);
+            return 1;
+        }
+    }
     return any_failed ? 1 : 0;
 }
 

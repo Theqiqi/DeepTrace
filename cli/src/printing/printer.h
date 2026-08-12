@@ -25,11 +25,16 @@ struct ScriptInfo;
 
 namespace deeptrace_cli {
 
-// One `mem batch read` result row (v2.9.0).
+// One `mem batch` result row (v2.9.0; status/error fields added in v2.10.0).
+// status is "ok" or "error"; on error, value is empty and error carries the
+// message. In write mode value is always empty (only result status is
+// reported); in read mode value holds the typed read value on success.
 struct BatchRow {
     std::string name;
     uintptr_t address = 0;
     std::string value;
+    std::string status = "ok";  // "ok" | "error"
+    std::string error;          // message when status == "error"
 };
 
 namespace printer {
@@ -60,7 +65,14 @@ void print_breakpoint(const deeptrace::BreakpointInfo& bp);
 void print_injects(const std::vector<deeptrace::InjectInfo>& list);
 void print_inject(const deeptrace::InjectInfo& info);
 void print_script_status(const std::vector<deeptrace::ScriptInfo>& list);
-void print_batch_read(const std::vector<BatchRow>& rows);  // NAME ADDRESS VALUE table
+
+// Serialize mem batch result rows into the requested format (v2.10.0).
+// format: "table" (NAME ADDRESS VALUE, unchanged from v2.9.0),
+// "csv" (header name,address,value,status,error; RFC4180 quoting) or
+// "json" (array of objects; JSON string escaping). Returns the full text
+// including trailing newline(s). Pure formatting; no I/O.
+std::string batch_rows_text(const std::vector<BatchRow>& rows,
+                            const std::string& format);
 
 std::string format_address(uintptr_t a);  // "0x%016llX"
 

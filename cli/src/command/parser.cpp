@@ -172,6 +172,11 @@ bool valid_batch_op(const std::string& s) {
     return s == "read" || s == "write";
 }
 
+// mem batch export format (v2.10.0): table (default) | csv | json.
+bool valid_batch_format(const std::string& s) {
+    return s == "table" || s == "csv" || s == "json";
+}
+
 // Value validity depends on its type; used as a cross-field check after all
 // params of `convert` are collected.
 bool valid_convert_value(const std::string& v, const std::string& type) {
@@ -276,7 +281,7 @@ ParseResult parse_args(int argc, char* argv[]) {
             continue;
         }
         if (!a.empty() && a[0] == '-' && a.size() > 1 && a != "--hex" && a != "--c-array" &&
-            a != "--out") {
+            a != "--out" && a != "--format") {
             res.ok = false;
             res.exit_code = 2;
             res.error = "unknown option: " + a;
@@ -343,6 +348,33 @@ ParseResult parse_args(int argc, char* argv[]) {
                 ++ai;
             } else {
                 res.req.args.push_back("");  // not set
+            }
+            continue;
+        }
+        if (p.type == "format-flag") {
+            // value-bearing flag (v2.10.0): consume "--format" plus the next
+            // non-flag token; the value must be table|csv|json.
+            if (ai < args.size() && args[ai] == "--format") {
+                res.req.args.push_back(args[ai]);
+                ++ai;
+                if (ai < args.size() && !(args[ai].size() > 1 && args[ai][0] == '-')) {
+                    if (!valid_batch_format(args[ai])) {
+                        res.ok = false;
+                        res.exit_code = 2;
+                        res.error = "invalid --format: '" + args[ai] + "'";
+                        return res;
+                    }
+                    res.req.args.push_back(args[ai]);
+                    ++ai;
+                } else {
+                    res.ok = false;
+                    res.exit_code = 2;
+                    res.error = "missing argument for option: --format";
+                    return res;
+                }
+            } else {
+                res.req.args.push_back("");  // not set (two slots: flag + value)
+                res.req.args.push_back("");
             }
             continue;
         }
