@@ -144,4 +144,26 @@ Result asm_assemble_labels(const std::string& code, uintptr_t base_addr,
 // ---- thread (create at arbitrary address) ------------------------------------------
 Result thread_create_at(uintptr_t addr, uint32_t* out_tid);
 
+// ---- pointer-chain scan (v2.12.0) --------------------------------------------------
+// Reverse-walk from a target value address: each level finds qword slots
+// whose stored pointer lands within +/-cfg.max_offset of the current target;
+// deeper levels treat the previous level's slots as new targets, up to
+// cfg.max_level. Only chains whose outermost slot (root) lies inside the
+// anchor module (cfg.module, empty = any readable region) are emitted.
+// Output chains evaluate as: addr = root; for off in offsets:
+// addr = *(qword)addr + off  (offsets are signed).
+// NotAttached without a session, InvalidArg for zero target/max_offset/
+// max_level or out == nullptr, NotFound when cfg.module is not loaded.
+Result pointer_map_snapshot(const PointerScanConfig& cfg,
+                            std::vector<PointerChain>& out);
+// Re-evaluate previously found chains against a NEW target address (e.g.
+// after the game restarted and addresses moved). Only chains whose current
+// final address lands within +/-cfg.max_offset of new_target survive ->
+// intersects away coincidence-based false positives. cfg.target is unused
+// here; thread_count/max_offset are honored.
+Result pointer_map_rescan(const std::vector<PointerChain>& base,
+                          uintptr_t new_target,
+                          const PointerScanConfig& cfg,
+                          std::vector<PointerChain>& out);
+
 }  // namespace deeptrace

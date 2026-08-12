@@ -90,6 +90,147 @@ TEST_F(DeeptraceIntegration, SessionPermissions) {
     EXPECT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
 }
 
+// ---- v2.12.0 pointer-chain reverse-walk -------------------------------------
+// Wire a 2-hop pointer chain in the target heap that *points at* the known
+// module global g_int64 (we only ever point at it, never write to it, so the
+// shared target's other tests are unaffected). The reverse walk from
+// g_int64's address must recover both hops as chains.
+TEST_F(DeeptraceIntegration, PointerMapSnapshotFindsWiredChain) {
+    const uintptr_t target = g_target.g_int64;
+    uintptr_t slot0 = 0, slot1 = 0;
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_s0", 16, "test", &slot0),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_s1", 16, "test", &slot1),
+              deeptrace::Result::Ok);
+    size_t written = 0;
+    // *(qword)slot0 = target ; *(qword)slot1 = slot0
+    ASSERT_EQ(deeptrace::memory_write(slot0, &target, sizeof(target), &written),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(written, sizeof(target));
+    ASSERT_EQ(deeptrace::memory_write(slot1, &slot0, sizeof(slot0), &written),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(written, sizeof(slot0));
+
+    deeptrace::PointerScanConfig cfg;
+    cfg.target = target;
+    cfg.max_offset = 0;  // exact-pointer match only (no false positives from offset range)
+    cfg.max_level = 2;
+    std::vector<deeptrace::PointerChain> chains;
+    ASSERT_EQ(deeptrace::pointer_map_snapshot(cfg, chains), deeptrace::Result::Ok);
+    ASSERT_FALSE(chains.empty());
+
+    bool found_2hop = false, found_1hop = false;
+    for (const auto& c : chains) {
+        if (c.root == slot1 && c.offsets.size() == 2 && c.offsets[0] == 0 &&
+            c.offsets[1] == 0)
+            found_2hop = true;
+        if (c.root == slot0 && c.offsets.size() == 1 && c.offsets[0] == 0)
+            found_1hop = true;
+    }
+    EXPECT_TRUE(found_2hop) << "2-hop chain root=slot1 offsets=[0,0] not found";
+    EXPECT_TRUE(found_1hop) << "1-hop chain root=slot0 offsets=[0] not found";
+
+    deeptrace::script_free("ptrscan_s0");
+    deeptrace::script_free("ptrscan_s1");
+}
+
+// Rescan re-evaluates snapshot chains against a NEW target and intersects away
+// chains that no longer lead there (CE rescan semantics): retarget slot0 to
+// g_int and the old chain must drop out; the rescan against the new target
+// must keep it.
+TEST_F(DeeptraceIntegration, PointerMapRescanIntersects) {
+    const uintptr_t t1 = g_target.g_int64;
+    const uintptr_t t2 = g_target.g_int;
+    uintptr_t slot0 = 0, slot1 = 0;
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_r_s0", 16, "test", &slot0),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_r_s1", 16, "test", &slot1),
+              deeptrace::Result::Ok);
+    size_t written = 0;
+    ASSERT_EQ(deeptrace::memory_write(slot1, &slot0, sizeof(slot0), &written),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::memory_write(slot0, &t1, sizeof(t1), &written),
+              deeptrace::Result::Ok);
+
+    deeptrace::PointerScanConfig cfg;
+    cfg.target = t1;
+    cfg.max_offset = 0;
+    cfg.max_level = 2;
+    std::vector<deeptrace::PointerChain> chains;
+    ASSERT_EQ(deeptrace::pointer_map_snapshot(cfg, chains), deeptrace::Result::Ok);
+    bool had_2hop = false;
+    for (const auto& c : chains) {
+        if (c.root == slot1 && c.offsets.size() == 2) had_2hop = true;
+    }
+    ASSERT_TRUE(had_2hop) << "wired 2-hop chain missing from snapshot";
+
+    // retarget: slot0 now points at g_int instead of g_int64
+    ASSERT_EQ(deeptrace::memory_write(slot0, &t2, sizeof(t2), &written),
+              deeptrace::Result::Ok);
+
+    // rescan against the OLD target: chain now evaluates to t2 -> dropped
+    std::vector<deeptrace::PointerChain> stale;
+    ASSERT_EQ(deeptrace::pointer_map_rescan(chains, t1, cfg, stale),
+              deeptrace::Result::Ok);
+    bool stale_2hop = false;
+    for (const auto& c : stale) {
+        if (c.root == slot1 && c.offsets.size() == 2) stale_2hop = true;
+    }
+    EXPECT_FALSE(stale_2hop) << "retargeted chain survived rescan against old target";
+
+    // rescan against the NEW target: chain now evaluates to t2 -> kept
+    std::vector<deeptrace::PointerChain> fresh;
+    ASSERT_EQ(deeptrace::pointer_map_rescan(chains, t2, cfg, fresh),
+              deeptrace::Result::Ok);
+    bool fresh_2hop = false;
+    for (const auto& c : fresh) {
+        if (c.root == slot1 && c.offsets.size() == 2) fresh_2hop = true;
+    }
+    EXPECT_TRUE(fresh_2hop) << "retargeted chain lost by rescan against new target";
+
+    deeptrace::script_free("ptrscan_r_s0");
+    deeptrace::script_free("ptrscan_r_s1");
+}
+
+// Module anchoring: heap-rooted chains must be filtered out; any emitted root
+// must lie inside the anchor module's address range.
+TEST_F(DeeptraceIntegration, PointerMapModuleAnchor) {
+    const uintptr_t target = g_target.g_int64;
+    uintptr_t slot0 = 0, slot1 = 0;
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_a_s0", 16, "test", &slot0),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::script_alloc("ptrscan_a_s1", 16, "test", &slot1),
+              deeptrace::Result::Ok);
+    size_t written = 0;
+    ASSERT_EQ(deeptrace::memory_write(slot0, &target, sizeof(target), &written),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(deeptrace::memory_write(slot1, &slot0, sizeof(slot0), &written),
+              deeptrace::Result::Ok);
+
+    deeptrace::ModuleInfo mi;
+    ASSERT_EQ(deeptrace::module_find("deeptrace_target.exe", mi), deeptrace::Result::Ok);
+
+    deeptrace::PointerScanConfig cfg;
+    cfg.target = target;
+    cfg.max_offset = 0;
+    cfg.max_level = 2;
+    cfg.module = "deeptrace_target.exe";
+    std::vector<deeptrace::PointerChain> chains;
+    ASSERT_EQ(deeptrace::pointer_map_snapshot(cfg, chains), deeptrace::Result::Ok);
+
+    bool heap_root_present = false;
+    for (const auto& c : chains) {
+        if (c.root == slot1 || c.root == slot0) heap_root_present = true;
+        EXPECT_GE(c.root, mi.base) << "chain root below anchor module base";
+        EXPECT_LT(c.root, mi.base + mi.size) << "chain root above anchor module end";
+    }
+    EXPECT_FALSE(heap_root_present)
+        << "heap-rooted chain leaked through module anchoring";
+
+    deeptrace::script_free("ptrscan_a_s0");
+    deeptrace::script_free("ptrscan_a_s1");
+}
+
 TEST_F(DeeptraceIntegration, ReadKnownInt) {
     uint32_t v = 0;
     size_t n = 0;
