@@ -36,6 +36,17 @@ bool asm_one(const std::string& line, std::vector<uint8_t>& out) {
     return asm_one_at(line, 0, out);
 }
 
+// Encode a near jmp (E9 rel32) from insn_addr to target.
+std::vector<uint8_t> encode_jmp_rel32(uint64_t insn_addr, uint64_t target) {
+    int64_t rel = static_cast<int64_t>(target) - (static_cast<int64_t>(insn_addr) + 5);
+    std::vector<uint8_t> bytes;
+    bytes.push_back(0xE9);
+    for (int i = 0; i < 4; ++i) {
+        bytes.push_back(static_cast<uint8_t>((static_cast<uint64_t>(rel) >> (8 * i)) & 0xFF));
+    }
+    return bytes;
+}
+
 // Assemble a multi-line stream that may define and reference labels. Labels
 // defined in the text (\"name:\") are resolved by Keystone itself; any symbol
 // Keystone cannot resolve locally is asked of the optional resolver callback.

@@ -27,6 +27,10 @@ bool asm_labels(const std::string& code, uint64_t base_addr,
                 bool (*resolver)(const char* symbol, uint64_t* value),
                 std::vector<uint8_t>& out);
 
+// Encode a near jmp (E9 rel32) from insn_addr to target. rel = target -
+// (insn_addr + 5). Shared by hook patching and label assembly.
+std::vector<uint8_t> encode_jmp_rel32(uint64_t insn_addr, uint64_t target);
+
 // Split "mov rax, qword ptr [rbp+8]" style lines is not required;
 // asm_one takes a single instruction line.
 

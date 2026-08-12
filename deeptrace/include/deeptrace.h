@@ -98,8 +98,10 @@ Result shellcode_status(std::vector<InjectInfo>& out);
 
 // ---- script (AA-style script engine) ----------------------------------------------
 // Allocate remote memory of given size, bind to a script symbol (persisted
-// per-PID). Duplicate symbol name -> InvalidArg.
-Result script_alloc(const std::string& name, size_t size, uintptr_t* out_addr);
+// per-PID). owner = owning script path ("" = unattached). Duplicate symbol
+// name -> InvalidArg.
+Result script_alloc(const std::string& name, size_t size, const std::string& owner,
+                    uintptr_t* out_addr);
 // Release remote memory bound to a script symbol and remove the symbol.
 Result script_free(const std::string& name);
 // Persist script enable state (idempotent per path).
@@ -108,8 +110,11 @@ Result script_disable(const std::string& path);
 Result script_status(std::vector<ScriptInfo>& out);
 
 // ---- hook --------------------------------------------------------------------------
-// Patch target to `jmp newmem` (5-byte E9 rel32), save original bytes.
-Result hook_set(uintptr_t addr, uintptr_t newmem, HookInfo& out);
+// Patch target to `jmp newmem` (5-byte E9 rel32), save original bytes. owner
+// = owning script path ("" = unattached). Idempotent re-set keeps original
+// bytes and owner.
+Result hook_set(uintptr_t addr, uintptr_t newmem, const std::string& owner,
+                HookInfo& out);
 // Restore original bytes of a hooked target and remove its record.
 Result hook_clear(uintptr_t addr);
 

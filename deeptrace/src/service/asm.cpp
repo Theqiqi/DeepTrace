@@ -100,14 +100,12 @@ bool is_jump_or_call(const std::string& line) {
     return tok == "jmp" || tok == "call";
 }
 
-// Encode a near jmp (E9 rel32) or near call (E8 rel32) to the target.
+// Encode a near jmp (E9 rel32) or near call (E8 rel32) to the target. The rel
+// computation is shared with hook patching (encode_jmp_rel32); only the
+// opcode differs for call.
 std::vector<uint8_t> encode_jump(uint64_t insn_addr, uint64_t target, bool is_call) {
-    int64_t rel = static_cast<int64_t>(target) - (static_cast<int64_t>(insn_addr) + 5);
-    std::vector<uint8_t> b;
-    b.push_back(is_call ? 0xE8 : 0xE9);
-    for (int i = 0; i < 4; ++i) {
-        b.push_back(static_cast<uint8_t>((static_cast<uint64_t>(rel) >> (8 * i)) & 0xFF));
-    }
+    std::vector<uint8_t> b = internal::encode_jmp_rel32(insn_addr, target);
+    if (is_call) b[0] = 0xE8;
     return b;
 }
 

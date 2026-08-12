@@ -36,7 +36,8 @@ bool symbol_exists(const std::vector<internal::ScriptSymbolRecord>& recs,
 
 }  // namespace
 
-Result script_alloc(const std::string& name, size_t size, uintptr_t* out_addr) {
+Result script_alloc(const std::string& name, size_t size, const std::string& owner,
+                    uintptr_t* out_addr) {
     auto& s = internal::session();
     if (!s.handle) return Result::NotAttached;
     if (!valid_symbol_name(name) || size == 0) return Result::InvalidArg;
@@ -51,7 +52,7 @@ Result script_alloc(const std::string& name, size_t size, uintptr_t* out_addr) {
 
     // Register symbol before returning; on record-save failure roll back the
     // allocation so no untracked memory is leaked.
-    recs.push_back(internal::ScriptSymbolRecord{name, remote});
+    recs.push_back(internal::ScriptSymbolRecord{name, remote, owner});
     if (!internal::save_script_symbols(s.pid, recs)) {
         internal::RemoteFree(s.handle, remote);
         return Result::Error;
@@ -135,13 +136,23 @@ Result script_status(std::vector<ScriptInfo>& out) {
     auto syms = internal::load_script_symbols(s.pid);
     auto hooks = internal::load_hooks(s.pid);
 
-    // One ScriptInfo per enabled script path; attach matching hooks and alloc
-    // symbols (matching by symbol address for hooks' newmem).
+    // One ScriptInfo per enabled script path; attach only the hooks and alloc
+    // symbols owned by that script (owner field). Unattached records (owner="")
+    // are listed under a synthetic entry so they remain visible.
+    bool have_unowned = false;
+    for (const auto& h : hooks) {
+        if (h.owner.empty()) have_unowned = true;
+    }
+    for (const auto& sym : syms) {
+        if (sym.owner.empty()) have_unowned = true;
+    }
+
     for (const auto& path : enabled) {
         ScriptInfo info;
         info.path = path;
         info.state = "enabled";
         for (const auto& h : hooks) {
+            if (h.owner != path) continue;
             HookInfo hi;
             hi.target = h.target;
             hi.newmem = h.newmem;
@@ -150,6 +161,27 @@ Result script_status(std::vector<ScriptInfo>& out) {
             info.hooks.push_back(hi);
         }
         for (const auto& sym : syms) {
+            if (sym.owner != path) continue;
+            info.allocs.emplace_back(sym.name, sym.address);
+        }
+        out.push_back(std::move(info));
+    }
+
+    if (have_unowned) {
+        ScriptInfo info;
+        info.path = "(unowned)";
+        info.state = "enabled";
+        for (const auto& h : hooks) {
+            if (!h.owner.empty()) continue;
+            HookInfo hi;
+            hi.target = h.target;
+            hi.newmem = h.newmem;
+            hi.orig_bytes = h.orig_bytes;
+            hi.size = h.size;
+            info.hooks.push_back(hi);
+        }
+        for (const auto& sym : syms) {
+            if (!sym.owner.empty()) continue;
             info.allocs.emplace_back(sym.name, sym.address);
         }
         out.push_back(std::move(info));

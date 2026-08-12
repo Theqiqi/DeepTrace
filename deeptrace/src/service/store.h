@@ -43,6 +43,7 @@ bool save_injects(uint32_t pid, const std::vector<InjectRecord>& recs);
 struct ScriptSymbolRecord {
     std::string name;
     uintptr_t address = 0;
+    std::string owner;  // script path that created this symbol ("" = unattached)
 };
 std::vector<ScriptSymbolRecord> load_script_symbols(uint32_t pid);
 bool save_script_symbols(uint32_t pid, const std::vector<ScriptSymbolRecord>& recs);
@@ -53,6 +54,7 @@ struct HookRecord {
     uintptr_t newmem = 0;
     std::vector<uint8_t> orig_bytes;
     size_t size = 0;
+    std::string owner;  // script path that created this hook ("" = unattached)
 };
 std::vector<HookRecord> load_hooks(uint32_t pid);
 bool save_hooks(uint32_t pid, const std::vector<HookRecord>& recs);

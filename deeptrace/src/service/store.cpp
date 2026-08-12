@@ -152,17 +152,19 @@ std::vector<ScriptSymbolRecord> load_script_symbols(uint32_t pid) {
     std::vector<std::string> lines;
     if (!read_lines(scripts_path(pid), lines)) return out;
     for (const auto& l : lines) {
-        // format: SYM|<name>|<addr>
+        // format: SYM|<name>|<addr>|<owner>
         if (l.rfind("SYM|", 0) != 0) continue;
         std::istringstream ss(l.substr(4));
-        std::string name, addr_s;
+        std::string name, addr_s, owner;
         std::getline(ss, name, '|');
         std::getline(ss, addr_s, '|');
+        std::getline(ss, owner, '|');
         uint64_t addr;
         if (name.empty() || !parse_uint64(addr_s, addr)) continue;
         ScriptSymbolRecord r;
         r.name = name;
         r.address = static_cast<uintptr_t>(addr);
+        r.owner = owner;
         out.push_back(r);
     }
     return out;
@@ -173,7 +175,8 @@ bool save_script_symbols(uint32_t pid, const std::vector<ScriptSymbolRecord>& re
     auto enabled = load_enabled_scripts(pid);
     std::vector<std::string> lines;
     for (const auto& r : recs) {
-        lines.push_back("SYM|" + r.name + "|" + std::to_string(r.address));
+        lines.push_back("SYM|" + r.name + "|" + std::to_string(r.address) + "|" +
+                        r.owner);
     }
     for (const auto& p : enabled) {
         lines.push_back("ENABLE|" + p);
@@ -186,14 +189,15 @@ std::vector<HookRecord> load_hooks(uint32_t pid) {
     std::vector<std::string> lines;
     if (!read_lines(hooks_path(pid), lines)) return out;
     for (const auto& l : lines) {
-        // format: HOOK|<target>|<newmem>|<orig_hex>|<size>
+        // format: HOOK|<target>|<newmem>|<orig_hex>|<size>|<owner>
         if (l.rfind("HOOK|", 0) != 0) continue;
         std::istringstream ss(l.substr(5));
-        std::string t_s, n_s, hex_s, sz_s;
+        std::string t_s, n_s, hex_s, sz_s, owner;
         std::getline(ss, t_s, '|');
         std::getline(ss, n_s, '|');
         std::getline(ss, hex_s, '|');
         std::getline(ss, sz_s, '|');
+        std::getline(ss, owner, '|');
         uint64_t target, newmem, sz;
         if (!parse_uint64(t_s, target) || !parse_uint64(n_s, newmem) ||
             !parse_uint64(sz_s, sz)) {
@@ -206,6 +210,7 @@ std::vector<HookRecord> load_hooks(uint32_t pid) {
         r.newmem = static_cast<uintptr_t>(newmem);
         r.orig_bytes = std::move(bytes);
         r.size = static_cast<size_t>(sz);
+        r.owner = owner;
         out.push_back(r);
     }
     return out;
@@ -217,7 +222,7 @@ bool save_hooks(uint32_t pid, const std::vector<HookRecord>& recs) {
         lines.push_back("HOOK|" + std::to_string(r.target) + "|" +
                         std::to_string(r.newmem) + "|" +
                         hex_encode(r.orig_bytes.data(), r.orig_bytes.size()) + "|" +
-                        std::to_string(r.size));
+                        std::to_string(r.size) + "|" + r.owner);
     }
     return write_lines(hooks_path(pid), lines);
 }

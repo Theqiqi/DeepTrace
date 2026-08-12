@@ -8,8 +8,10 @@
 namespace deeptrace {
 
 // Allocate remote memory of given size and bind it to a script symbol name.
-// The symbol is persisted per-PID (scripts.dat). Duplicate name -> InvalidArg.
-Result script_alloc(const std::string& name, size_t size, uintptr_t* out_addr);
+// The symbol is persisted per-PID (scripts.dat). owner is the script path
+// that owns the allocation ("" = unattached). Duplicate name -> InvalidArg.
+Result script_alloc(const std::string& name, size_t size, const std::string& owner,
+                    uintptr_t* out_addr);
 
 // Release the remote memory bound to a script symbol and remove the symbol.
 // Symbol not found -> NotFound.
