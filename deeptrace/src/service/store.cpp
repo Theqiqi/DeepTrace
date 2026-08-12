@@ -241,11 +241,13 @@ std::vector<std::string> load_enabled_scripts(uint32_t pid) {
 }
 
 bool save_enabled_scripts(uint32_t pid, const std::vector<std::string>& paths) {
-    // preserve symbol records in the same file
+    // preserve symbol records in the same file; keep the owner field (dropping
+    // it would move every symbol to "(unowned)" in script_status)
     auto syms = load_script_symbols(pid);
     std::vector<std::string> lines;
     for (const auto& s : syms) {
-        lines.push_back("SYM|" + s.name + "|" + std::to_string(s.address));
+        lines.push_back("SYM|" + s.name + "|" + std::to_string(s.address) + "|" +
+                        s.owner);
     }
     for (const auto& p : paths) {
         lines.push_back("ENABLE|" + p);

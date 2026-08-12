@@ -5,6 +5,7 @@ add_executable(deeptrace_unit_test
     scan_test.cpp
     disasm_test.cpp
     asm_test.cpp
+    service_asm_test.cpp
     format_test.cpp
 )
 

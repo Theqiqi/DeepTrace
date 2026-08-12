@@ -55,6 +55,25 @@ TEST(AsmLabels, MovMemSlotLoadAccumulator) {
     EXPECT_EQ(le64(bytes, 2), 0x140000000ull);
 }
 
+TEST(AsmLabels, MovMemSlotAccumulator16) {
+    // mov [slot],ax -> 66 A3 moffs64 (10 bytes); mov ax,[slot] -> 66 A1.
+    std::map<std::string, uintptr_t> syms = one_symbol(0x12340000ull);
+    std::vector<uint8_t> bytes;
+    EXPECT_EQ(asm_assemble_labels("mov [slot],ax", 0x1000, syms, bytes, nullptr),
+              Result::Ok);
+    ASSERT_EQ(bytes.size(), 10u);
+    EXPECT_EQ(bytes[0], 0x66);
+    EXPECT_EQ(bytes[1], 0xA3);
+    EXPECT_EQ(le64(bytes, 2), 0x12340000ull);
+
+    EXPECT_EQ(asm_assemble_labels("mov ax,[slot]", 0x1000, syms, bytes, nullptr),
+              Result::Ok);
+    ASSERT_EQ(bytes.size(), 10u);
+    EXPECT_EQ(bytes[0], 0x66);
+    EXPECT_EQ(bytes[1], 0xA1);
+    EXPECT_EQ(le64(bytes, 2), 0x12340000ull);
+}
+
 TEST(AsmLabels, MovMemSlotStoreAccumulator32) {
     // mov [slot],eax -> moffs64 store without REX (9 bytes).
     std::map<std::string, uintptr_t> syms = one_symbol(0x12340000ull);
@@ -178,6 +197,17 @@ TEST(AsmLabels, MovImmediate32TruncationRejected) {
     std::map<std::string, uintptr_t> syms = one_symbol(0x7FF612345678ull);
     std::vector<uint8_t> bytes;
     EXPECT_EQ(asm_assemble_labels("mov ecx,slot", 0x1000, syms, bytes, nullptr),
+              Result::BadFormat);
+}
+
+TEST(AsmLabels, KernelRangeImmediateTruncationRejected) {
+    // Kernel-range addresses (sign-extended imm32 would reproduce the value)
+    // must not silently pass for a 32-bit destination: the length guard
+    // rejects any encoding of a >0xFFFFFFFF value shorter than 9 bytes.
+    std::map<std::string, uintptr_t> syms =
+        one_symbol(0xFFFFFFFF80000000ull);
+    std::vector<uint8_t> bytes;
+    EXPECT_EQ(asm_assemble_labels("mov eax,slot", 0x1000, syms, bytes, nullptr),
               Result::BadFormat);
 }
 
