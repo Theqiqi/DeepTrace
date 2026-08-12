@@ -40,10 +40,13 @@ bool symbol_exists(const std::vector<internal::ScriptSymbolRecord>& recs,
                        });
 }
 
-}  // namespace
-
-Result script_alloc(const std::string& name, size_t size, const std::string& owner,
-                    uintptr_t* out_addr) {
+// Shared alloc-symbol plumbing used by script_alloc and script_alloc_near:
+// validates args, checks for duplicate symbols, allocates via `alloc_fn`,
+// registers the symbol record, persists it, and rolls back the allocation on
+// save failure so no untracked memory leaks.
+template <typename AllocFn>
+Result alloc_symbol(const std::string& name, size_t size, const std::string& owner,
+                    uintptr_t* out_addr, AllocFn alloc_fn) {
     auto& s = internal::session();
     if (!s.handle) return Result::NotAttached;
     if (!valid_symbol_name(name) || size == 0) return Result::InvalidArg;
@@ -53,7 +56,7 @@ Result script_alloc(const std::string& name, size_t size, const std::string& own
     if (symbol_exists(recs, name)) return Result::InvalidArg;  // duplicate symbol
 
     uintptr_t remote = 0;
-    Result r = internal::RemoteAlloc(s.handle, size, PAGE_EXECUTE_READWRITE, &remote);
+    Result r = alloc_fn(s.handle, size, &remote);
     if (r != Result::Ok) return r;
 
     // Register symbol before returning; on record-save failure roll back the
@@ -67,30 +70,25 @@ Result script_alloc(const std::string& name, size_t size, const std::string& own
     return Result::Ok;
 }
 
+}  // namespace
+
+Result script_alloc(const std::string& name, size_t size, const std::string& owner,
+                    uintptr_t* out_addr) {
+    return alloc_symbol(name, size, owner, out_addr,
+                        [](void* h, size_t sz, uintptr_t* out) {
+                            return internal::RemoteAlloc(h, sz, PAGE_EXECUTE_READWRITE,
+                                                         out);
+                        });
+}
+
 Result script_alloc_near(const std::string& name, size_t size, uintptr_t anchor,
                          const std::string& owner, uintptr_t* out_addr) {
-    auto& s = internal::session();
-    if (!s.handle) return Result::NotAttached;
-    if (!valid_symbol_name(name) || size == 0) return Result::InvalidArg;
-    if (!out_addr) return Result::InvalidArg;
-
-    auto recs = internal::load_script_symbols(s.pid);
-    if (symbol_exists(recs, name)) return Result::InvalidArg;  // duplicate symbol
-
-    uintptr_t remote = 0;
-    Result r = internal::RemoteAllocNear(s.handle, size, PAGE_EXECUTE_READWRITE,
-                                         anchor, &remote);
-    if (r != Result::Ok) return r;
-
-    // Register symbol before returning; on record-save failure roll back the
-    // allocation so no untracked memory is leaked.
-    recs.push_back(internal::ScriptSymbolRecord{name, remote, owner});
-    if (!internal::save_script_symbols(s.pid, recs)) {
-        internal::RemoteFree(s.handle, remote);
-        return Result::Error;
-    }
-    *out_addr = remote;
-    return Result::Ok;
+    return alloc_symbol(name, size, owner, out_addr,
+                        [anchor](void* h, size_t sz, uintptr_t* out) {
+                            return internal::RemoteAllocNear(h, sz,
+                                                             PAGE_EXECUTE_READWRITE,
+                                                             anchor, out);
+                        });
 }
 
 Result script_free(const std::string& name) {

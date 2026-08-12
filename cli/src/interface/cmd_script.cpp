@@ -740,24 +740,35 @@ bool resolve_enable(const std::vector<Step>& enable,
         if (st.kind != StepKind::Alloc) continue;
         alloc_names.insert(st.name);
         // Near expression: "module"+offset -> anchor = base + offset (module
-        // must be loaded); bare address -> anchor = the address itself.
+        // must be loaded); bare address -> anchor = the address itself. The
+        // re-parse below cannot fail: classify() already validated the same
+        // expression during aa_parse_text (the failures would have exited 2
+        // there). If it ever did, report the raw text so the error is not
+        // an empty NotFound message.
         if (!st.text.empty()) {
             if (st.text[0] == '"') {
                 std::string module;
                 uint64_t offset = 0;
                 std::string merr;
-                if (!internal::aa::parse_module_target(st.text, module, offset, merr))
+                if (!internal::aa::parse_module_target(st.text, module, offset, merr)) {
+                    if (out_module) *out_module = st.text;
                     return false;
+                }
                 uintptr_t base = 0;
                 Result r = deeptrace::resolve_base(module, &base);
                 if (r != Result::Ok) {
                     if (out_module) *out_module = module;
                     return false;
                 }
+                // Real offsets are tiny (module+small offset); no saturation
+                // needed for the anchor sum.
                 near_anchors[st.name] = base + offset;
             } else {
                 uint64_t anchor = 0;
-                if (!parse_u64(st.text, anchor) || anchor == 0) return false;
+                if (!parse_u64(st.text, anchor) || anchor == 0) {
+                    if (out_module) *out_module = st.text;
+                    return false;
+                }
                 near_anchors[st.name] = anchor;
             }
         }

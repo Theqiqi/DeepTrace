@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.6.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.7.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -593,6 +593,43 @@ def main():
         os.remove(os.path.join(BIN_DIR, "e2e_aptr.aa"))
         code, out, _ = run_cli(["ps", "list"])
         check("target alive after symbol addressing", str(pid) in out,
+              repr(out[:200]))
+
+        # ---- v2.7.0: real near allocation (alloc third arg within +/-2GB) ----
+        # alloc(nearmem,64,"deeptrace_target.exe"+1000) must place the buffer
+        # inside the +/-2GB window around the module base + 0x1000 anchor, so
+        # RIP-relative rel32 jumps to it never overflow.
+        code, out, _ = run_cli(["-p", str(pid), "module", "base",
+                                "deeptrace_target.exe"])
+        check("near module base exit 0", code == 0)
+        m_base = re.search(r"0x([0-9A-Fa-f]{16})", out)
+        check("near module base parsed", bool(m_base), repr(out))
+        if m_base:
+            anchor = int(m_base.group(1), 16) + 0x1000
+            tmp_aa = os.path.join(BIN_DIR, "e2e_near.aa")
+            with open(tmp_aa, "w") as f:
+                f.write('[ENABLE]\nalloc(nearmem,64,"deeptrace_target.exe"+1000)\n'
+                        '[DISABLE]\ndealloc(nearmem)\n')
+            code, out, _ = run_cli(["-p", str(pid), "script", "run", win_path(tmp_aa)])
+            check("near script run exit 0", code == 0)
+            check("near alloc summary", "alloc nearmem" in out, repr(out))
+            m_near = re.search(r"0x([0-9A-Fa-f]{16})", out)
+            check("near alloc address parsed", bool(m_near), repr(out))
+            if m_near:
+                nearmem = int(m_near.group(1), 16)
+                dist = abs(nearmem - anchor)
+                check("near alloc within +-2GB", dist <= 0x7FFFFFFF,
+                      f"nearmem={nearmem:#x} anchor={anchor:#x} dist={dist:#x}")
+                # the near-allocated symbol still resolves by name (v2.6.0)
+                code, out, _ = run_cli(["-p", str(pid), "mem", "read", "nearmem",
+                                        "8", "hex"])
+                check("near symbol read exit 0", code == 0)
+            code, out, _ = run_cli(["-p", str(pid), "script", "disable",
+                                    win_path(tmp_aa)])
+            check("near script disable exit 0", code == 0)
+            os.remove(tmp_aa)
+        code, out, _ = run_cli(["ps", "list"])
+        check("target alive after near allocation", str(pid) in out,
               repr(out[:200]))
 
         # ---- dll inject round trip (companion testdll.dll) ----

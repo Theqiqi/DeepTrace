@@ -81,6 +81,7 @@ inline uintptr_t align_down(uintptr_t v) { return v & ~(kGranularity - 1); }
 
 Result RemoteAllocNear(void* hprocess, size_t size, uint32_t protection,
                        uintptr_t anchor, uintptr_t* out_addr) {
+    if (!out_addr) return Result::InvalidArg;
     const uintptr_t high =
         (anchor > UINTPTR_MAX - kNearDisp) ? UINTPTR_MAX : anchor + kNearDisp;
     const uintptr_t low = (anchor < kNearDisp) ? 0 : anchor - kNearDisp;
@@ -130,10 +131,12 @@ Result RemoteAllocNear(void* hprocess, size_t size, uint32_t protection,
         uintptr_t base = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
         uintptr_t end = base + mbi.RegionSize;
         if (mbi.State == MEM_FREE) {
+            // cand >= floor already guarantees cand >= low (floor = max(base,
+            // low)), so no separate low bound is needed.
             uintptr_t top = (end < anchor) ? end : anchor;
             uintptr_t cand = align_down(top - size);
             uintptr_t floor = base > low ? base : low;
-            if (cand >= floor && cand + size <= top && cand + size - 1 >= low) {
+            if (cand >= floor && cand + size <= top) {
                 uintptr_t p = try_alloc(cand);
                 if (p) {
                     *out_addr = p;
