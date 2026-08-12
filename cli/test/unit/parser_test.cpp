@@ -162,6 +162,11 @@ TEST(Parser, AddressAcceptsSymbolShape) {
     auto s = parse({"deeptrace_cli", "shellcode", "run", "slotB"});
     ASSERT_TRUE(s.ok);
     EXPECT_EQ(s.req.args[0], "slotB");
+    // v2.8.0: mem write accepts the symbol shape too (write artificial pointer)
+    auto w2 = parse({"deeptrace_cli", "mem", "write", "sunObjPtr", "1122334455667788",
+                     "dec"});
+    ASSERT_TRUE(w2.ok);
+    EXPECT_EQ(w2.req.args[0], "sunObjPtr");
 }
 
 TEST(Parser, AddressHexAndDec) {
@@ -199,6 +204,28 @@ TEST(Parser, MemWriteHexBytes) {
     ASSERT_TRUE(r.ok);
     EXPECT_EQ(r.req.args[1], "DEADBEEF");
     EXPECT_EQ(r.req.args[2], "hex");
+}
+
+// v2.8.0: `mem write <symbol>` (write an artificial-pointer slot by name)
+// parses through the same address rule as mem read - the symbol shape is
+// accepted here and resolved to the recorded address later by the interface
+// layer (requires attach).
+TEST(Parser, MemWriteSymbolShape) {
+    auto r = parse({"deeptrace_cli", "mem", "write", "sunObjPtr",
+                    "8877665544332211", "hex"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.args[0], "sunObjPtr");
+    EXPECT_EQ(r.req.args[1], "8877665544332211");
+    EXPECT_EQ(r.req.args[2], "hex");
+    auto d = parse({"deeptrace_cli", "mem", "write", "slotA", "1122334455667788",
+                    "dec"});
+    ASSERT_TRUE(d.ok);
+    EXPECT_EQ(d.req.args[0], "slotA");
+    EXPECT_EQ(d.req.args[2], "dec");
+    // value validation still applies regardless of the address form
+    auto bad = parse({"deeptrace_cli", "mem", "write", "slotA", "ABC"});
+    EXPECT_FALSE(bad.ok);
+    EXPECT_EQ(bad.exit_code, 2);
 }
 
 TEST(Parser, MemWriteOddHex) {
@@ -559,7 +586,7 @@ TEST(Parser, HelpTextListsNewCommands) {
     EXPECT_NE(help.find("script run"), std::string::npos);
     EXPECT_NE(help.find("script disable"), std::string::npos);
     EXPECT_NE(help.find("script status"), std::string::npos);
-    EXPECT_NE(help.find("deeptrace_cli v2.7.0"), std::string::npos);
+    EXPECT_NE(help.find("deeptrace_cli v2.8.0"), std::string::npos);
 }
 
 TEST(Parser, ScriptCheckParses) {

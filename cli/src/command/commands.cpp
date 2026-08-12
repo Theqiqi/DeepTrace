@@ -195,7 +195,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.7.0\n";
+    os << "deeptrace_cli v2.8.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

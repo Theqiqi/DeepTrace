@@ -9,7 +9,9 @@
 > v2.6.0 新增符号寻址(地址参数接受脚本符号名,如 `mem read sunObjPtr`,
 > 配合人造指针外部读值);v2.7.0 新增 alloc near 真实就近分配(第三参数
 > 解析为锚点,落点保证在锚点 ±2GB 内,消除 RIP 相对位移超界概率);
-> 版本号同步 v2.7.0;既有用例全量回归。
+> v2.8.0 确认并补测 `mem write <symbol>`(脚本外直接写人造指针值,动态改
+> 指针目标;能力在 v2.6.0 已由 resolve_addr 接通,本版本补测试覆盖);
+> 版本号同步 v2.8.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -18,7 +20,7 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.7.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.8.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
 | 非法参数(v2.6.0:符号形状现在合法,真非法形状仍拒绝) | - | `deeptrace_cli mem read "foo bar"` / `mem read a-b` | Error | 2 |
@@ -167,6 +169,10 @@ slotA=moffs64、slotB=RIP 相对两种编码)。
 | 按符号 mem read | `-p <pid> mem read slotA 8 hex` | 88 77 66 55 44 33 22 11 | 0 |
 | 按符号 mem read(slotB) | `-p <pid> mem read slotB 8 hex` | 00 FF EE DD CC BB AA 99 | 0 |
 | 按符号 readval | `-p <pid> mem readval slotA qword` | 0x1122334455667788 | 0 |
+| 按符号 mem write(hex) | `-p <pid> mem write slotA 8877665544332211 hex` → `mem read slotA 8 hex` | 88 77 66 55 44 33 22 11(新指针值读回) | 0 |
+| 按符号 mem write(dec) | `-p <pid> mem write slotA 1122334455667788 dec` → `mem read slotA` | 4C 9C 8C DA C1 FC 03 00(8 字节小端) | 0 |
+| 写后恢复原指针值 | `mem write slotA 8877665544332211 hex` | 0(watch 用例继续看到原值) | 0 |
+| mem write 未知符号 | `-p <pid> mem write nosuch 1122334455667788 dec` | Error 含 NotFound | 1 |
 | 按符号 watch add | `-p <pid> watch add aptr_sym slotA qword` → `watch list` | 0x1122334455667788 | 0 |
 | 未知符号(业务错误) | `-p <pid> mem read no_such_sym 8` | Error 含 NotFound | 1 |
 | watch 未知符号 | `-p <pid> watch add d nosuch qword` | Error 含 NotFound | 1 |
@@ -175,7 +181,9 @@ slotA=moffs64、slotB=RIP 相对两种编码)。
 
 > 数字地址行为完全不变(数字优先);符号形状(`[A-Za-z_][A-Za-z0-9_]*`)通过解析,
 > 存在性由接口层 attach 后查记录决定。集成测试另覆盖 script_symbol 静态库
-> API(alloc 后查到同一地址、free 后 NotFound)。
+> API(alloc 后查到同一地址、free 后 NotFound)与 v2.8.0 的
+> SymbolAddressingMemWriteRoundTrip(mem write <符号> hex/dec 写入后经公共
+> API 读回字节一致、未知符号 NotFound、值格式非法退出 2、disable 后清理)。
 
 ## 4.10 alloc near 真实就近分配(v2.7.0,新增)
 

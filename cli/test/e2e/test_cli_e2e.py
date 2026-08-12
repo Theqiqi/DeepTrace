@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.7.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.8.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -571,6 +571,33 @@ def main():
         code, out, _ = run_cli(["-p", str(pid), "mem", "readval", "slotA", "qword"])
         check("symbol addressing readval slotA", "0x1122334455667788" in out,
               repr(out))
+        # v2.8.0: write by symbol - dynamically retarget the artificial pointer
+        # (slotA held 0x1122334455667788 from the thread; write a new target)
+        code, out, _ = run_cli(["-p", str(pid), "mem", "write", "slotA",
+                                "8877665544332211", "hex"])
+        check("symbol addressing mem write slotA exit 0", code == 0, repr(out))
+        code, out, _ = run_cli(["-p", str(pid), "mem", "read", "slotA", "8", "hex"])
+        check("symbol addressing mem write readback",
+              "88 77 66 55 44 33 22 11" in out, repr(out))
+        # dec format: fixed 8-byte little-endian (1122334455667788 dec =
+        # 0x0003FCC1DA8C9C4C -> bytes 4C 9C 8C DA C1 FC 03 00)
+        code, _, _ = run_cli(["-p", str(pid), "mem", "write", "slotA",
+                              "1122334455667788", "dec"])
+        check("symbol addressing mem write dec exit 0", code == 0)
+        code, out, _ = run_cli(["-p", str(pid), "mem", "read", "slotA", "8", "hex"])
+        check("symbol addressing mem write dec readback",
+              "4C 9C 8C DA C1 FC 03 00" in out, repr(out))
+        # restore the original pointer value (0x1122334455667788 = bytes
+        # 88 77 66 55 44 33 22 11) so the watch case below sees it again
+        code, _, _ = run_cli(["-p", str(pid), "mem", "write", "slotA",
+                              "8877665544332211", "hex"])
+        check("symbol addressing mem write restore exit 0", code == 0)
+        # unknown symbol on write -> NotFound
+        code, _, err = run_cli(["-p", str(pid), "mem", "write", "nosuch",
+                                "1122334455667788", "dec"])
+        check("symbol addressing mem write unknown exit 1", code == 1)
+        check("symbol addressing mem write unknown msg", "NotFound" in err,
+              repr(err))
         # watch add by symbol -> live value
         code, _, _ = run_cli(["-p", str(pid), "watch", "clear"])
         code, out, _ = run_cli(["-p", str(pid), "watch", "add", "aptr_sym", "slotA",

@@ -946,6 +946,83 @@ TEST(CliChain, ScriptAllocNearPlacement) {
     EXPECT_TRUE(target_alive());
 }
 
+// v2.8.0: `mem write <symbol>` writes an artificial-pointer slot by name
+// (dynamically retarget the pointer without re-running the script). hex and
+// dec formats write the slot and read back identically; an unknown symbol is
+// NotFound; after disable the symbol is gone.
+TEST(CliChain, SymbolAddressingMemWriteRoundTrip) {
+    std::string script = materialize_aa("script_aptr.aa", "", 60);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    // hex: write a new pointer value into slotA (8 bytes little-endian)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write", "slotA",
+                       "8877665544332211", "hex"}),
+              0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "read", "slotA", "8",
+                       "hex"}),
+              0);
+    // verify via the public API that the bytes actually landed
+    {
+        std::vector<deeptrace::ScriptInfo> list;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+        uintptr_t slotA = 0;
+        for (const auto& s : list) {
+            if (s.path != script) continue;
+            for (const auto& a : s.allocs) {
+                if (a.first == "slotA") slotA = a.second;
+            }
+        }
+        ASSERT_NE(slotA, 0u) << "slotA not recorded";
+        uint8_t b[8] = {0};
+        size_t n = 0;
+        EXPECT_EQ(deeptrace::memory_read(slotA, b, 8, &n), deeptrace::Result::Ok);
+        deeptrace::detach();
+        const uint8_t expect[8] = {0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
+        EXPECT_EQ(std::memcmp(b, expect, 8), 0) << "hex write by symbol mismatch";
+    }
+
+    // dec: fixed 8-byte little-endian; 1122334455667788 -> 4C 9C 8C DA C1 FC 03 00
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write", "slotA",
+                       "1122334455667788", "dec"}),
+              0);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "read", "slotA", "8",
+                       "hex"}),
+              0);
+    {
+        std::vector<deeptrace::ScriptInfo> list;
+        ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+        EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+        uintptr_t slotA = 0;
+        for (const auto& s : list) {
+            if (s.path != script) continue;
+            for (const auto& a : s.allocs) {
+                if (a.first == "slotA") slotA = a.second;
+            }
+        }
+        uint8_t b[8] = {0};
+        size_t n = 0;
+        EXPECT_EQ(deeptrace::memory_read(slotA, b, 8, &n), deeptrace::Result::Ok);
+        deeptrace::detach();
+        const uint8_t expect[8] = {0x4C, 0x9C, 0x8C, 0xDA, 0xC1, 0xFC, 0x03, 0x00};
+        EXPECT_EQ(std::memcmp(b, expect, 8), 0) << "dec write by symbol mismatch";
+    }
+
+    // unknown symbol -> NotFound (business error, exit 1)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write", "no_such_sym",
+                       "1122334455667788", "dec"}),
+              1);
+    // value validation still applies (odd hex -> usage error, exit 2)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "write", "slotA", "ABC"}),
+              2);
+
+    // cleanup: disable frees the slots and code buffer by name
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
 // script check accepts the artificial-pointer script (no attach).
 TEST(CliChain, ScriptCheckArtificialPointer) {
     std::string script = materialize_aa("script_aptr.aa", "", 31);
