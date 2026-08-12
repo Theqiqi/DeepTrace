@@ -436,6 +436,24 @@ TEST(AaCheck, UserHookScriptPasses) {
     EXPECT_EQ(err, "");
 }
 
+// v2.6.0: digit-leading symbol names are rejected so a script symbol can
+// never shadow a numeric address in CLI address args (numeric-first).
+TEST(AaParse, DigitLeadingSymbolRejected) {
+    std::vector<internal::aa::Step> enable, disable;
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_parse_text(
+        "[ENABLE]\nalloc(100, 8)\n", enable, disable, err));
+    EXPECT_NE(err.find("invalid symbol name"), std::string::npos);
+    EXPECT_FALSE(internal::aa::aa_parse_text(
+        "[ENABLE]\nalloc(1slot, 8)\n", enable, disable, err));
+    EXPECT_NE(err.find("invalid symbol name"), std::string::npos);
+    // underscore/letter leading names still fine
+    EXPECT_TRUE(internal::aa::aa_parse_text(
+        "[ENABLE]\nalloc(_slot, 8)\n", enable, disable, err));
+    EXPECT_TRUE(internal::aa::aa_parse_text(
+        "[ENABLE]\nalloc(sunObjPtr, 8)\n", enable, disable, err));
+}
+
 TEST(AaCheck, UserCallScriptPasses) {
     // The user's createThread example script shape (alloc + createThread +
     // stack-aligned stub) within the documented capability boundary must pass

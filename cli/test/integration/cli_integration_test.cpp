@@ -865,6 +865,10 @@ TEST(CliChain, SymbolAddressingMemReadWatchAdd) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "mem", "readval", "slotB",
                        "qword"}),
               0);
+    // disasm by symbol: the thread code buffer (mov rax, imm64 ...) is
+    // addressable by name and must disassemble without error
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "disasm", "at", "code", "2"}),
+              0);
     // watch add by symbol, then list shows the live value
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "watch", "clear"}), 0);
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "watch", "add", "aptr", "slotA",

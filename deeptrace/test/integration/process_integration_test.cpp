@@ -502,6 +502,10 @@ TEST_F(DeeptraceIntegration, ScriptAllocFree) {
     // invalid args
     EXPECT_EQ(deeptrace::script_alloc("", 64, "", &addr), deeptrace::Result::InvalidArg);
     EXPECT_EQ(deeptrace::script_alloc("ok", 0, "", &addr), deeptrace::Result::InvalidArg);
+    // v2.6.0: digit-leading names are rejected so a symbol can never shadow
+    // a numeric address in CLI address arguments.
+    EXPECT_EQ(deeptrace::script_alloc("100", 64, "", &addr), deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_alloc("1slot", 64, "", &addr), deeptrace::Result::InvalidArg);
 }
 
 TEST_F(DeeptraceIntegration, ScriptSymbolLookup) {

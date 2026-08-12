@@ -58,6 +58,25 @@ bool valid_ident(const std::string& s) {
     return true;
 }
 
+// Symbol name shape: first char a letter or underscore (v2.6.0). A leading
+// digit is rejected so a script symbol can never collide with (or silently
+// shadow) a numeric address in CLI address arguments, which resolve
+// numeric-first. Mirrors the parser's valid_symbol_shape and the static
+// library's script symbol rule.
+bool valid_symbol_name(const std::string& s) {
+    if (s.empty()) return false;
+    char c0 = s[0];
+    if (!((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z') || c0 == '_'))
+        return false;
+    for (unsigned char c : s) {
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Unsigned integer: decimal or 0x-hex (used for alloc sizes).
 bool parse_u64(const std::string& s, uint64_t& out) {
     if (s.empty()) return false;
@@ -218,7 +237,10 @@ ClassifyResult classify(const std::string& line_in, size_t line_no) {
                     res.err = "alloc requires (name, size)";
                     return res;
                 }
-                if (!valid_ident(args[0])) {
+                // v2.6.0: symbol names must start with a letter/underscore so
+                // they can never shadow a numeric address (numeric-first CLI
+                // address resolution).
+                if (!valid_symbol_name(args[0])) {
                     res.ok = false;
                     res.err = "invalid symbol name: '" + args[0] + "'";
                     return res;
@@ -260,7 +282,8 @@ ClassifyResult classify(const std::string& line_in, size_t line_no) {
                 }
                 return res;
             }
-            if (args.size() != 1 || args[0].empty() || !valid_ident(args[0])) {
+            if (args.size() != 1 || args[0].empty() ||
+                !valid_symbol_name(args[0])) {
                 res.ok = false;
                 res.err = "invalid symbol name: '" +
                           (args.empty() ? std::string("") : args[0]) + "'";

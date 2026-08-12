@@ -14,9 +14,15 @@ namespace deeptrace {
 
 namespace {
 
-// ASCII printable name (letters/digits/underscore), non-empty.
+// ASCII identifier name, non-empty, first char a letter or underscore
+// (letters/digits/underscore after). v2.6.0: a leading digit is rejected so a
+// symbol name can never collide with (or silently shadow) a numeric address
+// in CLI address arguments (numeric-first resolution).
 bool valid_symbol_name(const std::string& name) {
     if (name.empty()) return false;
+    char c0 = name[0];
+    if (!((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z') || c0 == '_'))
+        return false;
     for (unsigned char c : name) {
         if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
               (c >= '0' && c <= '9') || c == '_')) {
