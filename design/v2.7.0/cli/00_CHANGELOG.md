@@ -47,11 +47,28 @@
 
 ### 4. 实现期决策(代码审查后补充)
 
-- (待补充)
+- **就近分配算法**(静态库 RemoteAllocNear):锚点 ±2GB(0x7FFFFFFF)窗口内
+  两遍 VirtualQueryEx 扫描——先向上(含锚点所在空闲区 → 距锚点最近可能位置),
+  再向下;命中区内 64KB 对齐候选,窗口内无空闲 → Error,绝不静默回退任意
+  选址。实测(模块基址为锚点)落点距锚点约 127KB。
+- **CLI 锚点产出**:resolve_enable 新增 near_anchors(alloc 符号名 → 锚点),
+  模块形式 resolve_base+偏移、裸地址直接解析;exec_enable 按是否有锚点分派
+  script_alloc_near / script_alloc(无 near 行为完全不变)。
+- **审查修复(4 项)**:
+  1. script_alloc / script_alloc_near 提取共享模板 helper `alloc_symbol`
+     (校验/查重/记录/落盘/回滚单份维护),消除 ~90% 重复。
+  2. resolve_enable 对 near 表达式的二次解析加防御:不可达的失败路径也设置
+     out_module(回显原始表达式),避免空 `NotFound()` 消息。
+  3. RemoteAllocNear 补 out_addr 空指针守卫(与兄弟包装器一致)。
+  4. 向下扫描删去冗余低界检查(cand ≥ floor 已蕴含 ≥ low),加注释说明。
+- **已知覆盖缺口**:锚点窗口内无空闲区 → Error 路径难以在真实进程确定性构造,
+  未做独立用例(由算法边界与错误语义文档覆盖);base+offset 锚点求和按实际
+  小偏移假设,不饱和处理(注释声明)。
 
 ### 5. 验证
 
-- 静态库:单元 + 集成(near 分配落点在锚点 ±2GB 内、距锚点更近、窗口内无空闲
-  报错、符号记录与 script_symbol 一致)。
-- CLI:单元 + 集成(真实进程 near 分配落点验证 + 人造指针全链路仍绿) + e2e。
-- git:流程每步提交齐全,tag `v2.7.0`。
+- 静态库:单元 115 + 集成 49(含 ScriptAllocNear:落点在 ±2GB 内、符号查找
+  一致、重复名/非法参/NotAttached 错误路径)。
+- CLI:单元 154 + 集成 45(ScriptAllocNearPlacement:真实进程落点验证 +
+  人造指针/符号寻址全链路仍绿) + e2e 195(+9 near 用例)。Debug/Release 全绿。
+- git:init/idea/design/feat/fix(review findings)提交齐全,tag `v2.7.0`。

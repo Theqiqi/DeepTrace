@@ -35,3 +35,13 @@
 | DeepTrace/src/infrastructure/memory/memory.h/cpp | RemoteAllocNear 声明/实现 |
 | DeepTrace/src/service/script.h/cpp | script_alloc_near 实现(复用符号记录/落盘逻辑) |
 | DeepTrace/test/integration/process_integration_test.cpp | script_alloc_near 用例(真实 target:落点在 ±2GB 内、贴近锚点、窗口无空闲报错、符号记录一致) |
+
+### 4. 实现期决策(代码审查后补充)
+
+- **共享 helper**:script_alloc / script_alloc_near 提取模板 `alloc_symbol`
+  (校验/查重/记录/落盘/回滚单份维护),分配器以 lambda 注入——未来记录格式
+  变更只改一处。
+- **RemoteAllocNear** 补 out_addr 空指针守卫;向下扫描删去被 `cand >= floor`
+  蕴含的冗余低界检查(加注释说明)。
+- 就近失败(窗口内无空闲)→ Error 路径未在真实进程确定性构造单测(硬环境
+  依赖),由算法边界与集成测试落点验证覆盖,记录为已知覆盖缺口。
