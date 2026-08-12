@@ -189,10 +189,11 @@ cli (independent CMake project)
 
 ```
 %TEMP%/deeptrace_<pid>/
-├── breakpoints.dat   # original bytes of software/hardware breakpoints (DR0-DR3 slots)
-├── watch.dat         # watch entries
-├── inject.dat        # injected DLL/shellcode records (kind=dll|shellcode)
-└── scripts.dat       # script symbol records / hook records / enable-state records (v2.3.0+)
+├── breaks.dat     # original bytes of software/hardware breakpoints (DR0-DR3 slots)
+├── watch.dat      # watch entries
+├── injects.dat    # injected DLL/shellcode records (kind=dll|shellcode)
+├── scripts.dat    # script symbol records + enabled-script records (v2.3.0+)
+└── hooks.dat      # hook records: target → original bytes (v2.3.0+)
 ```
 
 - Implemented by the service layer (session.cpp provides the path, store.cpp reads/writes, ASCII `|`-separated line format).

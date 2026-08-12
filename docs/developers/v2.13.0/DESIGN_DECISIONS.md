@@ -92,7 +92,7 @@
 
 - **Background**: users want CE-style `.aa` scripts (alloc/label/registersymbol/createThread/db + `[ENABLE]`/`[DISABLE]` blocks) executed in the target; the library and CLI must share a clean boundary.
 - **Option comparison**: (a) implement all script semantics inside the library (a mini language in the lib, hard to evolve); (b) CLI owns parsing/execution and the library exposes only orthogonal primitives (`script_alloc`, `script_alloc_near`, `script_free`, `hook_set`, `hook_clear`, `asm_assemble_labels`, `script_symbol`, `thread_create_at`) with per-PID persisted records.
-- **Choice**: (b). The library stays a primitive provider; the CLI's `cmd_script.cpp` parses and drives enable/disable idempotently. Named allocations/hooks/enable-state persist per-PID (`scripts.dat`), so re-attaching later can resolve symbols (`script_symbol`) and `script status` can list the landscape. Idempotent enable/disable (repeated enable skips, repeated disable skips) makes re-running scripts naturally stateless.
+- **Choice**: (b). The library stays a primitive provider; the CLI's `cmd_script.cpp` parses and drives enable/disable idempotently. Named allocations and enable-state persist per-PID (`scripts.dat`, hooks in `hooks.dat`), so re-attaching later can resolve symbols (`script_symbol`) and `script status` can list the landscape. Idempotent enable/disable (repeated enable skips, repeated disable skips) makes re-running scripts naturally stateless.
 
 ## ADR-14 Why pointer-chain search is two-phase (snapshot + rescan)
 

@@ -134,7 +134,7 @@ Append `service/foo.h` + `service/foo.cpp` to the `add_library(deeptrace STATIC 
 
 - If new enums/structs are involved: append to `src/domain/types.h` **and sync** `include/domain/types.h` (the two files must be identical).
 - Integration tests: add cases in `deeptrace/test/integration/` (real target).
-- API docs: update `docs/api/v1.3.0/` (function signature/parameters/return values/behavior) and record in the CHANGELOG.
+- API docs: update `docs/api/v2.13.0/` (function signature/parameters/return values/behavior) and record in the CHANGELOG.
 - CLI (optional): wrap it as a command per section 2.
 
 ---

@@ -2,7 +2,7 @@
 
 Script symbols, per-PID-persisted allocations, and script enable-state records. These APIs back the CLI's `script` command group (the AA/CETrainer-style script engine) and are the building blocks for the `alloc`/`registersymbol`/`dealloc` and `enable`/`disable` concepts: a script allocates named remote memory buffers, binds them to symbol names, optionally hooks code, and persists its enable state across re-attaches.
 
-Records are persisted to `%TEMP%/deeptrace_<pid>/scripts.dat` (symbol/hook/enable records) alongside `injects.dat`.
+Records are persisted per PID: script symbols and enable-state to `%TEMP%/deeptrace_<pid>/scripts.dat`, hooks to `%TEMP%/deeptrace_<pid>/hooks.dat`.
 
 ## deeptrace::script_alloc
 

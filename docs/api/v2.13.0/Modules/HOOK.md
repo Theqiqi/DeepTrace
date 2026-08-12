@@ -2,7 +2,7 @@
 
 Inline code hooks: patch a target instruction with a 5-byte `jmp` to an injected buffer, and restore the original bytes later. These are the code-patching primitives of the script engine's `[ENABLE]`/`[DISABLE]` blocks (a script's `hook` keyword maps to `hook_set` with the `alloc`'d `newmem` buffer).
 
-Hook records are persisted per PID in `%TEMP%/deeptrace_<pid>/scripts.dat`.
+Hook records are persisted per PID in `%TEMP%/deeptrace_<pid>/hooks.dat`.
 
 ## deeptrace::hook_set
 

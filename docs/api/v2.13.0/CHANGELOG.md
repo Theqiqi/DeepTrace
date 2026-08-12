@@ -32,7 +32,7 @@ Incremental update matching code tags `v2.2.0` … `v2.13.0` (deeptrace library)
 - Updated module docs for incremental additions: PROCESS (+`session_permissions`), THREAD (+`thread_create_at`), ASM (+`asm_assemble_labels`), DISASM (+`disasm_buffer`), INJECT (+`shellcode_alloc`/`shellcode_run`/`shellcode_free`).
 - [Types/RESULT.md](Types/RESULT.md) trigger conditions extended: `InvalidArg` (duplicate script symbol, zero pointer-scan config fields, zero hook addresses), `NotFound` (script symbol not registered, anchored module not loaded, missing shellcode/hook records), `Timeout` (shellcode_free waiting on a still-running remote thread), `Error` (near-allocation window exhausted, persist-failure rollbacks).
 - [README.md](README.md) overview updated: 56 → 74 public APIs; group table gains the Script / Hook / Pointer-chain scan modules; session-lifecycle diagram unchanged (the new APIs all ride the existing attach/detach session).
-- State persistence extended: `%TEMP%/deeptrace_<pid>/scripts.dat` now carries script symbol / hook / enable records alongside `breaks.dat` / `injects.dat` / `watch.dat`.
+- State persistence extended: `%TEMP%/deeptrace_<pid>/` now gains `scripts.dat` (script symbols + enabled-script records) and `hooks.dat` (hook target → original bytes) alongside `breaks.dat` / `injects.dat` / `watch.dat`.
 
 **Unchanged**
 - All 56 pre-existing public APIs keep their signatures and semantics (backward compatible).

@@ -88,7 +88,8 @@ Breakpoints, injection records, script records, and watch entries are persisted 
 %TEMP%/deeptrace_<pid>/
 ├── breaks.dat    # software/hardware breakpoint records
 ├── injects.dat   # DLL/shellcode injection records
-├── scripts.dat   # script symbols / hooks / enable records (v2.3.0+)
+├── scripts.dat   # script symbols + enabled-script records (v2.3.0+)
+├── hooks.dat     # hook records: target → original bytes (v2.3.0+)
 └── watch.dat     # watch entries
 ```
 
