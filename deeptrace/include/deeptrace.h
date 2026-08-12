@@ -7,6 +7,7 @@
 
 #include "domain/types.h"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -94,5 +95,32 @@ Result shellcode_alloc(const std::vector<uint8_t>& bytes, InjectInfo& out);  // 
 Result shellcode_run(uintptr_t addr, InjectInfo& out);                     // trigger at recorded addr (repeatable)
 Result shellcode_free(uintptr_t addr);                                     // free recorded addr
 Result shellcode_status(std::vector<InjectInfo>& out);
+
+// ---- script (AA-style script engine) ----------------------------------------------
+// Allocate remote memory of given size, bind to a script symbol (persisted
+// per-PID). Duplicate symbol name -> InvalidArg.
+Result script_alloc(const std::string& name, size_t size, uintptr_t* out_addr);
+// Release remote memory bound to a script symbol and remove the symbol.
+Result script_free(const std::string& name);
+// Persist script enable state (idempotent per path).
+Result script_enable(const std::string& path);
+Result script_disable(const std::string& path);
+Result script_status(std::vector<ScriptInfo>& out);
+
+// ---- hook --------------------------------------------------------------------------
+// Patch target to `jmp newmem` (5-byte E9 rel32), save original bytes.
+Result hook_set(uintptr_t addr, uintptr_t newmem, HookInfo& out);
+// Restore original bytes of a hooked target and remove its record.
+Result hook_clear(uintptr_t addr);
+
+// ---- assembly (labels) -------------------------------------------------------------
+// Assemble multi-line code with label definitions/references and external
+// symbols; base_addr used for PC-relative displacements.
+Result asm_assemble_labels(const std::string& code, uintptr_t base_addr,
+                           const std::map<std::string, uintptr_t>& symbols,
+                           std::vector<uint8_t>& out, std::string* out_text);
+
+// ---- thread (create at arbitrary address) ------------------------------------------
+Result thread_create_at(uintptr_t addr, uint32_t* out_tid);
 
 }  // namespace deeptrace

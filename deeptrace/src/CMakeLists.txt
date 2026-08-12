@@ -49,6 +49,10 @@ add_library(deeptrace STATIC
     service/inject.cpp
     service/asm.h
     service/asm.cpp
+    service/script.h
+    service/script.cpp
+    service/hook.h
+    service/hook.cpp
 )
 
 target_include_directories(deeptrace PUBLIC

@@ -118,4 +118,20 @@ struct InjectInfo {
     size_t size = 0;
 };
 
+// hook record: target patched to jump to newmem, original bytes saved.
+struct HookInfo {
+    uintptr_t target = 0;
+    uintptr_t newmem = 0;
+    std::vector<uint8_t> orig_bytes;  // original bytes that were overwritten
+    size_t size = 0;                  // patch region length (bytes)
+};
+
+// script enable record (per script path).
+struct ScriptInfo {
+    std::string path;                  // script file path (identity)
+    std::string state;                 // "enabled" | "disabled"
+    std::vector<HookInfo> hooks;       // hooks registered by this script
+    std::vector<std::pair<std::string, uintptr_t>> allocs;  // symbol -> addr
+};
+
 }  // namespace deeptrace

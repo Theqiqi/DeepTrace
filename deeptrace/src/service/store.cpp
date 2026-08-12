@@ -11,6 +11,8 @@ namespace deeptrace::internal {
 namespace {
 std::string breaks_path(uint32_t pid) { return state_dir(pid) + "\\breaks.dat"; }
 std::string injects_path(uint32_t pid) { return state_dir(pid) + "\\injects.dat"; }
+std::string scripts_path(uint32_t pid) { return state_dir(pid) + "\\scripts.dat"; }
+std::string hooks_path(uint32_t pid) { return state_dir(pid) + "\\hooks.dat"; }
 }  // namespace
 
 bool read_lines(const std::string& path, std::vector<std::string>& out) {
@@ -143,6 +145,107 @@ bool save_injects(uint32_t pid, const std::vector<InjectRecord>& recs) {
                         std::to_string(r.thread_id));
     }
     return write_lines(injects_path(pid), lines);
+}
+
+std::vector<ScriptSymbolRecord> load_script_symbols(uint32_t pid) {
+    std::vector<ScriptSymbolRecord> out;
+    std::vector<std::string> lines;
+    if (!read_lines(scripts_path(pid), lines)) return out;
+    for (const auto& l : lines) {
+        // format: SYM|<name>|<addr>
+        if (l.rfind("SYM|", 0) != 0) continue;
+        std::istringstream ss(l.substr(4));
+        std::string name, addr_s;
+        std::getline(ss, name, '|');
+        std::getline(ss, addr_s, '|');
+        uint64_t addr;
+        if (name.empty() || !parse_uint64(addr_s, addr)) continue;
+        ScriptSymbolRecord r;
+        r.name = name;
+        r.address = static_cast<uintptr_t>(addr);
+        out.push_back(r);
+    }
+    return out;
+}
+
+bool save_script_symbols(uint32_t pid, const std::vector<ScriptSymbolRecord>& recs) {
+    // preserve enable records in the same file
+    auto enabled = load_enabled_scripts(pid);
+    std::vector<std::string> lines;
+    for (const auto& r : recs) {
+        lines.push_back("SYM|" + r.name + "|" + std::to_string(r.address));
+    }
+    for (const auto& p : enabled) {
+        lines.push_back("ENABLE|" + p);
+    }
+    return write_lines(scripts_path(pid), lines);
+}
+
+std::vector<HookRecord> load_hooks(uint32_t pid) {
+    std::vector<HookRecord> out;
+    std::vector<std::string> lines;
+    if (!read_lines(hooks_path(pid), lines)) return out;
+    for (const auto& l : lines) {
+        // format: HOOK|<target>|<newmem>|<orig_hex>|<size>
+        if (l.rfind("HOOK|", 0) != 0) continue;
+        std::istringstream ss(l.substr(5));
+        std::string t_s, n_s, hex_s, sz_s;
+        std::getline(ss, t_s, '|');
+        std::getline(ss, n_s, '|');
+        std::getline(ss, hex_s, '|');
+        std::getline(ss, sz_s, '|');
+        uint64_t target, newmem, sz;
+        if (!parse_uint64(t_s, target) || !parse_uint64(n_s, newmem) ||
+            !parse_uint64(sz_s, sz)) {
+            continue;
+        }
+        std::vector<uint8_t> bytes;
+        if (!hex_decode(hex_s, bytes)) continue;
+        HookRecord r;
+        r.target = static_cast<uintptr_t>(target);
+        r.newmem = static_cast<uintptr_t>(newmem);
+        r.orig_bytes = std::move(bytes);
+        r.size = static_cast<size_t>(sz);
+        out.push_back(r);
+    }
+    return out;
+}
+
+bool save_hooks(uint32_t pid, const std::vector<HookRecord>& recs) {
+    std::vector<std::string> lines;
+    for (const auto& r : recs) {
+        lines.push_back("HOOK|" + std::to_string(r.target) + "|" +
+                        std::to_string(r.newmem) + "|" +
+                        hex_encode(r.orig_bytes.data(), r.orig_bytes.size()) + "|" +
+                        std::to_string(r.size));
+    }
+    return write_lines(hooks_path(pid), lines);
+}
+
+std::vector<std::string> load_enabled_scripts(uint32_t pid) {
+    std::vector<std::string> out;
+    std::vector<std::string> lines;
+    if (!read_lines(scripts_path(pid), lines)) return out;
+    for (const auto& l : lines) {
+        // format: ENABLE|<path>
+        if (l.rfind("ENABLE|", 0) != 0) continue;
+        std::string path = l.substr(7);
+        if (!path.empty()) out.push_back(path);
+    }
+    return out;
+}
+
+bool save_enabled_scripts(uint32_t pid, const std::vector<std::string>& paths) {
+    // preserve symbol records in the same file
+    auto syms = load_script_symbols(pid);
+    std::vector<std::string> lines;
+    for (const auto& s : syms) {
+        lines.push_back("SYM|" + s.name + "|" + std::to_string(s.address));
+    }
+    for (const auto& p : paths) {
+        lines.push_back("ENABLE|" + p);
+    }
+    return write_lines(scripts_path(pid), lines);
 }
 
 }  // namespace deeptrace::internal

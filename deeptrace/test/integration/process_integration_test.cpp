@@ -483,3 +483,176 @@ TEST_F(DeeptraceIntegration, AsmAssembleBad) {
     EXPECT_EQ(deeptrace::asm_assemble("bogus rax, 1", bytes, nullptr),
               deeptrace::Result::BadFormat);
 }
+
+// ---- v2.3.0: script engine primitives ----
+
+TEST_F(DeeptraceIntegration, ScriptAllocFree) {
+    uintptr_t addr = 0;
+    EXPECT_EQ(deeptrace::script_alloc("testmem", 64, &addr), deeptrace::Result::Ok);
+    EXPECT_NE(addr, 0u);
+
+    // duplicate symbol -> InvalidArg
+    uintptr_t addr2 = 0;
+    EXPECT_EQ(deeptrace::script_alloc("testmem", 64, &addr2), deeptrace::Result::InvalidArg);
+
+    // free releases and removes the symbol; second free -> NotFound
+    EXPECT_EQ(deeptrace::script_free("testmem"), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_free("testmem"), deeptrace::Result::NotFound);
+
+    // invalid args
+    EXPECT_EQ(deeptrace::script_alloc("", 64, &addr), deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_alloc("ok", 0, &addr), deeptrace::Result::InvalidArg);
+}
+
+TEST_F(DeeptraceIntegration, AsmAssembleLabels) {
+    // label defined and referenced within one stream. Write the assembled code
+    // into real remote memory and disassemble it to verify the jump target
+    // equals the label address (robust against short/long jump form choice).
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::script_alloc("labtest", 64, &base), deeptrace::Result::Ok);
+
+    std::map<std::string, uintptr_t> syms;
+    std::vector<uint8_t> bytes;
+    EXPECT_EQ(deeptrace::asm_assemble_labels(
+                  "start:\n"
+                  "  xor eax, eax\n"
+                  "  jmp start\n"
+                  "  nop\n",
+                  base, syms, bytes, nullptr),
+              deeptrace::Result::Ok);
+    // xor eax,eax (2) + jmp (2 or 5) + nop (1) = 5 (short) or 8 (near)
+    ASSERT_TRUE(bytes.size() == 5u || bytes.size() == 8u);
+
+    size_t n = 0;
+    EXPECT_EQ(deeptrace::memory_write(base, bytes.data(), bytes.size(), &n),
+              deeptrace::Result::Ok);
+
+    std::vector<deeptrace::Instruction> insns;
+    EXPECT_EQ(deeptrace::disasm_at(base, 3, insns), deeptrace::Result::Ok);
+    ASSERT_EQ(insns.size(), 3u);
+    EXPECT_EQ(insns[0].text, "xor eax, eax");
+    // jump target must resolve to the label address (base)
+    EXPECT_TRUE(insns[1].text.find("0x" + [&]() -> std::string {
+        char buf[32];
+        snprintf(buf, sizeof buf, "%llX", (unsigned long long)base);
+        return buf;
+    }()) != std::string::npos);
+    EXPECT_EQ(insns[2].text, "nop");
+
+    EXPECT_EQ(deeptrace::script_free("labtest"), deeptrace::Result::Ok);
+}
+
+TEST_F(DeeptraceIntegration, AsmAssembleLabelsExternalSymbol) {
+    // jmp to an external symbol address; verify by disassembling real memory.
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::script_alloc("exttest", 64, &base), deeptrace::Result::Ok);
+    uintptr_t target = base + 0x1000;  // far enough for near jmp
+
+    std::map<std::string, uintptr_t> syms;
+    syms["hook_target"] = target;
+    std::vector<uint8_t> bytes;
+    EXPECT_EQ(deeptrace::asm_assemble_labels("jmp hook_target", base, syms,
+                                             bytes, nullptr),
+              deeptrace::Result::Ok);
+    ASSERT_EQ(bytes.size(), 5u);
+    EXPECT_EQ(bytes[0], 0xE9);
+
+    size_t n = 0;
+    EXPECT_EQ(deeptrace::memory_write(base, bytes.data(), bytes.size(), &n),
+              deeptrace::Result::Ok);
+
+    std::vector<deeptrace::Instruction> insns;
+    EXPECT_EQ(deeptrace::disasm_at(base, 1, insns), deeptrace::Result::Ok);
+    ASSERT_EQ(insns.size(), 1u);
+    char buf[32];
+    snprintf(buf, sizeof buf, "%llX", (unsigned long long)target);
+    fprintf(stderr, "DEBUG ext disasm='%s' target=%s\n", insns[0].text.c_str(), buf);
+    EXPECT_TRUE(insns[0].text.find(buf) != std::string::npos);
+
+    EXPECT_EQ(deeptrace::script_free("exttest"), deeptrace::Result::Ok);
+}
+
+TEST_F(DeeptraceIntegration, AsmAssembleLabelsUndefined) {
+    std::map<std::string, uintptr_t> syms;
+    std::vector<uint8_t> bytes;
+    EXPECT_EQ(deeptrace::asm_assemble_labels("jmp missing_label", 0x1000, syms,
+                                             bytes, nullptr),
+              deeptrace::Result::BadFormat);
+}
+
+TEST_F(DeeptraceIntegration, ThreadCreateAt) {
+    // allocate an executable buffer, write {0xC3} (ret), create a thread there
+    uintptr_t addr = 0;
+    ASSERT_EQ(deeptrace::script_alloc("tcat", 16, &addr), deeptrace::Result::Ok);
+    std::vector<uint8_t> code = {0xC3};
+    size_t n = 0;
+    EXPECT_EQ(deeptrace::memory_write(addr, code.data(), code.size(), &n),
+              deeptrace::Result::Ok);
+    uint32_t tid = 0;
+    EXPECT_EQ(deeptrace::thread_create_at(addr, &tid), deeptrace::Result::Ok);
+    EXPECT_NE(tid, 0u);
+    EXPECT_EQ(deeptrace::script_free("tcat"), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::thread_create_at(0, &tid), deeptrace::Result::InvalidArg);
+}
+
+TEST_F(DeeptraceIntegration, HookSetClear) {
+    // target = g_bytes[8..13] is 5 nops (0x90) -> patch to jmp elsewhere
+    uintptr_t target = g_target.g_bytes + 8;
+    uintptr_t newmem = 0x6000;
+
+    std::vector<uint8_t> before;
+    ASSERT_EQ(deeptrace::memory_dump(target, 5, before), deeptrace::Result::Ok);
+    ASSERT_EQ(before.size(), 5u);
+    EXPECT_EQ(before[0], 0x90);  // nop
+
+    deeptrace::HookInfo info;
+    EXPECT_EQ(deeptrace::hook_set(target, newmem, info), deeptrace::Result::Ok);
+    EXPECT_EQ(info.target, target);
+    EXPECT_EQ(info.newmem, newmem);
+    EXPECT_EQ(info.size, 5u);
+    ASSERT_EQ(info.orig_bytes.size(), 5u);
+    EXPECT_EQ(info.orig_bytes, before);
+
+    // target now starts with E9 jmp
+    std::vector<uint8_t> after;
+    ASSERT_EQ(deeptrace::memory_dump(target, 5, after), deeptrace::Result::Ok);
+    EXPECT_EQ(after[0], 0xE9);
+
+    // clear restores the original bytes exactly
+    EXPECT_EQ(deeptrace::hook_clear(target), deeptrace::Result::Ok);
+    std::vector<uint8_t> restored;
+    ASSERT_EQ(deeptrace::memory_dump(target, 5, restored), deeptrace::Result::Ok);
+    EXPECT_EQ(restored, before);
+
+    // second clear -> NotFound
+    EXPECT_EQ(deeptrace::hook_clear(target), deeptrace::Result::NotFound);
+}
+
+TEST_F(DeeptraceIntegration, HookClearNotFound) {
+    EXPECT_EQ(deeptrace::hook_clear(0x12345678), deeptrace::Result::NotFound);
+}
+
+TEST_F(DeeptraceIntegration, ScriptEnableDisableIdempotent) {
+    const std::string path = "C:\\tmp\\test_script.aa";
+    EXPECT_EQ(deeptrace::script_enable(path), deeptrace::Result::Ok);
+    // idempotent: second enable is a no-op success
+    EXPECT_EQ(deeptrace::script_enable(path), deeptrace::Result::Ok);
+
+    std::vector<deeptrace::ScriptInfo> list;
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    bool found = false;
+    for (const auto& s : list) {
+        if (s.path == path && s.state == "enabled") found = true;
+    }
+    EXPECT_TRUE(found);
+
+    EXPECT_EQ(deeptrace::script_disable(path), deeptrace::Result::Ok);
+    // idempotent: second disable is a no-op success
+    EXPECT_EQ(deeptrace::script_disable(path), deeptrace::Result::Ok);
+
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    for (const auto& s : list) {
+        EXPECT_NE(s.path, path);
+    }
+}
+
