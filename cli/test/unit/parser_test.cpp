@@ -559,7 +559,7 @@ TEST(Parser, HelpTextListsNewCommands) {
     EXPECT_NE(help.find("script run"), std::string::npos);
     EXPECT_NE(help.find("script disable"), std::string::npos);
     EXPECT_NE(help.find("script status"), std::string::npos);
-    EXPECT_NE(help.find("deeptrace_cli v2.6.0"), std::string::npos);
+    EXPECT_NE(help.find("deeptrace_cli v2.7.0"), std::string::npos);
 }
 
 TEST(Parser, ScriptCheckParses) {

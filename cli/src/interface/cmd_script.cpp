@@ -158,17 +158,8 @@ std::vector<uint8_t> spaced_hex(const std::string& s) {
 namespace internal {
 namespace aa {
 
-namespace {
-
-// ---- line classification ------------------------------------------------
-
-struct ClassifyResult {
-    bool ok = true;
-    Step step;
-    std::string err;  // empty when ok
-};
-
 // "module"+offset label: find the quoted module and the offset expression.
+// Shared by the line classifier (syntax) and resolve_enable (anchor address).
 bool parse_module_target(const std::string& body, std::string& module,
                          uint64_t& offset, std::string& err) {
     if (body.empty() || body[0] != '"') {
@@ -197,6 +188,16 @@ bool parse_module_target(const std::string& body, std::string& module,
     }
     return true;
 }
+
+namespace {
+
+// ---- line classification ------------------------------------------------
+
+struct ClassifyResult {
+    bool ok = true;
+    Step step;
+    std::string err;  // empty when ok
+};
 
 ClassifyResult classify(const std::string& line_in, size_t line_no) {
     ClassifyResult res;
@@ -725,24 +726,39 @@ void rollback(ScriptContext& ctx) {
 // Resolve hook targets (module base + offset) into hook_addrs (keyed by
 // source line) and pre-collect post-hook labels (labels defined after a hook
 // target bind at target+5, the address right after the 5-byte jmp patch, so
-// earlier blocks can reference them as forward labels). Returns false on
-// module resolution failure.
+// earlier blocks can reference them as forward labels). Also resolves each
+// alloc's near expression (third arg) into an anchor address (alloc symbol
+// name -> anchor); a quoted "module"+offset must reference a loaded module.
+// Returns false on module resolution failure.
 bool resolve_enable(const std::vector<Step>& enable,
                     std::map<size_t, uintptr_t>& hook_addrs,
                     std::map<std::string, uintptr_t>& ext_labels,
+                    std::map<std::string, uintptr_t>& near_anchors,
                     std::string* out_module) {
     std::set<std::string> alloc_names;
     for (const Step& st : enable) {
         if (st.kind != StepKind::Alloc) continue;
         alloc_names.insert(st.name);
-        // Near expression hint: "module"+offset must reference a loaded module.
-        if (!st.text.empty() && st.text[0] == '"') {
-            std::string module = st.text.substr(1, st.text.find('"', 1) - 1);
-            uintptr_t base = 0;
-            Result r = deeptrace::resolve_base(module, &base);
-            if (r != Result::Ok) {
-                if (out_module) *out_module = module;
-                return false;
+        // Near expression: "module"+offset -> anchor = base + offset (module
+        // must be loaded); bare address -> anchor = the address itself.
+        if (!st.text.empty()) {
+            if (st.text[0] == '"') {
+                std::string module;
+                uint64_t offset = 0;
+                std::string merr;
+                if (!internal::aa::parse_module_target(st.text, module, offset, merr))
+                    return false;
+                uintptr_t base = 0;
+                Result r = deeptrace::resolve_base(module, &base);
+                if (r != Result::Ok) {
+                    if (out_module) *out_module = module;
+                    return false;
+                }
+                near_anchors[st.name] = base + offset;
+            } else {
+                uint64_t anchor = 0;
+                if (!parse_u64(st.text, anchor) || anchor == 0) return false;
+                near_anchors[st.name] = anchor;
             }
         }
     }
@@ -781,12 +797,20 @@ bool resolve_enable(const std::vector<Step>& enable,
 
 int exec_enable(const std::vector<Step>& enable, ScriptContext& ctx,
                 const std::map<size_t, uintptr_t>& hook_addrs,
-                const std::map<std::string, uintptr_t>& ext_labels) {
-    // Phase 1: allocate all symbols first (independent of code layout).
+                const std::map<std::string, uintptr_t>& ext_labels,
+                const std::map<std::string, uintptr_t>& near_anchors) {
+    // Phase 1: allocate all symbols first (independent of code layout). An
+    // alloc with a near anchor (v2.7.0) is placed within +/-2GB of the anchor
+    // so RIP-relative rel32 displacements never overflow; without an anchor
+    // the allocation is OS-placed (unchanged).
     for (const Step& st : enable) {
         if (st.kind != StepKind::Alloc) continue;
         uintptr_t addr = 0;
-        Result r = deeptrace::script_alloc(st.name, st.size, ctx.path, &addr);
+        std::map<std::string, uintptr_t>::const_iterator nit = near_anchors.find(st.name);
+        Result r = (nit != near_anchors.end())
+                       ? deeptrace::script_alloc_near(st.name, st.size, nit->second,
+                                                      ctx.path, &addr)
+                       : deeptrace::script_alloc(st.name, st.size, ctx.path, &addr);
         if (r != Result::Ok) {
             rollback(ctx);
             return internal::report_error(r, st.name);
@@ -1153,11 +1177,12 @@ int script_run(const CommandRequest& req) {
     ctx.path = path;
     std::map<size_t, uintptr_t> hook_addrs;
     std::map<std::string, uintptr_t> ext_labels;
+    std::map<std::string, uintptr_t> near_anchors;
     std::string bad_module;
-    if (!resolve_enable(enable, hook_addrs, ext_labels, &bad_module)) {
+    if (!resolve_enable(enable, hook_addrs, ext_labels, near_anchors, &bad_module)) {
         return internal::report_error(Result::NotFound, bad_module);
     }
-    int rc = exec_enable(enable, ctx, hook_addrs, ext_labels);
+    int rc = exec_enable(enable, ctx, hook_addrs, ext_labels, near_anchors);
     if (rc != 0) return rc;
 
     Result r = deeptrace::script_enable(path);

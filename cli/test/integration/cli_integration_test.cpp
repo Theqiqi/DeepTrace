@@ -899,6 +899,53 @@ TEST(CliChain, SymbolAddressingMemReadWatchAdd) {
     EXPECT_TRUE(target_alive());
 }
 
+// v2.7.0: alloc's near third argument performs a REAL near allocation within
+// +/-2GB of the anchor (module base + offset), so RIP-relative rel32
+// displacements to the allocation never overflow. The recorded symbol address
+// must lie inside the anchor window.
+TEST(CliChain, ScriptAllocNearPlacement) {
+    // anchor = module base + 0x1000 (a real, loaded target address)
+    uintptr_t base = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::module_base("deeptrace_target.exe", &base),
+              deeptrace::Result::Ok);
+    deeptrace::detach();
+    ASSERT_NE(base, 0u);
+    const uintptr_t anchor = base + 0x1000;
+
+    std::string script = write_aa_script(
+        "[ENABLE]\n"
+        "alloc(nearmem,64,\"deeptrace_target.exe\"+1000)\n"
+        "[DISABLE]\n"
+        "dealloc(nearmem)\n",
+        50);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    // The allocation address must be recorded under the symbol and must sit
+    // inside the +/-2GB window around the anchor.
+    std::vector<deeptrace::ScriptInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    uintptr_t nearmem = 0;
+    for (const auto& s : list) {
+        if (s.path != script) continue;
+        for (const auto& a : s.allocs) {
+            if (a.first == "nearmem") nearmem = a.second;
+        }
+    }
+    ASSERT_NE(nearmem, 0u) << "nearmem symbol not recorded";
+    uintptr_t dist = (nearmem > anchor) ? nearmem - anchor : anchor - nearmem;
+    EXPECT_LE(dist, 0x7FFFFFFFull)
+        << "near allocation landed outside the +/-2GB anchor window";
+
+    // cleanup: disable frees the near allocation by name
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
 // script check accepts the artificial-pointer script (no attach).
 TEST(CliChain, ScriptCheckArtificialPointer) {
     std::string script = materialize_aa("script_aptr.aa", "", 31);

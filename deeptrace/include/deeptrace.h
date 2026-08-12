@@ -102,6 +102,12 @@ Result shellcode_status(std::vector<InjectInfo>& out);
 // name -> InvalidArg.
 Result script_alloc(const std::string& name, size_t size, const std::string& owner,
                     uintptr_t* out_addr);
+// Allocate within +/-2GB of an anchor (RIP-relative rel32 range), preferring
+// the free region closest to the anchor. Record/save/rollback semantics mirror
+// script_alloc. No free region in the window -> Error (never falls back to
+// arbitrary placement).
+Result script_alloc_near(const std::string& name, size_t size, uintptr_t anchor,
+                         const std::string& owner, uintptr_t* out_addr);
 // Release remote memory bound to a script symbol and remove the symbol.
 Result script_free(const std::string& name);
 // Persist script enable state (idempotent per path).

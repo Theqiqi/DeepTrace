@@ -67,6 +67,32 @@ Result script_alloc(const std::string& name, size_t size, const std::string& own
     return Result::Ok;
 }
 
+Result script_alloc_near(const std::string& name, size_t size, uintptr_t anchor,
+                         const std::string& owner, uintptr_t* out_addr) {
+    auto& s = internal::session();
+    if (!s.handle) return Result::NotAttached;
+    if (!valid_symbol_name(name) || size == 0) return Result::InvalidArg;
+    if (!out_addr) return Result::InvalidArg;
+
+    auto recs = internal::load_script_symbols(s.pid);
+    if (symbol_exists(recs, name)) return Result::InvalidArg;  // duplicate symbol
+
+    uintptr_t remote = 0;
+    Result r = internal::RemoteAllocNear(s.handle, size, PAGE_EXECUTE_READWRITE,
+                                         anchor, &remote);
+    if (r != Result::Ok) return r;
+
+    // Register symbol before returning; on record-save failure roll back the
+    // allocation so no untracked memory is leaked.
+    recs.push_back(internal::ScriptSymbolRecord{name, remote, owner});
+    if (!internal::save_script_symbols(s.pid, recs)) {
+        internal::RemoteFree(s.handle, remote);
+        return Result::Error;
+    }
+    *out_addr = remote;
+    return Result::Ok;
+}
+
 Result script_free(const std::string& name) {
     auto& s = internal::session();
     if (!s.handle) return Result::NotAttached;

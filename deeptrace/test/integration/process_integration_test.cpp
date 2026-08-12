@@ -531,6 +531,52 @@ TEST_F(DeeptraceIntegration, ScriptSymbolLookup) {
     EXPECT_EQ(deeptrace::script_symbol("symlookup", &found), deeptrace::Result::NotFound);
 }
 
+// v2.7.0: script_alloc_near lands within +/-2GB of the anchor (RIP-relative
+// rel32 range), mirrors script_alloc's record/save/rollback semantics, and
+// never silently falls back to arbitrary placement.
+TEST_F(DeeptraceIntegration, ScriptAllocNear) {
+    // anchor: the target module base (a real, loaded address)
+    uintptr_t anchor = 0;
+    ASSERT_EQ(deeptrace::module_base("deeptrace_target.exe", &anchor),
+              deeptrace::Result::Ok);
+    ASSERT_NE(anchor, 0u);
+
+    uintptr_t addr = 0;
+    EXPECT_EQ(deeptrace::script_alloc_near("nearmem", 64, anchor, "", &addr),
+              deeptrace::Result::Ok);
+    ASSERT_NE(addr, 0u);
+
+    // landing point must be inside the +/-2GB window around the anchor
+    uintptr_t dist = (addr > anchor) ? addr - anchor : anchor - addr;
+    EXPECT_LE(dist, 0x7FFFFFFFull);
+
+    // symbol record consistent with script_symbol (same lookup path)
+    uintptr_t found = 0;
+    EXPECT_EQ(deeptrace::script_symbol("nearmem", &found), deeptrace::Result::Ok);
+    EXPECT_EQ(found, addr);
+
+    // duplicate symbol -> InvalidArg (same as script_alloc)
+    uintptr_t addr2 = 0;
+    EXPECT_EQ(deeptrace::script_alloc_near("nearmem", 64, anchor, "", &addr2),
+              deeptrace::Result::InvalidArg);
+
+    // free releases and removes; second free -> NotFound
+    EXPECT_EQ(deeptrace::script_free("nearmem"), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_free("nearmem"), deeptrace::Result::NotFound);
+
+    // invalid args
+    EXPECT_EQ(deeptrace::script_alloc_near("", 64, anchor, "", &addr),
+              deeptrace::Result::InvalidArg);
+    EXPECT_EQ(deeptrace::script_alloc_near("ok2", 0, anchor, "", &addr),
+              deeptrace::Result::InvalidArg);
+
+    // no session -> NotAttached
+    EXPECT_EQ(deeptrace::detach(), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_alloc_near("ok3", 64, anchor, "", &addr),
+              deeptrace::Result::NotAttached);
+    EXPECT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+}
+
 namespace {
 // Case-insensitive substring match. Capstone renders absolute targets in
 // lowercase hex (e.g. "jmp 0x7ff6..."), so comparing against uppercase hex

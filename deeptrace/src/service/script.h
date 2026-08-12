@@ -13,6 +13,13 @@ namespace deeptrace {
 Result script_alloc(const std::string& name, size_t size, const std::string& owner,
                     uintptr_t* out_addr);
 
+// Allocate within +/-2GB of an anchor (RIP-relative rel32 range), preferring
+// the free region closest to the anchor, and bind it to a script symbol name.
+// Record/save/rollback semantics mirror script_alloc. No free region in the
+// window -> Error (never falls back to arbitrary placement).
+Result script_alloc_near(const std::string& name, size_t size, uintptr_t anchor,
+                         const std::string& owner, uintptr_t* out_addr);
+
 // Release the remote memory bound to a script symbol and remove the symbol.
 // Symbol not found -> NotFound.
 Result script_free(const std::string& name);
