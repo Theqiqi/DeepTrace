@@ -29,6 +29,18 @@
   check failed at line N: <msg>`,退出码 2。
 - 既有 script 命令行为不变;解析错误统一沿用 `script parse error at line N` 格式。
 
+### 2.5 实现期决策补充(与 15_异常设计 同步)
+
+- check 的静态校验严格镜像 run 的执行语义(代码审查修复):
+  - asm 行无写入目标(无 alloc'd 标签切换 / 无 hook 目标在前)→ check 报错退出 2
+    (与 exec_enable 的 flush_asm 同规则);
+  - hook jmp 标签宇宙 = alloc 符号 ∪ hook 块内标签(与 resolve_enable 的
+    ext_labels 一致),普通汇编块标签不可作为 hook jmp 目标;
+  - `script check -p <pid>` 不触发 attach(executor 排除),保持纯本地。
+- 已知边界:用户示例中的 `mov [addsunrcx],rcx`(非 jmp/call 符号引用)与
+  `mov r12,"m.dll"+100`(asm 行内字符串立即数)超出 v2.3.0 已声明能力边界,
+  check 与 run 同样报 BadFormat(能力边界一致,文档不暗示支持)。
+
 ### 3. 变更范围(初稿)
 
 | 位置 | 变更 |
