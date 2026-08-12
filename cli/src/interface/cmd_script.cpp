@@ -649,6 +649,19 @@ bool aa_precheck_asm(const std::vector<Step>& enable,
                 if (group_lines.empty()) group_line = st.line;
                 group_lines.push_back(st.text);
                 continue;
+            case StepKind::NopFill:
+            case StepKind::Db:
+                // Writes too: mirror exec_enable's rule that every write needs
+                // a target (a bare nop/db before any alloc'd label or hook
+                // target must be rejected, matching run's behavior).
+                if (!flush()) return false;
+                if (!target_set) {
+                    err = "script check failed at line " +
+                          std::to_string(st.line) +
+                          ": asm line has no write target";
+                    return false;
+                }
+                continue;
             default:
                 continue;
         }
@@ -910,6 +923,13 @@ int exec_enable(const std::vector<Step>& enable, ScriptContext& ctx,
             case StepKind::NopFill:
                 if (in_hook) continue;  // CE filler beyond the 5-byte patch
                 if (!flush_asm()) return 1;
+                if (!target_set) {
+                    printer::print_error("script error at line " +
+                                         std::to_string(st.line) +
+                                         ": asm line has no write target");
+                    rollback(ctx);
+                    return 1;
+                }
                 {
                     std::vector<uint8_t> nops(st.size, 0x90);
                     size_t written = 0;
@@ -927,6 +947,13 @@ int exec_enable(const std::vector<Step>& enable, ScriptContext& ctx,
             case StepKind::Db:
                 if (in_hook) continue;  // restore bytes belong to [DISABLE]
                 if (!flush_asm()) return 1;
+                if (!target_set) {
+                    printer::print_error("script error at line " +
+                                         std::to_string(st.line) +
+                                         ": asm line has no write target");
+                    rollback(ctx);
+                    return 1;
+                }
                 {
                     std::vector<uint8_t> bytes = spaced_hex(st.text);
                     if (bytes.empty()) {

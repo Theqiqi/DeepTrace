@@ -523,6 +523,20 @@ TEST(AaCheck, UndefinedSymbolRefFails) {
     EXPECT_NE(err.find("BadFormat"), std::string::npos);
 }
 
+TEST(AaCheck, NopNoWriteTargetFails) {
+    // A bare nop (NopFill) before any alloc'd label or hook target is a write
+    // with no target: check must reject it (mirroring exec_enable's rule),
+    // instead of passing while run writes to address 0.
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\nnop\n", enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_NE(err.find("asm line has no write target"), std::string::npos);
+}
+
 TEST(AaCheck, AsmNoWriteTargetFails) {
     // Mirror of exec_enable's flush_asm rule: bare asm with no alloc'd-label
     // switch and no hook target must be rejected statically (run errors with
