@@ -289,6 +289,21 @@ TEST(CliChain, Bin2hexAndDisasmFile) {
     EXPECT_NE(d.find("mov rax"), std::string::npos) << "captured: " << d;
     EXPECT_NE(d.find("ret"), std::string::npos) << "captured: " << d;
 
+    // dec/bin/ascii formats (v2.13.0)
+    auto dec = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "bin2hex", bin, "dec"}), 0);
+    });
+    EXPECT_NE(dec.find("72 139 195"), std::string::npos) << "captured: " << dec;
+    auto asc = capture_stdout([&] {
+        EXPECT_EQ(run_cli({"deeptrace_cli", "bin2hex", bin, "ascii"}), 0);
+    });
+    EXPECT_NE(asc.find("..."), std::string::npos) << "captured: " << asc;  // non-printable -> '.'
+
+    // `disasm file` with -p must not require an attach (session-free)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", "99999999", "disasm", "file",
+                       bin}),
+              0);
+
     // missing file -> usage error 2
     EXPECT_EQ(run_cli({"deeptrace_cli", "bin2hex", "nope_v213.bin"}), 2);
     EXPECT_EQ(run_cli({"deeptrace_cli", "disasm", "file", "nope_v213.bin"}), 2);

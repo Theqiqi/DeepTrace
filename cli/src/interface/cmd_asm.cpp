@@ -25,14 +25,8 @@ namespace {
 // Print assembled bytes as hex text or a C array (same output as assemble).
 void print_bytes_as(const std::vector<uint8_t>& bytes, bool c_array) {
     if (c_array) {
-        std::string out;
-        for (size_t i = 0; i < bytes.size(); ++i) {
-            char b[16];
-            std::snprintf(b, sizeof b, "0x%02X, ", bytes[i]);
-            out += b;
-        }
-        if (!out.empty()) out.resize(out.size() - 2);
-        printer::print_message("unsigned char code[] = { " + out + " };");
+        // v2.13.0: delegate to the shared printer branch (identical shape)
+        printer::print_bytes_formatted(bytes, "c-array");
         return;
     }
     std::string out;

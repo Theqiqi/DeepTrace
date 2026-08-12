@@ -234,6 +234,9 @@ bool needs_session_attach(const CommandRequest& req) {
     if (req.group == "script" && req.action == "check") {
         return false;  // check is pure local validation; no target session needed
     }
+    if (req.group == "disasm" && req.action == "file") {
+        return false;  // v2.13.0: local file disassembly needs no session
+    }
     return true;
 }
 
