@@ -58,9 +58,9 @@ Most commands need a target process first: `-p <pid>`. Process IDs (PIDs) are li
   ```
   deeptrace_cli ps attach 1234
   ```
-- **Expected output** (since v2.11.0 the granted permissions are shown):
+- **Expected output** (real sample — since v2.11.0 the granted permissions are shown):
   ```
-  OK (permissions: read|write|vm_operate|create_thread|query)
+  OK (permissions: read|write|vm_operate|create_thread|suspend_resume|query|query_limited|terminate|dup_handle|create_process|set_quota|set_info)
   ```
   The permission list tells you which operations will actually work (read/write/vm_operate/create_thread/…). If a permission you need is missing (e.g. no `write`), later operations on that process will fail — re-run the command window as administrator.
 - **Note**: a non-existent PID reports `Error: NoSuchProcess(<pid>)`; a protected process reports `Error: AccessDenied`.
@@ -406,10 +406,12 @@ When the target reaches the breakpoint address, `continue` stops and reports the
   ```
   deeptrace_cli disasm file shellcode.bin 16
   ```
-- **Expected output** (same table as `disasm at`; addresses start from 0 for a file):
+- **Expected output** (real sample — same table as `disasm at`, one instruction per row; addresses start from 0 for a file):
   ```
   ADDRESS            BYTES                INSTRUCTION
-  0x0000000000000000 90 90 C3             nop; nop; ret
+  0x0000000000000000 90                   nop
+  0x0000000000000001 90                   nop
+  0x0000000000000002 C3                   ret
   ```
 - **Note**: this command does not need `-p`; the file must be readable.
 
@@ -582,9 +584,9 @@ When the target reaches the breakpoint address, `continue` stops and reports the
 ### 11.3 Allocate-Only, Then Run on Demand — `shellcode alloc <source>` / `shellcode run <address>` / `shellcode free <address>`
 
 - **When to use**: when you don't want the shellcode to run the moment it's written, or you want to **trigger the same code repeatedly**. The lifecycle is: `alloc` (write only, nothing runs) → `run` (trigger once, can repeat) → `free` (release the memory). `source` is hex bytes or a `.bin` path.
-- **Steps**:
+- **Steps** (hex must be compact, no spaces):
   ```
-  deeptrace_cli -p 1234 shellcode alloc "48 31 C0 C3"   :: alloc + write, prints the address
+  deeptrace_cli -p 1234 shellcode alloc "4831C0C3"      :: alloc + write, prints the address
   deeptrace_cli -p 1234 shellcode run 0x...             :: trigger once (repeatable)
   deeptrace_cli -p 1234 shellcode free 0x...            :: release when done
   ```
