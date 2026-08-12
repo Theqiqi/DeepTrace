@@ -69,6 +69,27 @@ TEST_F(DeeptraceIntegration, SessionPid) {
     EXPECT_EQ(pid, g_target.pid);
 }
 
+// v2.11.0: session_permissions reports the access mask the successful attach
+// actually received. For our own spawned target the full PROCESS_ALL_ACCESS
+// grant succeeds, so the mask must include the memory read/write bits; after
+// detach the query reports NotAttached.
+TEST_F(DeeptraceIntegration, SessionPermissions) {
+    uint32_t mask = 0;
+    EXPECT_EQ(deeptrace::session_permissions(&mask), deeptrace::Result::Ok);
+    EXPECT_NE(mask, 0u) << "attach granted no permissions";
+    // PROCESS_VM_READ (0x10) and PROCESS_VM_WRITE (0x20) must be present
+    EXPECT_NE(mask & 0x10u, 0u) << "PROCESS_VM_READ missing";
+    EXPECT_NE(mask & 0x20u, 0u) << "PROCESS_VM_WRITE missing";
+
+    // null out -> InvalidArg
+    EXPECT_EQ(deeptrace::session_permissions(nullptr), deeptrace::Result::InvalidArg);
+
+    // after detach the session is gone -> NotAttached
+    EXPECT_EQ(deeptrace::detach(), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::session_permissions(&mask), deeptrace::Result::NotAttached);
+    EXPECT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+}
+
 TEST_F(DeeptraceIntegration, ReadKnownInt) {
     uint32_t v = 0;
     size_t n = 0;

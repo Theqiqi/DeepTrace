@@ -41,7 +41,9 @@ const std::vector<CommandSpec>& command_table() {
     static const std::vector<CommandSpec> kTable = {
         // ---- ps ----
         cmd("ps", "list", "ps list", "List all processes", {}),
-        cmd("ps", "attach", "ps attach <pid>", "Attach to a process", {req("pid", "pid")}),
+        cmd("ps", "attach", "ps attach <pid>",
+            "Attach to a process (shows granted permissions)",
+            {req("pid", "pid")}),
         cmd("ps", "detach", "ps detach", "Detach from current process", {}),
         cmd("ps", "info", "ps info", "Show current process info", {}),
         cmd("ps", "suspend", "ps suspend", "Suspend the attached process", {}),
@@ -200,7 +202,7 @@ std::string command_usage(const CommandSpec& spec) {
 
 std::string build_help_text() {
     std::ostringstream os;
-    os << "deeptrace_cli v2.10.0\n";
+    os << "deeptrace_cli v2.11.0\n";
     os << "\n";
     os << "Usage: deeptrace_cli [options] <command> [args...]\n";
     os << "\n";

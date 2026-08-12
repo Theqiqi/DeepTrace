@@ -124,7 +124,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.10.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.11.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -194,6 +194,15 @@ def main():
         code, out, _ = run_cli(["ps", "list"])
         check("ps list exit 0", code == 0)
         check("ps list contains target pid", str(pid) in out, repr(out[:200]))
+
+        # ---- v2.11.0: ps attach surfaces granted permissions ----
+        # Our own target grants full access: the summary must include the
+        # memory read/write semantic names.
+        code, out, _ = run_cli(["ps", "attach", str(pid)])
+        check("ps attach exit 0", code == 0, repr(out))
+        check("ps attach shows permissions",
+              "permissions:" in out and "read" in out and "write" in out,
+              repr(out))
 
         # ---- ps info with -p ----
         code, out, _ = run_cli(["-p", str(pid), "ps", "info"])

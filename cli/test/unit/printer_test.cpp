@@ -66,6 +66,28 @@ TEST(Printer, FormatAddress) {
     EXPECT_EQ(printer::format_address(0), "0x0000000000000000");
 }
 
+TEST(Printer, FormatPermissionsReadWrite) {
+    // PROCESS_VM_READ (0x10) | PROCESS_VM_WRITE (0x20)
+    EXPECT_EQ(printer::format_permissions(0x30u), "read|write");
+}
+
+TEST(Printer, FormatPermissionsFullLimitedSet) {
+    // the attach fallback set: QUERY_INFORMATION | VM_READ | VM_WRITE |
+    // VM_OPERATION | CREATE_THREAD | SUSPEND_RESUME
+    uint32_t limited = 0x0400u | 0x0010u | 0x0020u | 0x0008u | 0x0002u | 0x0800u;
+    EXPECT_EQ(printer::format_permissions(limited),
+              "read|write|vm_operate|create_thread|suspend_resume|query");
+}
+
+TEST(Printer, FormatPermissionsZeroMask) {
+    EXPECT_EQ(printer::format_permissions(0), "");
+}
+
+TEST(Printer, FormatPermissionsIncludesTerminate) {
+    // PROCESS_TERMINATE (0x0001)
+    EXPECT_EQ(printer::format_permissions(0x0001u), "terminate");
+}
+
 TEST(Printer, PrintBytesHex) {
     std::vector<uint8_t> b = {0x48, 0x8B, 0xC3};
     auto s = capture([&] { printer::print_bytes_formatted(b, "hex"); });
@@ -111,7 +133,7 @@ TEST(Printer, PrintMessage) {
 
 TEST(Printer, Version) {
     auto s = capture([&] { printer::print_version(); });
-    EXPECT_EQ(s, "deeptrace_cli v2.10.0\n");
+    EXPECT_EQ(s, "deeptrace_cli v2.11.0\n");
 }
 
 // ---- v2.10.0: batch_rows_text serialization (table/csv/json) ----

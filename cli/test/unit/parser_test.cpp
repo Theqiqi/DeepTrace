@@ -588,7 +588,7 @@ TEST(Parser, HelpTextListsNewCommands) {
     EXPECT_NE(help.find("script status"), std::string::npos);
     EXPECT_NE(help.find("mem batch"), std::string::npos);
     EXPECT_NE(help.find("--format table|csv|json"), std::string::npos);
-    EXPECT_NE(help.find("deeptrace_cli v2.10.0"), std::string::npos);
+    EXPECT_NE(help.find("deeptrace_cli v2.11.0"), std::string::npos);
 }
 
 TEST(Parser, BatchFormatFlagDefaultAndSet) {

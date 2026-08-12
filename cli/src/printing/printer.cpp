@@ -38,7 +38,7 @@ void print_help(const std::string& text) {
 }
 
 void print_version() {
-    std::printf("deeptrace_cli v2.10.0\n");
+    std::printf("deeptrace_cli v2.11.0\n");
 }
 
 std::string to_ascii(const std::wstring& s) {
@@ -57,6 +57,37 @@ std::string format_address(uintptr_t a) {
     char buf[32];
     std::snprintf(buf, sizeof buf, "0x%016llX", (unsigned long long)a);
     return buf;
+}
+
+std::string format_permissions(uint32_t mask) {
+    // Windows PROCESS_* bits, ordered by semantic usefulness for humans/AI
+    // (v2.11.0). Bits not listed are skipped.
+    struct BitName {
+        uint32_t bit;
+        const char* name;
+    };
+    static const BitName kBits[] = {
+        {0x0010, "read"},           // PROCESS_VM_READ
+        {0x0020, "write"},          // PROCESS_VM_WRITE
+        {0x0008, "vm_operate"},     // PROCESS_VM_OPERATION
+        {0x0002, "create_thread"},  // PROCESS_CREATE_THREAD
+        {0x0800, "suspend_resume"}, // PROCESS_SUSPEND_RESUME
+        {0x0400, "query"},          // PROCESS_QUERY_INFORMATION
+        {0x1000, "query_limited"},  // PROCESS_QUERY_LIMITED_INFORMATION
+        {0x0001, "terminate"},      // PROCESS_TERMINATE
+        {0x0040, "dup_handle"},     // PROCESS_DUP_HANDLE
+        {0x0080, "create_process"}, // PROCESS_CREATE_PROCESS
+        {0x0100, "set_quota"},      // PROCESS_SET_QUOTA
+        {0x0200, "set_info"},       // PROCESS_SET_INFORMATION
+    };
+    std::string out;
+    for (const auto& b : kBits) {
+        if ((mask & b.bit) != 0) {
+            if (!out.empty()) out += '|';
+            out += b.name;
+        }
+    }
+    return out;
 }
 
 void print_processes(const std::vector<deeptrace::ProcessInfo>& list) {

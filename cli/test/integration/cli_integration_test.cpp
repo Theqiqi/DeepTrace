@@ -153,6 +153,24 @@ TEST(CliChain, PsList) {
     EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "list"}), 0);
 }
 
+// v2.11.0: `ps attach` must surface the permissions actually granted by the
+// attach (the fallback set or PROCESS_ALL_ACCESS). The exit code stays 0 and
+// the session's recorded mask matches what the static lib reports.
+TEST(CliChain, PsAttachSurfacesPermissions) {
+    std::string pid = std::to_string(g_target.pid);
+    // attach via the CLI chain (ps group manages its own session)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "attach", pid}), 0);
+    // the session is left attached by the ps command; verify the mask
+    uint32_t mask = 0;
+    EXPECT_EQ(deeptrace::session_permissions(&mask), deeptrace::Result::Ok);
+    EXPECT_NE(mask, 0u);
+    EXPECT_NE(mask & 0x0010u, 0u);  // PROCESS_VM_READ
+    EXPECT_NE(mask & 0x0020u, 0u);  // PROCESS_VM_WRITE
+    EXPECT_EQ(deeptrace::detach(), deeptrace::Result::Ok);
+    // failed attach is still a business error (unchanged)
+    EXPECT_EQ(run_cli({"deeptrace_cli", "ps", "attach", "99999999"}), 1);
+}
+
 TEST(CliChain, AttachAndReadKnownInt) {
     // -p attaches in the executor; then mem read hits the real value.
     EXPECT_EQ(run_cli({"deeptrace_cli", "-p", std::to_string(g_target.pid), "ps", "info"}), 0);

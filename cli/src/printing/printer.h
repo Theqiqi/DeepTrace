@@ -76,5 +76,11 @@ std::string batch_rows_text(const std::vector<BatchRow>& rows,
 
 std::string format_address(uintptr_t a);  // "0x%016llX"
 
+// Human/AI-friendly names for the process access mask bits (v2.11.0): maps
+// the Windows PROCESS_* bits of a session_permissions result to semantic
+// names (read, write, vm_operate, create_thread, ...) joined by '|'.
+// Bits without a known name are skipped. Empty mask -> "".
+std::string format_permissions(uint32_t mask);
+
 }  // namespace printer
 }  // namespace deeptrace_cli

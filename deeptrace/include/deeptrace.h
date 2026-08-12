@@ -25,6 +25,11 @@ Result suspend_process(uint32_t pid);
 Result resume_process(uint32_t pid);
 Result terminate_process(uint32_t pid, uint32_t exit_code);
 Result session_pid(uint32_t* out_pid);
+// Query the actual process access mask granted by the last successful attach
+// (Windows PROCESS_* bits; v2.11.0). Zero extra probes: the mask is recorded
+// from attach itself. NotAttached without a session, InvalidArg for a null
+// out_mask.
+Result session_permissions(uint32_t* out_mask);
 
 // ---- memory (requires attached session) ----------------------------------
 Result memory_read(uintptr_t addr, void* buf, size_t size, size_t* out_read);

@@ -14,7 +14,8 @@
 > v2.9.0 新增批量定位器 JSON(mem batch read/write,指针链/模块+偏移/
 > 符号+偏移/绝对地址,8 种类型,文件即存储);v2.10.0 新增 batch 导出
 > (--format csv|json + --out,供其他工具/AI 消费,含 status/error 字段);
-> 版本号同步 v2.10.0;既有用例全量回归。
+> v2.11.0 ps attach 输出实际权限摘要(语义化名列表,read|write|...);
+> 版本号同步 v2.11.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -23,9 +24,10 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.10.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.11.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
+| attach 权限透出(v2.11.0) | 目标已启动 | `deeptrace_cli ps attach <pid>` | OK (permissions: read\|write\|...) 含 read/write | 0 |
 | 非法参数(v2.6.0:符号形状现在合法,真非法形状仍拒绝) | - | `deeptrace_cli mem read "foo bar"` / `mem read a-b` | Error | 2 |
 
 ## 2. convert(新增,v1.4.1,无需目标进程)

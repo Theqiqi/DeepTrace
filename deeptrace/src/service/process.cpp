@@ -15,18 +15,25 @@ Result enumerate_processes(std::vector<ProcessInfo>& out) {
 Result attach(uint32_t pid) {
     if (pid == 0) return Result::InvalidArg;
     Result err = Result::Ok;
+    constexpr uint32_t kLimited =
+        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_VM_WRITE |
+        PROCESS_VM_OPERATION | PROCESS_CREATE_THREAD | PROCESS_SUSPEND_RESUME;
     void* h = internal::OpenProcessById(pid, PROCESS_ALL_ACCESS, &err);
+    uint32_t granted = 0;
     if (!h) {
         // Fall back to limited access for query-only operations.
-        h = internal::OpenProcessById(
-            pid, PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_VM_WRITE |
-                 PROCESS_VM_OPERATION | PROCESS_CREATE_THREAD | PROCESS_SUSPEND_RESUME,
-            &err);
+        h = internal::OpenProcessById(pid, kLimited, &err);
+        granted = kLimited;
         if (!h) return err;
+    } else {
+        granted = PROCESS_ALL_ACCESS;
     }
     auto& s = internal::session();
     s.pid = pid;
     s.handle = h;
+    // Record the mask the caller actually received so `ps attach` can surface
+    // the real permissions (v2.11.0). Zero extra OpenProcess probes.
+    s.permissions = granted;
     return Result::Ok;
 }
 
@@ -48,6 +55,7 @@ Result detach() {
         s.handle = nullptr;
     }
     s.pid = 0;
+    s.permissions = 0;
     return Result::Ok;
 }
 
@@ -73,6 +81,14 @@ Result terminate_process(uint32_t pid, uint32_t exit_code) {
 Result session_pid(uint32_t* out_pid) {
     if (!out_pid) return Result::InvalidArg;
     *out_pid = internal::session().pid;
+    return Result::Ok;
+}
+
+Result session_permissions(uint32_t* out_mask) {
+    if (!out_mask) return Result::InvalidArg;
+    const auto& s = internal::session();
+    if (s.pid == 0) return Result::NotAttached;
+    *out_mask = s.permissions;
     return Result::Ok;
 }
 
