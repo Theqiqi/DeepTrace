@@ -83,6 +83,14 @@ deeptrace_cli asm assemble "nop; ret"
 90C3
 
 :: 离线检查 AA 脚本(语法 + 汇编,无需附加目标)
+:: my_script.aa 内容:
+::   [ENABLE]
+::   alloc(newmem,0x100)
+::   newmem:
+::   mov rax,1
+::   ret
+::   [DISABLE]
+::   dealloc(newmem)
 deeptrace_cli script check my_script.aa
 OK (5 steps: 1 alloc, 2 asm, 0 hook, 0 createThread, 0 db)
 ```
