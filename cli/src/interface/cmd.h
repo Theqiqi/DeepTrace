@@ -7,6 +7,8 @@
 #include "deeptrace.h"
 
 #include <cstdint>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -103,6 +105,32 @@ struct Step {
 // no session required). Returns false and fills err on syntax errors.
 bool aa_parse_text(const std::string& text, std::vector<Step>& enable,
                    std::vector<Step>& disable, std::string& err);
+
+// Collect the [ENABLE] symbol universe: alloc'd symbols and labels defined
+// anywhere in the block. alloc_names receives the alloc'd symbol names;
+// symbols maps every name to a placeholder address (relative jmp/call
+// encodings do not depend on the absolute base).
+void aa_collect_symbols(const std::vector<Step>& enable,
+                        std::set<std::string>& alloc_names,
+                        std::map<std::string, uintptr_t>& symbols);
+
+// Static hook-block structure validation (no session required): every hook
+// target must be followed by 'jmp <label>' with a defined label, and no
+// other instruction may follow inside a hook block. Returns false and fills
+// err with a 'script check failed at line N: <msg>' message.
+bool aa_check_hook_structure(const std::vector<Step>& enable,
+                             const std::set<std::string>& alloc_names,
+                             const std::map<std::string, uintptr_t>& symbols,
+                             std::string& err);
+
+// Assembly precheck (no session required): group bare asm lines by write
+// target and assemble each group at a placeholder base via the static
+// library's asm_assemble_labels, so Keystone rejects unknown mnemonics and
+// invalid operands. Returns false and fills err on BadFormat.
+bool aa_precheck_asm(const std::vector<Step>& enable,
+                     const std::set<std::string>& alloc_names,
+                     const std::map<std::string, uintptr_t>& symbols,
+                     std::string& err);
 
 }  // namespace aa
 

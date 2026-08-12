@@ -277,3 +277,191 @@ TEST(AaScript, CommentInsideQuoteKept) {
     ASSERT_EQ(enable.size(), 1u);
     EXPECT_EQ(enable[0].text, "mov rax, \"a//b\"");
 }
+
+// ---- script check: static validation helpers ----
+
+namespace {
+
+}  // namespace
+
+TEST(AaCheck, CollectSymbols) {
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\nalloc(a,8)\nlabel(x)\ny:\n", enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    EXPECT_EQ(alloc_names.size(), 1u);
+    EXPECT_TRUE(alloc_names.count("a") == 1u);
+    ASSERT_EQ(symbols.size(), 3u);  // a, x, y
+    EXPECT_TRUE(symbols.count("a") == 1u);
+    EXPECT_TRUE(symbols.count("x") == 1u);
+    EXPECT_TRUE(symbols.count("y") == 1u);
+}
+
+TEST(AaCheck, HookStructureOk) {
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok(
+        "[ENABLE]\nalloc(n,8)\n\"m.dll\"+100:\njmp n\nnop 2\n", enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_TRUE(internal::aa::aa_check_hook_structure(enable, alloc_names, symbols,
+                                                      err));
+    EXPECT_EQ(err, "");
+}
+
+TEST(AaCheck, HookNoJmpFails) {
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\n\"m.dll\"+100:\nnop 2\n", enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_check_hook_structure(enable, alloc_names, symbols,
+                                                       err));
+    EXPECT_NE(err.find("hook target must be followed by 'jmp <label>'"),
+              std::string::npos);
+}
+
+TEST(AaCheck, HookUndefinedLabelFails) {
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\n\"m.dll\"+100:\njmp nonexist\n", enable,
+                         disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_check_hook_structure(enable, alloc_names, symbols,
+                                                       err));
+    EXPECT_NE(err.find("undefined label 'nonexist'"), std::string::npos);
+}
+
+TEST(AaCheck, HookSecondAsmFails) {
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\nalloc(n,8)\n\"m.dll\"+100:\njmp n\nmov eax,1\n",
+                         enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_check_hook_structure(enable, alloc_names, symbols,
+                                                       err));
+    EXPECT_NE(err.find("only 'jmp <label>' is supported after a hook target"),
+              std::string::npos);
+}
+
+TEST(AaCheck, PrecheckValidAsm) {
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\nalloc(n,64)\nn:\nmov rax, 1\nadd rax, 2\n",
+                         enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_TRUE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_EQ(err, "");
+}
+
+TEST(AaCheck, PrecheckBadMnemonic) {
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\nalloc(n,64)\nn:\nbogus rax, 1\n", enable,
+                         disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_NE(err.find("BadFormat"), std::string::npos);
+}
+
+TEST(AaCheck, PrecheckBadOperand) {
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok("[ENABLE]\nalloc(n,64)\nn:\nmov rax, bogusreg\n", enable,
+                         disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_NE(err.find("BadFormat"), std::string::npos);
+}
+
+TEST(AaCheck, UserHookScriptPasses) {
+    // The user's example hook script shape (hook target + jmp + filler +
+    // labels) within the documented capability boundary must pass both static
+    // checks. Note: the original example's `mov [addsunrcx],rcx` line is
+    // intentionally left out here - symbol references are only supported on
+    // jmp/call (see AaCheck.NonJumpSymbolRefFails), so that line is rejected
+    // by the assembler exactly as it would be at run time.
+    const char* text =
+        "[ENABLE]\n"
+        "alloc(newmem,2048,\"m.dll\"+100)\n"
+        "label(returnhere)\n"
+        "label(originalcode)\n"
+        "label(exit)\n"
+        "alloc(addsunrcx, 8)\n"
+        "registersymbol(addsunrcx)\n"
+        "newmem:\n"
+        "xor r9d,r9d\n"
+        "cvttss2si r8d,[rsp+44]\n"
+        "exit:\n"
+        "jmp returnhere\n"
+        "\"m.dll\"+100:\n"
+        "jmp newmem\n"
+        "nop 5\n"
+        "returnhere:\n";
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok(text, enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_TRUE(internal::aa::aa_check_hook_structure(enable, alloc_names, symbols,
+                                                      err));
+    EXPECT_EQ(err, "");
+    EXPECT_TRUE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_EQ(err, "");
+}
+
+TEST(AaCheck, UserCallScriptPasses) {
+    // The user's createThread example script shape (alloc + createThread +
+    // stack-aligned stub) within the documented capability boundary must pass
+    // both static checks. The original example's `mov r12,"m.dll"+100` line is
+    // intentionally simplified: string-immediate operands in asm lines are not
+    // supported (module addresses are written via "module"+offset: labels).
+    const char* text =
+        "[ENABLE]\n"
+        "alloc(newmem,1024)\n"
+        "createThread(newmem)\n"
+        "newmem:\n"
+        "sub rsp,28\n"
+        "add rsp,28\n"
+        "ret\n";
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok(text, enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_TRUE(internal::aa::aa_check_hook_structure(enable, alloc_names, symbols,
+                                                      err));
+    EXPECT_EQ(err, "");
+    EXPECT_TRUE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_EQ(err, "");
+}
+
+TEST(AaCheck, NonJumpSymbolRefFails) {
+    // Capability boundary lock: symbol references on non-jmp/call instructions
+    // are rejected by the assembler (documented in 04_需求分析 §5). Check
+    // reports it as a BadFormat script error, matching run-time behavior.
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok(
+        "[ENABLE]\nalloc(n,64)\nn:\nmov rax, n\n", enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_NE(err.find("BadFormat"), std::string::npos);
+}

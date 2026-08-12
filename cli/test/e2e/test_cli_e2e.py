@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.3.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.4.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -461,6 +461,57 @@ def main():
         os.remove(os.path.join(BIN_DIR, "e2e_bad.aa"))
         code, out, _ = run_cli(["ps", "list"])
         check("target alive after script ops", str(pid) in out, repr(out[:200]))
+
+        # ---- v2.4.0: script check (syntax + assembly precheck, no attach) ----
+        # Pure local validation: no -p, no target side effects.
+        ok_win = materialize_aa("script_call.aa", "check_ok")
+        code, out, _ = run_cli(["script", "check", ok_win])
+        check("script check valid exit 0", code == 0)
+        check("script check OK summary", "OK (" in out and "steps" in out, repr(out))
+        os.remove(os.path.join(BIN_DIR, "e2e_check_ok.aa"))
+
+        # hook fixture with a materialized offset passes check
+        hook_win = materialize_aa("script_hook.aa", "check_hook", hook_off="0x1000")
+        code, out, _ = run_cli(["script", "check", hook_win])
+        check("script check hook exit 0", code == 0)
+        os.remove(os.path.join(BIN_DIR, "e2e_check_hook.aa"))
+
+        # syntax error -> exit 2 (real fixture script_bad.aa)
+        bad_check_win = materialize_aa("script_bad.aa", "check_bad")
+        code, _, err = run_cli(["script", "check", bad_check_win])
+        check("script check bad block exit 2", code == 2)
+        check("script check bad block msg", "script parse error" in err, repr(err))
+        os.remove(os.path.join(BIN_DIR, "e2e_check_bad.aa"))
+
+        # assembly precheck failure -> exit 2 (real fixture script_badasm.aa)
+        badasm_check_win = materialize_aa("script_badasm.aa", "check_badasm")
+        code, _, err = run_cli(["script", "check", badasm_check_win])
+        check("script check bad asm exit 2", code == 2)
+        check("script check bad asm msg", "BadFormat" in err, repr(err))
+        os.remove(os.path.join(BIN_DIR, "e2e_check_badasm.aa"))
+
+        # missing file -> exit 2
+        code, _, err = run_cli(["script", "check", "no_such.aa"])
+        check("script check missing file exit 2", code == 2)
+        check("script check missing file msg", "cannot read file" in err, repr(err))
+
+        # hook structure errors detected statically (no attach)
+        struct_cases = [
+            ("[ENABLE]\n\"m.dll\"+100:\nnop 2\n", "hook target must be followed"),
+            ("[ENABLE]\n\"m.dll\"+100:\njmp nonexist\n", "undefined label"),
+            ("[ENABLE]\nalloc(n,8)\n\"m.dll\"+100:\njmp n\nmov eax,1\n",
+             "only 'jmp <label>'"),
+        ]
+        for i, (content, msg) in enumerate(struct_cases):
+            tmp = os.path.join(BIN_DIR, f"e2e_struct_{i}.aa")
+            with open(tmp, "w") as f:
+                f.write(content)
+            code, _, err = run_cli(["script", "check", win_path(tmp)])
+            check(f"script check struct case {i} exit 2", code == 2)
+            check(f"script check struct case {i} msg", msg in err, repr(err))
+            os.remove(tmp)
+        code, out, _ = run_cli(["ps", "list"])
+        check("target alive after script check", str(pid) in out, repr(out[:200]))
 
         # ---- dll inject round trip (companion testdll.dll) ----
         # The path must be a Windows path: it is written into the target and

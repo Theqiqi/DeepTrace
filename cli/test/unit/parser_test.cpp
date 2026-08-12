@@ -528,10 +528,24 @@ TEST(Parser, HelpTextListsNewCommands) {
     EXPECT_NE(help.find("shellcode free"), std::string::npos);
     EXPECT_NE(help.find("shellcode exec"), std::string::npos);
     EXPECT_NE(help.find("shellcode injectfile"), std::string::npos);
+    EXPECT_NE(help.find("script check"), std::string::npos);
     EXPECT_NE(help.find("script run"), std::string::npos);
     EXPECT_NE(help.find("script disable"), std::string::npos);
     EXPECT_NE(help.find("script status"), std::string::npos);
-    EXPECT_NE(help.find("deeptrace_cli v2.3.0"), std::string::npos);
+    EXPECT_NE(help.find("deeptrace_cli v2.4.0"), std::string::npos);
+}
+
+TEST(Parser, ScriptCheckParses) {
+    auto r = parse({"deeptrace_cli", "script", "check", "x.aa"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.req.group, "script");
+    EXPECT_EQ(r.req.action, "check");
+    EXPECT_EQ(r.req.args.size(), 1u);
+    EXPECT_EQ(r.req.args[0], "x.aa");
+    auto missing = parse({"deeptrace_cli", "script", "check"});
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.exit_code, 2);
+    EXPECT_NE(missing.error.find("missing argument: file"), std::string::npos);
 }
 
 TEST(Parser, WatchAddTypes) {

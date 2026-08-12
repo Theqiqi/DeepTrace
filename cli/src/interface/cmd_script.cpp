@@ -458,6 +458,152 @@ bool aa_parse_text(const std::string& text, std::vector<Step>& enable,
     return true;
 }
 
+void aa_collect_symbols(const std::vector<Step>& enable,
+                        std::set<std::string>& alloc_names,
+                        std::map<std::string, uintptr_t>& symbols) {
+    alloc_names.clear();
+    symbols.clear();
+    uintptr_t slot = 0x1000;
+    for (const Step& st : enable) {
+        if (st.kind == StepKind::Alloc) {
+            alloc_names.insert(st.name);
+            symbols[st.name] = slot;
+            slot += 0x1000;
+        } else if (st.kind == StepKind::LabelDecl ||
+                   st.kind == StepKind::LabelDef) {
+            symbols[st.name] = slot;
+            slot += 0x1000;
+        }
+    }
+}
+
+bool aa_check_hook_structure(const std::vector<Step>& enable,
+                             const std::set<std::string>& alloc_names,
+                             const std::map<std::string, uintptr_t>& symbols,
+                             std::string& err) {
+    bool in_hook = false;
+    bool hook_jmp_done = false;
+    size_t hook_target_line = 0;
+    auto end_hook = [&]() -> bool {
+        if (!in_hook) return true;
+        if (!hook_jmp_done) {
+            err = "script check failed at line " +
+                  std::to_string(hook_target_line) +
+                  ": hook target must be followed by 'jmp <label>'";
+            return false;
+        }
+        in_hook = false;
+        return true;
+    };
+    for (const Step& st : enable) {
+        switch (st.kind) {
+            case StepKind::Alloc:
+                if (!end_hook()) return false;
+                continue;
+            case StepKind::HookTarget:
+                if (!end_hook()) return false;
+                in_hook = true;
+                hook_jmp_done = false;
+                hook_target_line = st.line;
+                continue;
+            case StepKind::Asm:
+                if (!in_hook) continue;
+                if (hook_jmp_done) {
+                    err = "script check failed at line " +
+                          std::to_string(st.line) +
+                          ": only 'jmp <label>' is supported after a hook target";
+                    return false;
+                }
+                hook_jmp_done = true;
+                {
+                    std::string rest = trim_str(st.text);
+                    bool is_jmp = rest.size() >= 3 &&
+                                  lower_str(rest.substr(0, 3)) == "jmp" &&
+                                  (rest.size() == 3 || rest[3] == ' ' ||
+                                   rest[3] == '\t');
+                    if (!is_jmp) {
+                        err = "script check failed at line " +
+                              std::to_string(st.line) +
+                              ": hook target must be followed by 'jmp <label>'";
+                        return false;
+                    }
+                    std::string label = trim_str(rest.substr(3));
+                    if (symbols.count(label) == 0) {
+                        err = "script check failed at line " +
+                              std::to_string(st.line) + ": undefined label '" +
+                              label + "'";
+                        return false;
+                    }
+                }
+                continue;
+            case StepKind::LabelDecl:
+            case StepKind::LabelDef:
+                if (in_hook && alloc_names.count(st.name) == 0) continue;
+                if (!end_hook()) return false;
+                continue;
+            case StepKind::NopFill:
+            case StepKind::Db:
+                continue;
+            default:
+                if (!end_hook()) return false;
+                continue;
+        }
+    }
+    return end_hook();
+}
+
+bool aa_precheck_asm(const std::vector<Step>& enable,
+                     const std::set<std::string>& alloc_names,
+                     const std::map<std::string, uintptr_t>& symbols,
+                     std::string& err) {
+    std::vector<std::string> group_lines;
+    size_t group_line = 0;
+    auto flush = [&]() -> bool {
+        if (group_lines.empty()) return true;
+        std::string code;
+        for (const std::string& l : group_lines) code += l + "\n";
+        std::vector<uint8_t> bytes;
+        deeptrace::Result r = deeptrace::asm_assemble_labels(
+            code, 0x1000, symbols, bytes, nullptr);
+        if (r != deeptrace::Result::Ok) {
+            err = "script check failed at line " + std::to_string(group_line) +
+                  ": BadFormat";
+            return false;
+        }
+        group_lines.clear();
+        return true;
+    };
+    for (const Step& st : enable) {
+        switch (st.kind) {
+            case StepKind::Alloc:
+            case StepKind::HookTarget:
+                if (!flush()) return false;
+                continue;
+            case StepKind::LabelDecl:
+                // label(name) is a declaration only: the symbol universe is
+                // already collected, no assembly text is produced. Skipping it
+                // keeps the current group intact (its empty text must not
+                // create an empty asm stream).
+                continue;
+            case StepKind::LabelDef:
+                if (alloc_names.count(st.name) != 0) {
+                    if (!flush()) return false;
+                    continue;
+                }
+                if (group_lines.empty()) group_line = st.line;
+                group_lines.push_back(st.text);
+                continue;
+            case StepKind::Asm:
+                if (group_lines.empty()) group_line = st.line;
+                group_lines.push_back(st.text);
+                continue;
+            default:
+                continue;
+        }
+    }
+    return flush();
+}
+
 }  // namespace aa
 }  // namespace internal
 
@@ -812,6 +958,62 @@ int exec_disable(const std::vector<Step>& disable) {
     return 0;
 }
 
+// ---- script check (syntax + assembly precheck, no attach, no execute) -----
+
+int script_check_cmd(const CommandRequest& req) {
+    const std::string& path = req.args[0];
+    std::string text;
+    if (!internal::read_text_file(path, text)) {
+        printer::print_error("cannot read file: " + path);
+        return 2;
+    }
+    std::vector<Step> enable, disable;
+    std::string err;
+    if (!internal::aa::aa_parse_text(text, enable, disable, err)) {
+        printer::print_error(err);
+        return 2;
+    }
+    if (enable.empty()) {
+        printer::print_error("script has no [ENABLE] block");
+        return 2;
+    }
+
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+
+    if (!internal::aa::aa_check_hook_structure(enable, alloc_names, symbols,
+                                               err)) {
+        printer::print_error(err);
+        return 2;
+    }
+    if (!internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err)) {
+        printer::print_error(err);
+        return 2;
+    }
+
+    size_t n_alloc = 0, n_asm = 0, n_hook = 0, n_thread = 0, n_db = 0;
+    for (const Step& st : enable) {
+        switch (st.kind) {
+            case StepKind::Alloc: ++n_alloc; break;
+            case StepKind::Asm: ++n_asm; break;
+            case StepKind::HookTarget: ++n_hook; break;
+            case StepKind::CreateThread: ++n_thread; break;
+            case StepKind::Db: ++n_db; break;
+            default: break;
+        }
+    }
+    char buf[160];
+    std::snprintf(buf, sizeof buf,
+                  "OK (%llu steps: %llu alloc, %llu asm, %llu hook, "
+                  "%llu createThread, %llu db)",
+                  (unsigned long long)enable.size(), (unsigned long long)n_alloc,
+                  (unsigned long long)n_asm, (unsigned long long)n_hook,
+                  (unsigned long long)n_thread, (unsigned long long)n_db);
+    printer::print_message(buf);
+    return 0;
+}
+
 // ---- command entry points ------------------------------------------------
 
 int script_run(const CommandRequest& req) {
@@ -922,6 +1124,7 @@ int script_status_cmd(const CommandRequest& req) {
 }  // namespace
 
 int cmd_script(const CommandRequest& req) {
+    if (req.action == "check") return script_check_cmd(req);
     if (req.action == "run") return script_run(req);
     if (req.action == "disable") return script_disable_cmd(req);
     if (req.action == "status") return script_status_cmd(req);

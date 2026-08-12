@@ -802,6 +802,70 @@ TEST(CliChain, ScriptRunRollbackOnFailure) {
     EXPECT_TRUE(target_alive());
 }
 
+// ---- v2.4.0: script check (syntax + assembly precheck, no attach) ----
+
+// script check is a pure local validation: it must work without -p, without
+// attaching, and must not touch the target process (no alloc, no write, no
+// thread). Valid scripts pass with exit 0; invalid ones fail with exit 2.
+TEST(CliChain, ScriptCheckNoAttach) {
+    std::string call = materialize_aa("script_call.aa", "", 20);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", call}), 0);
+    std::remove(call.c_str());
+
+    std::string bad = materialize_aa("script_bad.aa", "", 21);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", bad}), 2);
+    std::remove(bad.c_str());
+
+    std::string badasm = materialize_aa("script_badasm.aa", "", 22);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", badasm}), 2);
+    std::remove(badasm.c_str());
+
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", "no_such.aa"}), 2);
+    // side effect check: the target must be untouched by check (no -p at all)
+    EXPECT_TRUE(target_alive());
+}
+
+// The hook fixture materializes %HOOK_OFF% into a valid hex offset, so the
+// full hook script (target + jmp + filler) passes check with exit 0. The raw
+// fixture with the placeholder fails (invalid module offset), which is the
+// correct behavior: check validates the file exactly as given.
+TEST(CliChain, ScriptCheckHookFixture) {
+    // raw fixture (placeholder still present) -> invalid module offset
+    char buf[MAX_PATH] = {0};
+    ::GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    std::string dir(buf);
+    size_t slash = dir.find_last_of("/\\");
+    if (slash != std::string::npos) dir = dir.substr(0, slash);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check",
+                       dir + "\\script_hook.aa"}),
+              2);
+    // materialized (placeholder replaced with a hex offset) -> passes
+    std::string ok = materialize_aa("script_hook.aa", "0x1000", 23);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", ok}), 0);
+    std::remove(ok.c_str());
+}
+
+// Structural validation: a hook target without a following jmp, a jmp to an
+// undefined label, and a second instruction inside a hook block are all
+// detected statically (exit 2) without attaching.
+TEST(CliChain, ScriptCheckHookStructureErrors) {
+    std::string no_jmp = write_aa_script(
+        "[ENABLE]\n\"m.dll\"+100:\nnop 2\n", 24);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", no_jmp}), 2);
+    std::remove(no_jmp.c_str());
+
+    std::string undef = write_aa_script(
+        "[ENABLE]\n\"m.dll\"+100:\njmp nonexist\n", 25);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", undef}), 2);
+    std::remove(undef.c_str());
+
+    std::string second = write_aa_script(
+        "[ENABLE]\nalloc(n,8)\n\"m.dll\"+100:\njmp n\nmov eax,1\n", 26);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", second}), 2);
+    std::remove(second.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
 // shellcode injectfile: .bin file -> inject (execute immediately), then free.
 TEST(CliChain, ShellcodeInjectFile) {
     char tmpname[L_tmpnam] = {0};

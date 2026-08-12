@@ -4,7 +4,8 @@
 > 覆盖无参运行、-h/--help、错误路径、-p <pid> 真实目标进程操作、清理后退出。
 > 修改模式:v2.2.0 新增 asm file / hex2bin / shellcode alloc|run|free|exec|injectfile
 > (汇编代码注入并执行,分阶段操作);v2.3.0 新增 script 组(AA 风格脚本引擎
-> run/disable/status,幂等);版本号同步 v2.3.0;既有用例全量回归。
+> run/disable/status,幂等);v2.4.0 新增 `script check`(只检查不执行);
+> 版本号同步 v2.4.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -13,7 +14,7 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.3.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.4.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
 | 非法参数 | - | `deeptrace_cli mem read zzz` | Error | 2 |
@@ -112,6 +113,26 @@
 
 > 集成测试另覆盖:`script_hook.aa` hook 改写/恢复字节往返、`script_badasm.aa`
 > 中途失败回滚(无残留记录/符号)、无 -p 时 NotAttached 退出 1。
+
+## 4.7 script check:只检查不执行(v2.4.0,新增)
+
+前置:无需目标进程(纯本地校验,不 attach、无副作用)。脚本样例为仓库真实
+文件 `cli/test/scripts/*.aa`,测试读取后写入临时副本(BIN_DIR)执行。
+
+| 用例 | 操作 | 预期输出 | 退出码 |
+|------|------|----------|--------|
+| 有效脚本通过 | `script check <script_call.aa>` | stdout 含 `OK (` 与 steps 统计 | 0 |
+| hook 脚本(偏移替换后)通过 | `script check <script_hook.aa 替换 %HOOK_OFF%=0x1000>` | `OK (...)` | 0 |
+| 语法错误 | `script check <script_bad.aa>` | stderr 含 script parse error | 2 |
+| 汇编预检失败 | `script check <script_badasm.aa>` | stderr 含 BadFormat | 2 |
+| 文件不存在 | `script check no_such.aa` | stderr 含 cannot read file | 2 |
+| hook 后无 jmp | `script check <内联脚本>` | stderr 含 hook target must be followed | 2 |
+| jmp 未定义 label | `script check <内联脚本>` | stderr 含 undefined label | 2 |
+| hook 块内第二条指令 | `script check <内联脚本>` | stderr 含 only 'jmp <label>' | 2 |
+| 副作用:check 后目标存活 | 上例后 `ps list` | 目标 pid 仍在 | 0 |
+
+> check 无退出 1:不 attach、不执行,失败均为输入/脚本问题 → 退出 2。
+> 能力边界:不校验模块加载(需 attach,由 run 校验);不做 alloc/write/线程。
 
 ## 5. 既有回归(引用)
 
