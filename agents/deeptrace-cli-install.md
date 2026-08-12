@@ -33,7 +33,7 @@ unzip -o deeptrace_cli-$VERSION-win64.zip     # 解压出 deeptrace_cli.exe 到�
 
 # 验证
 ./deeptrace_cli.exe -v   # 应输出 deeptrace_cli v2.1.0(或 v2.13.0)
-./deeptrace_cli.exe -h   # 应输出命令列表(15 组)
+./deeptrace_cli.exe -h   # 应输出命令列表(15 组=v2.13.0 源码编译;12 组=v2.1.0 发布版)
 ```
 
 > ⚠️ 若 `-h` 只有 12 组(无 script/batch/ptrscan/hex2bin/bin2hex),说明拿到的是旧发布版(v2.1.0),缺少 v2.2.0+ 功能 → 用第 2 节源码编译。

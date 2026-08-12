@@ -235,7 +235,8 @@ deeptrace_cli -p 1234 script run x.aa
 # script enabled
 ```
 
-符号可在任何命令中当地址用:`mem read newmem 4`、`mem write sunObjPtr ...`(改人造指针目标)、`watch add ptr sunObjPtr qword`。`mem read newmem` 等价于读人造指针。
+符号可在任何命令中当地址用:`mem read newmem 4`(读符号地址处的内存)、`mem write sunObjPtr ...`(改人造指针目标)、`watch add ptr sunObjPtr qword`。
+**读人造指针指向的值**:先 `mem readval sunObjPtr qword` 读出指针值,再 `mem read <该值> ...`;或一步到位用 `mem batch` 定位器(symbol 步骤 + deref 步骤)。
 
 ## 15. 常见错误速查
 
