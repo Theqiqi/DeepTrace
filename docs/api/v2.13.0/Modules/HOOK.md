@@ -29,9 +29,8 @@ Result hook_set(uintptr_t addr, uintptr_t newmem, const std::string& owner,
 | `Result::Ok` | patch applied; `out.orig_bytes` holds the true original bytes |
 | `Result::InvalidArg` | `addr == 0` or `newmem == 0` |
 | `Result::NotAttached` | no attached session |
-| `Result::ReadFault` | could not read the 5 bytes at `addr` |
+| `Result::ReadFault` | could not read the 5 bytes at `addr` (or the read returned fewer than 5 bytes) |
 | `Result::WriteFault` | patch write failed |
-| `Result::AccessDenied` | no memory-write right |
 | `Result::Error` | record-save failed (original bytes written back — rollback) |
 
 ### Description
@@ -86,9 +85,11 @@ Result hook_clear(uintptr_t addr);
 | Return value | Meaning |
 |--------------|---------|
 | `Result::Ok` | original bytes written back and record removed |
+| `Result::InvalidArg` | `addr == 0` |
 | `Result::NotAttached` | no attached session |
 | `Result::NotFound` | `addr` has no hook record |
 | `Result::WriteFault` | write-back failed (record kept so it can be retried) |
+| `Result::Error` | record-save failed after the restore (target restored, record persists) |
 
 ### Description
 

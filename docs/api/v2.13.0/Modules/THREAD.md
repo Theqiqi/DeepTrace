@@ -118,10 +118,9 @@ Result thread_create_at(uintptr_t addr, uint32_t* out_tid);
 | Return value | Meaning |
 |--------------|---------|
 | `Result::Ok` | remote thread created |
-| `Result::InvalidArg` | `addr == 0` |
+| `Result::InvalidArg` | `addr == 0` or `out_tid == nullptr` |
 | `Result::NotAttached` | no attached session |
-| `Result::AccessDenied` | no `PROCESS_CREATE_THREAD` right |
-| `Result::Error` | `CreateRemoteThreadEx` failed |
+| `Result::Error` | `CreateRemoteThread` failed (including access-denied cases, mapped to `Error`) |
 
 ### Description
 

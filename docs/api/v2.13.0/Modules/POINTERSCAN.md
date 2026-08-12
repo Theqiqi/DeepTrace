@@ -26,7 +26,6 @@ Result pointer_map_snapshot(const PointerScanConfig& cfg,
 | `Result::InvalidArg` | `target == 0` / `max_offset == 0` / `max_level == 0` / `out == nullptr` |
 | `Result::NotAttached` | no attached session |
 | `Result::NotFound` | `cfg.module` (anchor module) is set but not loaded in the target |
-| `Result::AccessDenied` | no memory-read right over the scanned regions |
 
 ### Description
 

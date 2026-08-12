@@ -369,8 +369,7 @@ Result shellcode_alloc(const std::vector<uint8_t>& bytes, InjectInfo& out);
 | `Result::InvalidArg` | `bytes` is empty |
 | `Result::NotAttached` | no attached session |
 | `Result::WriteFault` | payload write failed (allocation is freed on this path) |
-| `Result::Error` | `VirtualAllocEx` failed |
-| `Result::AccessDenied` | no allocate-executable-memory right |
+| `Result::Error` | `VirtualAllocEx` failed, or record-save failed (allocation freed — rollback) |
 
 ### Description
 
@@ -420,10 +419,10 @@ Result shellcode_run(uintptr_t addr, InjectInfo& out);
 | Return value | Meaning |
 |--------------|---------|
 | `Result::Ok` | remote thread started at `addr`; `out.thread_id` set, `out.running = true` |
+| `Result::InvalidArg` | `addr == 0` |
 | `Result::NotAttached` | no attached session |
 | `Result::NotFound` | no shellcode record matches `addr` |
-| `Result::AccessDenied` | no `PROCESS_CREATE_THREAD` right |
-| `Result::Error` | `CreateRemoteThreadEx` failed (record unchanged) |
+| `Result::Error` | `CreateRemoteThread` failed (record unchanged; access-denied cases map to `Error`) |
 
 ### Description
 
@@ -470,6 +469,7 @@ Result shellcode_free(uintptr_t addr);
 | Return value | Meaning |
 |--------------|---------|
 | `Result::Ok` | memory released and record removed |
+| `Result::InvalidArg` | `addr == 0` |
 | `Result::NotAttached` | no attached session |
 | `Result::NotFound` | no shellcode record matches `addr` |
 | `Result::Timeout` | the run thread is still running after a 5-second wait; memory is **not** freed (avoiding use-after-free crashes) |

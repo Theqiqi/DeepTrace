@@ -30,7 +30,6 @@ Result script_alloc(const std::string& name, size_t size, const std::string& own
 | `Result::InvalidArg` | empty name / non-ASCII name / `size == 0` / null `out_addr` / duplicate symbol name |
 | `Result::NotAttached` | no attached session |
 | `Result::Error` | `VirtualAllocEx` failed, or record-save failed (allocation rolled back / freed) |
-| `Result::AccessDenied` | no allocate-memory right |
 
 ### Description
 
@@ -86,7 +85,6 @@ Result script_alloc_near(const std::string& name, size_t size, uintptr_t anchor,
 | `Result::InvalidArg` | empty name / non-ASCII name / `size == 0` / null `out_addr` / duplicate symbol name |
 | `Result::NotAttached` | no attached session |
 | `Result::Error` | no free region within ±2 GB of the anchor, `VirtualAllocEx` refused every candidate, or record-save failed (rollback) |
-| `Result::AccessDenied` | no allocate-memory right |
 
 ### Description
 
@@ -133,8 +131,10 @@ Result script_free(const std::string& name);
 | Return value | Meaning |
 |--------------|---------|
 | `Result::Ok` | memory freed and symbol record removed |
+| `Result::InvalidArg` | bad name (empty / non-ASCII) |
 | `Result::NotAttached` | no attached session |
 | `Result::NotFound` | no symbol record matches `name` |
+| `Result::Error` | record-save failed after freeing |
 
 ### Description
 
@@ -179,6 +179,7 @@ Result script_enable(const std::string& path);
 | Return value | Meaning |
 |--------------|---------|
 | `Result::Ok` | enable state recorded (or already enabled — idempotent) |
+| `Result::InvalidArg` | `path` is empty |
 | `Result::NotAttached` | no attached session |
 
 ### Description
@@ -225,6 +226,7 @@ Result script_disable(const std::string& path);
 | Return value | Meaning |
 |--------------|---------|
 | `Result::Ok` | disable state recorded (or already disabled — idempotent) |
+| `Result::InvalidArg` | `path` is empty |
 | `Result::NotAttached` | no attached session |
 
 ### Description
