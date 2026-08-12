@@ -5,7 +5,8 @@
 > 修改模式:v2.2.0 新增 asm file / hex2bin / shellcode alloc|run|free|exec|injectfile
 > (汇编代码注入并执行,分阶段操作);v2.3.0 新增 script 组(AA 风格脚本引擎
 > run/disable/status,幂等);v2.4.0 新增 `script check`(只检查不执行);
-> 版本号同步 v2.4.0;既有用例全量回归。
+> v2.5.0 新增脚本符号引用(人造指针:mov [sym],reg / mov reg,sym,任意指令);
+> 版本号同步 v2.5.0;既有用例全量回归。
 
 ## 1. 全局与基础
 
@@ -14,7 +15,7 @@
 | 无参运行 | - | `deeptrace_cli` | stderr 含 Missing command | 1 |
 | -h | - | `deeptrace_cli -h` | stdout 含 mem read / convert / debug run | 0 |
 | --help | - | `deeptrace_cli --help` | 同 -h | 0 |
-| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.4.0 | 0 |
+| -v | - | `deeptrace_cli -v` | stdout 含 deeptrace_cli v2.5.0 | 0 |
 | 未知命令组 | - | `deeptrace_cli bogus cmd` | stderr 含 unknown command group | 2 |
 | attach 不存在的进程 | - | `deeptrace_cli ps attach 99999999` | Error | 1 |
 | 非法参数 | - | `deeptrace_cli mem read zzz` | Error | 2 |
@@ -133,6 +134,25 @@
 
 > check 无退出 1:不 attach、不执行,失败均为输入/脚本问题 → 退出 2。
 > 能力边界:不校验模块加载(需 attach,由 run 校验);不做 alloc/write/线程。
+
+## 4.8 人造指针:脚本符号引用(v2.5.0,新增)
+
+前置:启动 deeptrace_target.exe,解析 PID。脚本样例为仓库真实文件
+`cli/test/scripts/script_aptr.aa`(alloc 双槽位 + createThread;线程写入
+slotA=moffs64、slotB=RIP 相对两种编码)。
+
+| 用例 | 操作 | 预期输出 | 退出码 |
+|------|------|----------|--------|
+| aptr 脚本 check 通过 | `script check <script_aptr.aa>` | stdout 含 `OK (` | 0 |
+| aptr run 执行 | `-p <pid> script run <script_aptr.aa>` | stdout 含 createThread | 0 |
+| status 列出双槽位 | `-p <pid> script status` | alloc slotA / alloc slotB 带地址 | 0 |
+| slotA(moffs64)读回 | `mem read <slotA> 8 hex` | 88 77 66 55 44 33 22 11 | 0 |
+| slotB(RIP 相对)读回 | `mem read <slotB> 8 hex` | 00 FF EE DD CC BB AA 99 | 0 |
+| aptr disable 释放 | `-p <pid> script disable <aa>` | stdout 含 dealloc | 0 |
+| 副作用:aptr 往返后目标存活 | 上例后 `ps list` | 目标 pid 仍在 | 0 |
+
+> 集成测试另覆盖:真实进程上双编码写入值读回验证、owner 字段保留(status 归属
+> 脚本而非 (unowned))。
 
 ## 5. 既有回归(引用)
 

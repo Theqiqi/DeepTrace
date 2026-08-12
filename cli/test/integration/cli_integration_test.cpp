@@ -802,6 +802,58 @@ TEST(CliChain, ScriptRunRollbackOnFailure) {
     EXPECT_TRUE(target_alive());
 }
 
+// ---- v2.5.0: artificial pointer (symbol refs on any instruction) ----
+
+// The artificial-pointer fixture spawns a thread that writes two known 64-bit
+// values into two 8-byte slots: slotA via accumulator moffs64 (mov [slotA],rax)
+// and slotB via non-accumulator RIP-relative (mov [slotB],rcx). Reading both
+// slots back proves both encodings execute correctly against real runtime
+// addresses (not just assembling). Fixture: script_aptr.aa.
+TEST(CliChain, ScriptArtificialPointerRoundTrip) {
+    std::string script = materialize_aa("script_aptr.aa", "", 30);
+    std::string pid = std::to_string(g_target.pid);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "run", script}), 0);
+
+    // Locate the two slot addresses from the script record (owner = path).
+    std::vector<deeptrace::ScriptInfo> list;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::script_status(list), deeptrace::Result::Ok);
+    deeptrace::detach();
+    uintptr_t slotA = 0, slotB = 0;
+    for (const auto& s : list) {
+        if (s.path != script) continue;
+        for (const auto& a : s.allocs) {
+            if (a.first == "slotA") slotA = a.second;
+            else if (a.first == "slotB") slotB = a.second;
+        }
+    }
+    ASSERT_NE(slotA, 0u) << "slotA not recorded";
+    ASSERT_NE(slotB, 0u) << "slotB not recorded";
+
+    // The spawned thread wrote both values; read them back from the target.
+    uint64_t vA = 0, vB = 0;
+    size_t n = 0;
+    ASSERT_EQ(deeptrace::attach(g_target.pid), deeptrace::Result::Ok);
+    EXPECT_EQ(deeptrace::memory_read(slotA, &vA, 8, &n), deeptrace::Result::Ok);
+    EXPECT_EQ(n, 8u);
+    EXPECT_EQ(deeptrace::memory_read(slotB, &vB, 8, &n), deeptrace::Result::Ok);
+    deeptrace::detach();
+    EXPECT_EQ(vA, 0x1122334455667788ull) << "moffs64 store wrote wrong value";
+    EXPECT_EQ(vB, 0x99AABBCCDDEEFF00ull) << "RIP-relative store wrote wrong value";
+
+    // Cleanup: disable frees the slots and the code buffer by name.
+    EXPECT_EQ(run_cli({"deeptrace_cli", "-p", pid, "script", "disable", script}), 0);
+    std::remove(script.c_str());
+    EXPECT_TRUE(target_alive());
+}
+
+// script check accepts the artificial-pointer script (no attach).
+TEST(CliChain, ScriptCheckArtificialPointer) {
+    std::string script = materialize_aa("script_aptr.aa", "", 31);
+    EXPECT_EQ(run_cli({"deeptrace_cli", "script", "check", script}), 0);
+    std::remove(script.c_str());
+}
+
 // ---- v2.4.0: script check (syntax + assembly precheck, no attach) ----
 
 // script check is a pure local validation: it must work without -p, without

@@ -268,6 +268,18 @@ TEST(AaScript, NopFillParsed) {
     EXPECT_EQ(enable[1].size, 5u);
 }
 
+TEST(AaScript, BareNopIsNop1) {
+    // CE hook filler style: a bare "nop" after the hook jmp is nop 1 (the
+    // user's example uses "jmp newmem\nnop"). In a normal block it behaves
+    // identically to the 1-byte 0x90 it would assemble to anyway.
+    const char* text = "[ENABLE]\nalloc(a,8)\nnop\n";
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok(text, enable, disable));
+    ASSERT_EQ(enable.size(), 2u);
+    EXPECT_EQ(enable[1].kind, StepKind::NopFill);
+    EXPECT_EQ(enable[1].size, 1u);
+}
+
 TEST(AaScript, CommentInsideQuoteKept) {
     const char* text =
         "[ENABLE]\n"
@@ -390,10 +402,9 @@ TEST(AaCheck, PrecheckBadOperand) {
 TEST(AaCheck, UserHookScriptPasses) {
     // The user's example hook script shape (hook target + jmp + filler +
     // labels) within the documented capability boundary must pass both static
-    // checks. Note: the original example's `mov [addsunrcx],rcx` line is
-    // intentionally left out here - symbol references are only supported on
-    // jmp/call (see AaCheck.NonJumpSymbolRefFails), so that line is rejected
-    // by the assembler exactly as it would be at run time.
+    // checks. Since v2.5.0 the `mov [addsunrcx],rcx` artificial-pointer line
+    // is supported (non-accumulator memory operand -> RIP-relative) and is
+    // included exactly as in the user's example.
     const char* text =
         "[ENABLE]\n"
         "alloc(newmem,2048,\"m.dll\"+100)\n"
@@ -403,6 +414,7 @@ TEST(AaCheck, UserHookScriptPasses) {
         "alloc(addsunrcx, 8)\n"
         "registersymbol(addsunrcx)\n"
         "newmem:\n"
+        "mov [addsunrcx],rcx\n"
         "xor r9d,r9d\n"
         "cvttss2si r8d,[rsp+44]\n"
         "exit:\n"
@@ -451,13 +463,58 @@ TEST(AaCheck, UserCallScriptPasses) {
     EXPECT_EQ(err, "");
 }
 
-TEST(AaCheck, NonJumpSymbolRefFails) {
-    // Capability boundary lock: symbol references on non-jmp/call instructions
-    // are rejected by the assembler (documented in 04_需求分析 §5). Check
-    // reports it as a BadFormat script error, matching run-time behavior.
+TEST(AaCheck, SymbolRefImmediatePasses) {
+    // v2.5.0: immediate symbol references are supported (movabs imm64). The
+    // precheck uses placeholder (low) addresses, so `mov rax, n` is legal;
+    // the 32-bit-operand truncation case only arises at run time with real
+    // addresses and is covered by the static-library unit tests.
     std::vector<Step> enable, disable;
     ASSERT_TRUE(parse_ok(
         "[ENABLE]\nalloc(n,64)\nn:\nmov rax, n\n", enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_TRUE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_EQ(err, "");
+}
+
+TEST(AaCheck, SymbolRefMemOperandsPass) {
+    // v2.5.0: memory-operand symbol references (artificial pointer) pass the
+    // precheck: accumulator movs (moffs64) and non-accumulator (RIP-relative).
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok(
+        "[ENABLE]\nalloc(slot,8)\nalloc(code,64)\ncode:\n"
+        "mov [slot],rax\nmov rax,[slot]\nmov [slot],rcx\nlea rdx,[slot]\n",
+        enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_TRUE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_EQ(err, "");
+}
+
+TEST(AaCheck, ComplexMemExprFails) {
+    // Complex memory expressions referencing a symbol are rejected explicitly
+    // (never silently truncated), both at check time and run time.
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok(
+        "[ENABLE]\nalloc(slot,8)\nalloc(code,64)\nslot:\ncode:\nmov rax,[slot+4]\n",
+        enable, disable));
+    std::set<std::string> alloc_names;
+    std::map<std::string, uintptr_t> symbols;
+    internal::aa::aa_collect_symbols(enable, alloc_names, symbols);
+    std::string err;
+    EXPECT_FALSE(internal::aa::aa_precheck_asm(enable, alloc_names, symbols, err));
+    EXPECT_NE(err.find("BadFormat"), std::string::npos);
+}
+
+TEST(AaCheck, UndefinedSymbolRefFails) {
+    // A reference to a symbol that is neither alloc'd nor defined still fails.
+    std::vector<Step> enable, disable;
+    ASSERT_TRUE(parse_ok(
+        "[ENABLE]\nalloc(code,64)\ncode:\nmov [ghost],rax\n", enable, disable));
     std::set<std::string> alloc_names;
     std::map<std::string, uintptr_t> symbols;
     internal::aa::aa_collect_symbols(enable, alloc_names, symbols);

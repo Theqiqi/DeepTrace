@@ -123,7 +123,7 @@ def main():
     check("long help exit 0", code == 0)
     code, out, _ = run_cli(["-v"])
     check("version exit 0", code == 0)
-    check("version string", "deeptrace_cli v2.4.0" in out, repr(out))
+    check("version string", "deeptrace_cli v2.5.0" in out, repr(out))
 
     # ---- unknown command ----
     code, _, err = run_cli(["bogus", "cmd"])
@@ -512,6 +512,43 @@ def main():
             os.remove(tmp)
         code, out, _ = run_cli(["ps", "list"])
         check("target alive after script check", str(pid) in out, repr(out[:200]))
+
+        # ---- v2.5.0: artificial pointer (symbol refs on any instruction) ----
+        # The aptr fixture spawns a thread that writes two known 64-bit values
+        # into two slots: slotA via moffs64 (mov [slotA],rax), slotB via
+        # RIP-relative (mov [slotB],rcx). Read both back through the CLI.
+        aptr_win = materialize_aa("script_aptr.aa", "aptr")
+        code, out, _ = run_cli(["script", "check", aptr_win])
+        check("script check aptr exit 0", code == 0)
+        check("script check aptr OK", "OK (" in out, repr(out))
+        os.remove(os.path.join(BIN_DIR, "e2e_aptr.aa"))
+
+        aptr_win = materialize_aa("script_aptr.aa", "aptr")
+        code, out, _ = run_cli(["-p", str(pid), "script", "run", aptr_win])
+        check("script run aptr exit 0", code == 0)
+        check("script run aptr thread", "createThread" in out, repr(out))
+        # status must list the two slots under the script (owner preserved)
+        code, out, _ = run_cli(["-p", str(pid), "script", "status"])
+        check("script status aptr exit 0", code == 0)
+        m_a = re.search(r"alloc\s+slotA\s+0x([0-9A-Fa-f]{16})", out)
+        m_b = re.search(r"alloc\s+slotB\s+0x([0-9A-Fa-f]{16})", out)
+        check("script status lists slotA", bool(m_a), repr(out))
+        check("script status lists slotB", bool(m_b), repr(out))
+        if m_a and m_b:
+            code, out, _ = run_cli(["-p", str(pid), "mem", "read",
+                                    "0x" + m_a.group(1), "8", "hex"])
+            check("aptr moffs64 value read back",
+                  "88 77 66 55 44 33 22 11" in out, repr(out))
+            code, out, _ = run_cli(["-p", str(pid), "mem", "read",
+                                    "0x" + m_b.group(1), "8", "hex"])
+            check("aptr rip-relative value read back",
+                  "00 FF EE DD CC BB AA 99" in out, repr(out))
+        code, out, _ = run_cli(["-p", str(pid), "script", "disable", aptr_win])
+        check("script disable aptr exit 0", code == 0)
+        check("script disable aptr dealloc", "dealloc" in out, repr(out))
+        os.remove(os.path.join(BIN_DIR, "e2e_aptr.aa"))
+        code, out, _ = run_cli(["ps", "list"])
+        check("target alive after aptr ops", str(pid) in out, repr(out[:200]))
 
         # ---- dll inject round trip (companion testdll.dll) ----
         # The path must be a Windows path: it is written into the target and

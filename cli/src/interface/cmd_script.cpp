@@ -290,14 +290,15 @@ ClassifyResult classify(const std::string& line_in, size_t line_no) {
         return res;
     }
 
-    // nop <count> (CE multi-byte nop)
-    if (line.size() > 3 && lower_str(line.substr(0, 3)) == "nop" &&
-        (line[3] == ' ' || line[3] == '\t')) {
+    // nop <count> (CE multi-byte nop); a bare "nop" is nop 1 (CE hook
+    // filler after the jmp line, e.g. the user's example "jmp newmem\nnop").
+    if (line.size() >= 3 && lower_str(line.substr(0, 3)) == "nop" &&
+        (line.size() == 3 || line[3] == ' ' || line[3] == '\t')) {
         std::string cnt = trim_str(line.substr(3));
         uint64_t n = 0;
-        if (parse_u64(cnt, n) && n > 0 && n <= 16) {
+        if (cnt.empty() || (parse_u64(cnt, n) && n > 0 && n <= 16)) {
             res.step.kind = StepKind::NopFill;
-            res.step.size = static_cast<size_t>(n);
+            res.step.size = static_cast<size_t>(cnt.empty() ? 1 : n);
             return res;
         }
     }
